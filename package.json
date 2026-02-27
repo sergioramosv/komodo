@@ -1,0 +1,33 @@
+{
+  "name": "komodo",
+  "version": "1.0.0",
+  "description": "Orquestador de agentes IA especializado en código",
+  "type": "module",
+  "bin": {
+    "komodo": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "setup": "node src/setup.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "chalk": "^5.3.0",
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.7",
+    "uuid": "^9.0.0",
+    "zod": "^3.24.2"
+  },
+  "keywords": [
+    "ai",
+    "orchestrator",
+    "agents",
+    "mcp",
+    "claude"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
