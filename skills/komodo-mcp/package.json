@@ -1,0 +1,20 @@
+{
+  "name": "komodo-mcp",
+  "version": "1.0.0",
+  "description": "MCP Server para controlar el orquestador Komodo desde Claude Code",
+  "type": "module",
+  "bin": {
+    "komodo-mcp": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}

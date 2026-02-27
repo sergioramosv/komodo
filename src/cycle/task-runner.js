@@ -5,6 +5,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { runGh } from '../../skills/github-mcp/src/gh-cli.js';
 import { runAgent } from '../agents/base-agent.js';
+import { eventBus } from '../events/event-bus.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -201,7 +202,21 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     logger.logStep(1, 4, 'Planner eligiendo tarea...', 'KOMODO');
 
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'PLANNER',
+      previousState: 'idle',
+      newState: 'working',
+      metadata: { step: 'pickNextTask', projectId },
+    });
+
     const plannerResult = await pickNextTask(projectId);
+
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'PLANNER',
+      previousState: 'working',
+      newState: 'idle',
+      metadata: { success: plannerResult.success },
+    });
 
     if (!plannerResult.success) {
       return makeResult({ success: false, startTime, error: plannerResult.error });
@@ -217,12 +232,36 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    eventBus.emitEvent('task:started', {
+      agentName: 'KOMODO',
+      metadata: {
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
+        branchName: taskSpec.branchName,
+        repo,
+      },
+    });
+
     // ═══════════════════════════════════════════
     // PASO 2: CODER — Implementar
     // ═══════════════════════════════════════════
     logger.logStep(2, 4, 'Coder implementando...', 'KOMODO');
 
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'CODER',
+      previousState: 'idle',
+      newState: 'working',
+      metadata: { step: 'implementTask', taskId: taskSpec.taskId },
+    });
+
     const coderResult = await implementTask(taskSpec, cwd);
+
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'CODER',
+      previousState: 'working',
+      newState: 'idle',
+      metadata: { success: coderResult.success },
+    });
 
     if (!coderResult.success) {
       // Recovery: devolver tarea a to-do
@@ -236,12 +275,36 @@ export async function runTask(projectId, cwd) {
     prNumber = coderResult.pr.prNumber;
     logger.info(`PR #${prNumber} creada`, 'KOMODO');
 
+    eventBus.emitEvent('pr:created', {
+      agentName: 'CODER',
+      metadata: {
+        taskId: taskSpec.taskId,
+        prNumber,
+        branchName: coderResult.pr.branchName,
+        repo,
+      },
+    });
+
     // ═══════════════════════════════════════════
     // PASO 3: REVIEW LOOP — Reviewer ↔ Coder
     // ═══════════════════════════════════════════
     logger.logStep(3, 4, 'Review loop...', 'KOMODO');
 
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'REVIEWER',
+      previousState: 'idle',
+      newState: 'working',
+      metadata: { step: 'reviewLoop', prNumber },
+    });
+
     const reviewResult = await reviewLoop({ prNumber, repo, taskSpec, cwd });
+
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'REVIEWER',
+      previousState: 'working',
+      newState: 'idle',
+      metadata: { approved: reviewResult.approved, cycles: reviewResult.cycles },
+    });
 
     // Registrar outcome en memoria (best effort)
     try {

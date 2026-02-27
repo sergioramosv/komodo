@@ -9,18 +9,25 @@ Documentación técnica interna del proyecto. Explica cómo está construido cad
 Komodo es un orquestador que lanza agentes IA como **subprocesos de terminal** (no APIs). Cada agente (Planner, Coder, Reviewer) es una invocación de un CLI (`claude`, `codex`, `gemini`) con un system prompt específico y MCPs conectados.
 
 ```
-Usuario → komodo run --project <id>
-                │
-                ▼
-        ┌──────────────┐
-        │ ORCHESTRATOR  │   (src/orchestrator.js)
-        │               │
-        │  1. Planner   │──→ planning-task-mcp ──→ Firebase
-        │  2. Coder     │──→ github-mcp ──→ gh CLI ──→ GitHub
-        │  3. Reviewer  │──→ github-mcp + memory-mcp
-        │  4. Merge     │
-        └──────────────┘
+Modo CLI:     komodo run --project <id>
+Modo Chat:    Claude Code → komodo-mcp tools
+                     │
+                     ▼
+        ┌──────────────────┐
+        │  CORE ENGINE     │   (src/agents/, src/cycle/)
+        │                  │
+        │  1. Planner      │──→ planning-task-mcp ──→ Firebase
+        │  2. Coder        │──→ github-mcp ──→ gh CLI ──→ GitHub
+        │  3. Reviewer     │──→ github-mcp + memory-mcp
+        │  4. Merge        │
+        └──────────────────┘
+              ▲         ▲
+              │         │
+     src/index.js    skills/komodo-mcp/
+     (CLI batch)     (MCP para Claude Code)
 ```
+
+**Dos interfaces, mismo motor:** La lógica core vive en `src/agents/` y `src/cycle/`. Tanto el CLI (`src/index.js`) como el MCP (`skills/komodo-mcp/`) importan y llaman las mismas funciones.
 
 Los agentes **NO hablan entre sí**. Komodo recoge el JSON de salida de uno y lo inyecta en el prompt del siguiente.
 
@@ -60,7 +67,8 @@ komodo/
 ├── skills/
 │   ├── planning-task-mcp/         # Ya existía - 38 tools sobre Firebase
 │   ├── github-mcp/                # 10 tools - wrapper de gh CLI
-│   └── memory-mcp/                # 5 tools - patrones de error en JSON local
+│   ├── memory-mcp/                # 5 tools - patrones de error en JSON local
+│   └── komodo-mcp/                # 8 tools - control del orquestador desde Claude Code
 │
 └── memory/
     └── patterns.json              # Almacén de patrones (autogenerado)
@@ -833,6 +841,56 @@ for cycle = 1..MAX_REVIEW_CYCLES:
 4. Si devuelve REQUEST_CHANGES y es la última ronda → fallo, no intenta arreglar
 
 **`MAX_REVIEW_CYCLES`** (default: 5) se configura en `.env`. Si se agotan los ciclos, la tarea queda sin resolver y el orquestador reporta fallo.
+
+---
+
+## MCP: `skills/komodo-mcp`
+
+MCP server que expone el orquestador como tools para Claude Code. Permite controlar Komodo desde una conversación en vez de desde la terminal.
+
+### Arquitectura
+
+```
+Claude Code (usuario habla)
+    │
+    ▼
+komodo-mcp (MCP server via stdio)
+    │
+    ├── tools/planner.js     → import pickNextTask() de src/agents/planner.js
+    ├── tools/coder.js       → import implementTask() de src/agents/coder.js
+    ├── tools/reviewer.js    → import reviewPR() de src/agents/reviewer.js
+    ├── tools/cycle.js       → import reviewLoop() de src/cycle/review-loop.js
+    └── tools/orchestration.js → import runTask() de src/cycle/task-runner.js
+```
+
+**No duplica código.** Cada tool es una capa fina (~15 líneas) que llama a las funciones existentes en `src/` y formatea el resultado.
+
+### Problema resuelto: stdout vs MCP
+
+MCP usa stdout para el protocolo stdio. Pero el logger (`src/utils/logger.js`) escribe a stdout via `console.log`. Si ambos escriben a stdout, el protocolo MCP se corrompe.
+
+**Solución:** Al inicio de `index.js`, ANTES de cualquier import:
+
+```javascript
+const _stderrWrite = process.stderr.write.bind(process.stderr);
+console.log = (...args) => _stderrWrite(args.join(' ') + '\n');
+console.warn = (...args) => _stderrWrite(args.join(' ') + '\n');
+```
+
+Así todo el logging existente va a stderr sin tocar `logger.js`.
+
+### 8 tools disponibles
+
+| Tool | Qué hace | Función de src/ |
+|------|----------|-----------------|
+| `get_komodo_status` | Config y health check | `config` + `validateConfig()` |
+| `run_dry_run` | Planner simula sin cambiar estado | `runTaskDryRun()` |
+| `plan_next_task` | Planner elige tarea | `pickNextTask()` |
+| `code_task` | Coder implementa y abre PR | `implementTask()` |
+| `review_pr` | Reviewer revisa PR | `reviewPR()` |
+| `fix_review_issues` | Coder arregla issues | `fixReviewIssues()` |
+| `run_review_loop` | Bucle Reviewer↔Coder | `reviewLoop()` |
+| `run_full_cycle` | Ciclo completo | `runTask()` |
 
 ---
 

@@ -1,10 +1,25 @@
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import { writeFileSync, unlinkSync, mkdirSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { randomUUID } from 'crypto';
 import { config } from '../config.js';
 import { extractJSON } from '../utils/parser.js';
 import { logger } from '../utils/logger.js';
+
+/**
+ * En Windows, detecta si un comando es un .cmd/.bat (necesita cmd.exe)
+ * o un .exe/.com (se puede lanzar directo).
+ */
+function needsCmdWrapper(command) {
+  if (process.platform !== 'win32') return false;
+  try {
+    const where = execSync(`where ${command}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], shell: true, timeout: 5000 });
+    const firstPath = where.trim().split('\n')[0].trim().toLowerCase();
+    return firstPath.endsWith('.cmd') || firstPath.endsWith('.bat');
+  } catch {
+    return true; // si no lo encontramos, asumir que necesita wrapper
+  }
+}
 
 const TMP_DIR = resolve(config.rootDir, '.tmp');
 
@@ -15,7 +30,7 @@ const TMP_DIR = resolve(config.rootDir, '.tmp');
 const CLI_ADAPTERS = {
   claude: {
     buildArgs({ systemPrompt, userPrompt, mcpConfigPath, maxTurns, allowedTools, disallowedTools, model }) {
-      const args = ['-p', userPrompt, '--output-format', 'json'];
+      const args = ['-p', userPrompt, '--output-format', 'stream-json', '--verbose'];
 
       if (systemPrompt) args.push('--system-prompt', systemPrompt);
       if (mcpConfigPath) args.push('--mcp-config', mcpConfigPath, '--strict-mcp-config');
@@ -67,13 +82,42 @@ const CLI_ADAPTERS = {
   },
 
   gemini: {
-    buildArgs({ systemPrompt, userPrompt, mcpConfigPath, maxTurns }) {
-      // Gemini CLI: gemini -p "prompt" (ajustar cuando se conozcan los flags exactos)
-      const args = ['-p', userPrompt];
+    buildArgs({ systemPrompt, userPrompt, mcpConfigPath, maxTurns, model }) {
+      // Gemini CLI flags: -p (headless), -o json, --approval-mode yolo
+      const prompt = systemPrompt
+        ? `${systemPrompt}\n\n---\n\n${userPrompt}`
+        : userPrompt;
+
+      const args = ['-p', prompt, '-o', 'json', '--approval-mode', 'yolo'];
+
+      if (model) args.push('-m', model);
+
       return args;
     },
     parseOutput(stdout) {
-      return { rawResult: stdout, cost: null, turns: 0 };
+      // Gemini -o json emite líneas JSON, buscar la última con resultado
+      const lines = stdout.trim().split('\n').filter(l => l.trim());
+
+      let result = null;
+
+      for (const line of lines) {
+        try {
+          const msg = JSON.parse(line);
+          // Gemini stream-json format: buscar el mensaje final con resultado
+          if (msg.type === 'result' || msg.result) {
+            result = msg.result || msg;
+          }
+        } catch {
+          // No-JSON line, ignorar
+        }
+      }
+
+      // Si no encontramos JSON estructurado, usar el stdout completo como texto
+      if (!result) {
+        result = stdout.trim();
+      }
+
+      return { rawResult: result, cost: null, turns: 0 };
     },
   },
 };
@@ -106,7 +150,7 @@ export function buildMcpServers(serverNames) {
       command: 'node',
       args: [resolve(config.planningMcpDir, 'src', 'index.js')],
       env: {
-        GOOGLE_APPLICATION_CREDENTIALS: config.googleCredentials,
+        GOOGLE_APPLICATION_CREDENTIALS: resolve(config.rootDir, config.googleCredentials),
         FIREBASE_DATABASE_URL: config.firebaseDatabaseUrl,
         DEFAULT_USER_ID: config.defaultUserId,
         DEFAULT_USER_NAME: config.defaultUserName,
@@ -138,17 +182,43 @@ export function buildMcpServers(serverNames) {
 
 /**
  * Lanza un proceso CLI y recoge su salida.
+ * En Windows maneja correctamente .cmd shims (npm) y .exe nativos.
  *
  * @returns {Promise<string>} stdout completo
  */
 function spawnCli(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    // Limpiar env vars que impiden lanzar CLIs como subprocesos.
+    // Claude Code rechaza sesiones anidadas si detecta estas variables.
+    const cleanEnv = { ...process.env };
+    for (const key of Object.keys(cleanEnv)) {
+      if (key.startsWith('CLAUDE')) delete cleanEnv[key];
+    }
+
+    const spawnOpts = {
       cwd: options.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env },
-      shell: process.platform === 'win32',
-    });
+      env: cleanEnv,
+    };
+
+    let child;
+
+    if (process.platform === 'win32' && needsCmdWrapper(command)) {
+      // Windows .cmd/.bat shims (ej: gemini.cmd de npm) necesitan cmd.exe.
+      const escaped = args.map(a => `"${a.replace(/"/g, '""')}"`);
+      const cmdLine = `"${command}" ${escaped.join(' ')}`;
+      child = spawn('cmd.exe', ['/s', '/c', `"${cmdLine}"`], {
+        ...spawnOpts,
+        windowsVerbatimArguments: true,
+      });
+    } else {
+      // .exe nativos (ej: claude.exe) o Linux/Mac → spawn directo
+      child = spawn(command, args, spawnOpts);
+    }
+
+    // Cerrar stdin inmediatamente.
+    // Claude CLI espera EOF en stdin antes de procesar — sin esto se cuelga.
+    child.stdin.end();
 
     let stdout = '';
     let stderr = '';
@@ -181,8 +251,14 @@ function spawnCli(command, args, options = {}) {
     });
 
     child.stderr.on('data', (data) => {
-      stderr += data.toString();
+      const text = data.toString();
+      stderr += text;
       resetIdleTimer(); // stderr también cuenta como actividad
+
+      // Mostrar stderr en tiempo real para debug
+      if (options.onStderr) {
+        options.onStderr(text);
+      }
     });
 
     child.on('close', (code) => {
@@ -272,10 +348,51 @@ export async function runAgent({
 
     logger.info(`Lanzando ${resolvedCli} CLI...`, name);
 
-    // Lanzar el proceso
+    // Buffer para ensamblar líneas JSON completas desde chunks de stdout
+    let outputBuffer = '';
+
+    // Lanzar el proceso con logging en tiempo real
     const stdout = await spawnCli(resolvedCli, args, {
       cwd: cwd || config.rootDir,
       idleTimeout,
+      onOutput(text) {
+        outputBuffer += text;
+
+        // Procesar líneas completas (terminadas en \n)
+        const lines = outputBuffer.split('\n');
+        outputBuffer = lines.pop(); // guardar última línea incompleta
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line);
+
+            if (msg.type === 'assistant' && msg.message?.content) {
+              for (const block of msg.message.content) {
+                if (block.type === 'tool_use') {
+                  logger.info(`  → ${block.name}()`, name);
+                } else if (block.type === 'text' && block.text) {
+                  // Mostrar fragmento del razonamiento del agente
+                  const preview = block.text.slice(0, 120).replace(/\n/g, ' ');
+                  logger.info(`  💭 ${preview}${block.text.length > 120 ? '...' : ''}`, name);
+                }
+              }
+            } else if (msg.type === 'tool_result') {
+              logger.info(`  ✓ resultado recibido`, name);
+            }
+          } catch {
+            // Línea no-JSON, ignorar
+          }
+        }
+      },
+      onStderr(text) {
+        for (const line of text.split('\n')) {
+          const trimmed = line.trim();
+          if (trimmed && !trimmed.startsWith('(node:')) {
+            logger.warn(`  stderr: ${trimmed}`, name);
+          }
+        }
+      },
     });
 
     // Parsear la salida del CLI

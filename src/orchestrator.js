@@ -21,7 +21,7 @@ export async function run(projectId, options = {}) {
   const continuous = maxTasks === 0;
 
   // Validar configuración
-  const errors = validateConfig();
+  const errors = validateConfig({ dryRun });
   if (errors.length > 0) {
     logger.error('Errores de configuración:', 'KOMODO');
     errors.forEach(e => logger.error(`  - ${e}`, 'KOMODO'));

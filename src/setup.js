@@ -88,7 +88,7 @@ async function askYesNo(rl, question, defaultYes = true) {
 // Wizard
 // ═══════════════════════════════════════════
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
 async function main() {
   const rl = createInterface({ input: stdin, output: stdout });
@@ -191,6 +191,13 @@ async function main() {
 
   const projectId = await ask(rl, 'Project ID del backlog', existing.DEFAULT_PROJECT_ID || '');
 
+  // ─── Step 8: Komodo MCP permissions ────
+  step(8, TOTAL_STEPS, 'Permisos de Komodo en Claude Code...');
+  log(`${c.dim}  Si usas Komodo por chat (MCP), Claude Code pide permiso para cada tool.${c.reset}`);
+  log(`${c.dim}  Puedes autorizar todas las tools de Komodo globalmente.${c.reset}`);
+
+  const grantPermissions = await askYesNo(rl, 'Dar permisos globales a komodo-mcp en Claude Code?', true);
+
   rl.close();
 
   // ═══════════════════════════════════════════
@@ -245,7 +252,7 @@ async function main() {
   }
 
   // MCPs
-  for (const mcp of ['planning-task-mcp', 'github-mcp', 'memory-mcp']) {
+  for (const mcp of ['planning-task-mcp', 'github-mcp', 'memory-mcp', 'komodo-mcp']) {
     const mcpDir = resolve(ROOT, 'skills', mcp);
     if (existsSync(resolve(mcpDir, 'package.json'))) {
       try {
@@ -284,6 +291,36 @@ async function main() {
   }
 
   // ═══════════════════════════════════════════
+  // Permisos globales de komodo-mcp
+  // ═══════════════════════════════════════════
+
+  if (grantPermissions) {
+    const homeDir = process.env.HOME || process.env.USERPROFILE;
+    const settingsPath = resolve(homeDir, '.claude', 'settings.json');
+    let settings = {};
+
+    if (existsSync(settingsPath)) {
+      try {
+        settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+      } catch {
+        warn('No se pudo leer settings.json existente, se creará uno nuevo');
+      }
+    }
+
+    if (!settings.permissions) settings.permissions = {};
+    if (!Array.isArray(settings.permissions.allow)) settings.permissions.allow = [];
+
+    const komodoPermission = 'mcp__komodo-mcp__*';
+    if (!settings.permissions.allow.includes(komodoPermission)) {
+      settings.permissions.allow.push(komodoPermission);
+    }
+
+    mkdirSync(resolve(homeDir, '.claude'), { recursive: true });
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    ok('Permisos globales de komodo-mcp añadidos a ~/.claude/settings.json');
+  }
+
+  // ═══════════════════════════════════════════
   // Resumen
   // ═══════════════════════════════════════════
 
@@ -295,16 +332,25 @@ async function main() {
   log(`  Auto-merge: ${autoMerge ? 'sí' : 'no'}`);
   log(`  Max cycles: ${maxCycles}`);
   log('');
-  log(`  ${c.bold}Para ejecutar:${c.reset}`);
-  log(`  ${c.cyan}node src/index.js run${projectId ? '' : ' -p <PROJECT_ID>'}${c.reset}`);
-
-  if (availableClis.includes('claude')) {
-    log('');
-    log(`  ${c.bold}Desde Claude Code:${c.reset}`);
-    log(`  ${c.cyan}/komodo ejecuta 3 tareas${c.reset}`);
-    log(`  ${c.dim}o escribe en lenguaje natural: "hazme 3 tareas de komodo"${c.reset}`);
-  }
-
+  log(`  ${c.bold}═══ Dos formas de usar Komodo ═══${c.reset}`);
+  log('');
+  log(`  ${c.bold}1. Por comandos (CLI):${c.reset}`);
+  log(`  ${c.cyan}komodo run${projectId ? '' : ' -p <PROJECT_ID>'}${c.reset}              ${c.dim}# 1 tarea${c.reset}`);
+  log(`  ${c.cyan}komodo run -t 3${c.reset}                   ${c.dim}# 3 tareas${c.reset}`);
+  log(`  ${c.cyan}komodo run --dry-run${c.reset}              ${c.dim}# simular${c.reset}`);
+  log('');
+  log(`  ${c.bold}2. Por chat (MCP en Claude Code):${c.reset}`);
+  log(`  Registra komodo-mcp en Claude Code y habla natural:`);
+  log(`  ${c.cyan}"que tarea es la siguiente"${c.reset}       ${c.dim}# Planner simula${c.reset}`);
+  log(`  ${c.cyan}"elige esa tarea"${c.reset}                 ${c.dim}# Planner marca in-progress${c.reset}`);
+  log(`  ${c.cyan}"implementala"${c.reset}                    ${c.dim}# Coder crea branch + PR${c.reset}`);
+  log(`  ${c.cyan}"revisa la PR"${c.reset}                    ${c.dim}# Reviewer da veredicto${c.reset}`);
+  log(`  ${c.cyan}"ejecuta el ciclo completo"${c.reset}       ${c.dim}# todo automatico${c.reset}`);
+  log('');
+  log(`  ${c.dim}Para registrar el MCP en Claude Code:${c.reset}`);
+  log(`  ${c.dim}Añade a ~/.mcp.json o .vscode/mcp.json:${c.reset}`);
+  log(`  ${c.dim}{ "mcpServers": { "komodo-mcp": { "command": "node",${c.reset}`);
+  log(`  ${c.dim}  "args": ["${resolve(ROOT, 'skills', 'komodo-mcp', 'src', 'index.js')}"] }}}${c.reset}`);
   log('');
 }
 
