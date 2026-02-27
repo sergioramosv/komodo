@@ -5,6 +5,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { runGh } from '../../skills/github-mcp/src/gh-cli.js';
 import { runAgent } from '../agents/base-agent.js';
+import { eventBus, AGENT_STATES } from '../events/event-bus.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -50,7 +51,7 @@ function closePR(repo, prNumber, reason) {
 /**
  * Cambia el estado de una tarea usando un agente mini.
  */
-async function changeTaskStatus(taskId, newStatus) {
+export async function changeTaskStatus(taskId, newStatus) {
   logger.info(`Marcando tarea ${taskId} como ${newStatus}...`, 'KOMODO');
 
   await runAgent({
@@ -201,7 +202,21 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     logger.logStep(1, 4, 'Planner eligiendo tarea...', 'KOMODO');
 
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'PLANNER',
+      previousState: AGENT_STATES.IDLE,
+      newState: AGENT_STATES.WORKING,
+      metadata: { step: 'pickNextTask', projectId },
+    });
+
     const plannerResult = await pickNextTask(projectId);
+
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'PLANNER',
+      previousState: AGENT_STATES.WORKING,
+      newState: AGENT_STATES.IDLE,
+      metadata: { success: plannerResult.success },
+    });
 
     if (!plannerResult.success) {
       return makeResult({ success: false, startTime, error: plannerResult.error });
@@ -217,12 +232,36 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    eventBus.emitEvent('task:started', {
+      agentName: 'KOMODO',
+      metadata: {
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
+        branchName: taskSpec.branchName,
+        repo,
+      },
+    });
+
     // ═══════════════════════════════════════════
     // PASO 2: CODER — Implementar
     // ═══════════════════════════════════════════
     logger.logStep(2, 4, 'Coder implementando...', 'KOMODO');
 
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'CODER',
+      previousState: AGENT_STATES.IDLE,
+      newState: AGENT_STATES.WORKING,
+      metadata: { step: 'implementTask', taskId: taskSpec.taskId },
+    });
+
     const coderResult = await implementTask(taskSpec, cwd);
+
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'CODER',
+      previousState: AGENT_STATES.WORKING,
+      newState: AGENT_STATES.IDLE,
+      metadata: { success: coderResult.success },
+    });
 
     if (!coderResult.success) {
       // Recovery: devolver tarea a to-do
@@ -236,12 +275,44 @@ export async function runTask(projectId, cwd) {
     prNumber = coderResult.pr.prNumber;
     logger.info(`PR #${prNumber} creada`, 'KOMODO');
 
+    // Coder terminó → tarea pasa a to-validate
+    try {
+      await changeTaskStatus(taskSpec.taskId, 'to-validate');
+      logger.info(`Tarea ${taskSpec.taskId} marcada como to-validate`, 'KOMODO');
+    } catch (err) {
+      logger.warn(`No se pudo cambiar estado a to-validate: ${err.message}`, 'KOMODO');
+    }
+
+    eventBus.emitEvent('pr:created', {
+      agentName: 'CODER',
+      metadata: {
+        taskId: taskSpec.taskId,
+        prNumber,
+        branchName: coderResult.pr.branchName,
+        repo,
+      },
+    });
+
     // ═══════════════════════════════════════════
     // PASO 3: REVIEW LOOP — Reviewer ↔ Coder
     // ═══════════════════════════════════════════
     logger.logStep(3, 4, 'Review loop...', 'KOMODO');
 
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'REVIEWER',
+      previousState: AGENT_STATES.IDLE,
+      newState: AGENT_STATES.WORKING,
+      metadata: { step: 'reviewLoop', prNumber },
+    });
+
     const reviewResult = await reviewLoop({ prNumber, repo, taskSpec, cwd });
+
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'REVIEWER',
+      previousState: AGENT_STATES.WORKING,
+      newState: AGENT_STATES.IDLE,
+      metadata: { approved: reviewResult.approved, cycles: reviewResult.cycles },
+    });
 
     // Registrar outcome en memoria (best effort)
     try {
@@ -251,9 +322,13 @@ export async function runTask(projectId, cwd) {
     }
 
     if (!reviewResult.approved) {
-      // Recovery: cerrar PR huérfana + devolver tarea a to-do
+      // Recovery: cerrar PR huérfana + devolver tarea a in-progress
       closePR(repo, prNumber, reviewResult.error || 'Review no aprobada');
-      await rollbackTask(taskSpec.taskId);
+      try {
+        await changeTaskStatus(taskSpec.taskId, 'in-progress');
+      } catch (err) {
+        logger.warn(`No se pudo cambiar estado a in-progress: ${err.message}`, 'KOMODO');
+      }
       return makeResult({
         success: false, taskSpec, prNumber, startTime,
         reviewCycles: reviewResult.cycles,
@@ -272,6 +347,11 @@ export async function runTask(projectId, cwd) {
       try {
         mergePR(repo, prNumber);
         merged = true;
+
+        eventBus.emitEvent('pr:merged', {
+          agentName: 'KOMODO',
+          metadata: { taskId: taskSpec.taskId, prNumber, repo },
+        });
       } catch (err) {
         logger.error(`Error al mergear PR #${prNumber}: ${err.message}`, 'KOMODO');
       }
@@ -292,6 +372,19 @@ export async function runTask(projectId, cwd) {
     }
 
     const totalDuration = (Date.now() - startTime) / 1000;
+
+    eventBus.emitEvent('task:completed', {
+      agentName: 'KOMODO',
+      metadata: {
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
+        prNumber,
+        approved: true,
+        merged,
+        reviewCycles: reviewResult.cycles,
+        totalDuration,
+      },
+    });
 
     // Resumen final
     logger.taskHeader('RESUMEN');

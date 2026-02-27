@@ -1,6 +1,7 @@
 import { runTask, runTaskDryRun } from './cycle/task-runner.js';
 import { validateConfig, config } from './config.js';
 import { logger } from './utils/logger.js';
+import { eventBus } from './events/event-bus.js';
 
 /**
  * Ejecuta N tareas del backlog de un proyecto.
@@ -78,6 +79,16 @@ export async function run(projectId, options = {}) {
       if (result.success) {
         tasksCompleted++;
         logger.success(`Tarea "${result.taskTitle}" completada`, 'KOMODO');
+
+        eventBus.emitEvent('cost:updated', {
+          agentName: 'KOMODO',
+          metadata: {
+            taskId: result.taskId,
+            tasksCompleted,
+            tasksFailed,
+            totalDuration: result.totalDuration,
+          },
+        });
       } else {
         tasksFailed++;
         logger.error(`Tarea "${result.taskTitle}" falló: ${result.error}`, 'KOMODO');
@@ -103,3 +114,6 @@ export async function run(projectId, options = {}) {
 
   return { tasksCompleted, tasksFailed, results };
 }
+
+// Re-exportar eventBus para consumidores del orquestador
+export { eventBus } from './events/event-bus.js';
