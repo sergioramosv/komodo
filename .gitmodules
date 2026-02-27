@@ -1,0 +1,3 @@
+[submodule "skills/planning-task-mcp"]
+	path = skills/planning-task-mcp
+	url = https://github.com/SergioRVDev/planning-task-mcp.git
