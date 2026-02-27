@@ -335,6 +335,11 @@ export async function runTask(projectId, cwd) {
       try {
         mergePR(repo, prNumber);
         merged = true;
+
+        eventBus.emitEvent('pr:merged', {
+          agentName: 'KOMODO',
+          metadata: { taskId: taskSpec.taskId, prNumber, repo },
+        });
       } catch (err) {
         logger.error(`Error al mergear PR #${prNumber}: ${err.message}`, 'KOMODO');
       }
@@ -355,6 +360,19 @@ export async function runTask(projectId, cwd) {
     }
 
     const totalDuration = (Date.now() - startTime) / 1000;
+
+    eventBus.emitEvent('task:completed', {
+      agentName: 'KOMODO',
+      metadata: {
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
+        prNumber,
+        approved: true,
+        merged,
+        reviewCycles: reviewResult.cycles,
+        totalDuration,
+      },
+    });
 
     // Resumen final
     logger.taskHeader('RESUMEN');

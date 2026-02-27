@@ -2,6 +2,7 @@ import { reviewPR } from '../agents/reviewer.js';
 import { fixReviewIssues } from '../agents/coder.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { eventBus } from '../events/event-bus.js';
 
 /**
  * Ejecuta el bucle Coder ↔ Reviewer.
@@ -32,8 +33,27 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
     cycles = i;
     logger.info(`Review cycle ${i}/${maxCycles}`, 'KOMODO');
 
+    eventBus.emitEvent('review:cycle', {
+      agentName: 'REVIEWER',
+      metadata: { cycle: i, maxCycles, prNumber },
+    });
+
     // === REVIEWER ===
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'REVIEWER',
+      previousState: 'idle',
+      newState: 'working',
+      metadata: { step: 'reviewPR', cycle: i },
+    });
+
     const reviewResult = await reviewPR({ prNumber, repo, taskSpec, cwd });
+
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'REVIEWER',
+      previousState: 'working',
+      newState: 'idle',
+      metadata: { success: reviewResult.success, cycle: i },
+    });
 
     if (!reviewResult.success) {
       logger.error(`Reviewer falló en ciclo ${i}: ${reviewResult.error}`, 'KOMODO');
@@ -66,7 +86,21 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
     // === CODER FIX ===
     logger.info(`Coder arreglando ${(lastReview.issues || []).length} issues...`, 'KOMODO');
 
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'CODER',
+      previousState: 'idle',
+      newState: 'working',
+      metadata: { step: 'fixReviewIssues', cycle: i, issueCount: (lastReview.issues || []).length },
+    });
+
     const fixResult = await fixReviewIssues(taskSpec, prNumber, lastReview, cwd);
+
+    eventBus.emitEvent('agent:state-change', {
+      agentName: 'CODER',
+      previousState: 'working',
+      newState: 'idle',
+      metadata: { success: fixResult.success, cycle: i },
+    });
 
     if (!fixResult.success) {
       logger.error(`Coder no pudo arreglar issues en ciclo ${i}: ${fixResult.error}`, 'KOMODO');
