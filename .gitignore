@@ -5,6 +5,12 @@ node_modules/
 .env
 .env.local
 
+# Claude Code
+.claude/
+
+#node_modules
+node_modules/
+
 # Firebase credentials
 serviceAccountKey.json
 
