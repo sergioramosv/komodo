@@ -12,14 +12,32 @@ export interface AgentState {
   avatar: string;
 }
 
+export interface TaskDetails {
+  id: string;
+  title: string;
+  userStory: string | null;
+  sprint: string | null;
+  devPoints: number | null;
+}
+
 export interface KomodoSnapshot {
   agents: Record<AgentName, AgentState>;
   phase: Phase;
   currentTask: string | null;
+  taskDetails?: TaskDetails | null;
   currentPR: string | null;
   reviewCycle: number;
   totalCost: number;
   tasksCompleted: number;
+  totalTasks?: number;
+}
+
+export interface DashboardEvent {
+  id: string;
+  type: string;
+  timestamp: string;
+  agentName: string | null;
+  message: string;
 }
 
 export interface WsSnapshotMessage {
