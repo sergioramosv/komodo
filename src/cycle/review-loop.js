@@ -41,7 +41,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
     // === REVIEWER ===
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'REVIEWER',
-      previousState: AGENT_STATES.WAITING,
+      previousState: i === 1 ? AGENT_STATES.WORKING : AGENT_STATES.WAITING,
       newState: AGENT_STATES.WORKING,
     });
 
@@ -93,7 +93,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
 
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'CODER',
-      previousState: AGENT_STATES.WAITING,
+      previousState: i === 1 ? AGENT_STATES.IDLE : AGENT_STATES.WAITING,
       newState: AGENT_STATES.WORKING,
     });
 

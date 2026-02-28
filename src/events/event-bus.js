@@ -28,7 +28,7 @@ export const AGENT_STATES = {
  * Emite eventos tipados con payload estandar para que cualquier cliente
  * (dashboard, CLI, logs) pueda suscribirse y mostrar estado en tiempo real.
  */
-class KomodoEventBus extends EventEmitter {
+export class KomodoEventBus extends EventEmitter {
   constructor() {
     super();
     /** @type {Array<(payload: object) => void>} */
@@ -61,8 +61,8 @@ class KomodoEventBus extends EventEmitter {
     for (const listener of this._anyListeners) {
       try {
         listener(payload);
-      } catch {
-        // Never let a listener crash the orchestrator
+      } catch (err) {
+        console.warn('EventBus: onAny listener error', err);
       }
     }
 
@@ -80,6 +80,17 @@ class KomodoEventBus extends EventEmitter {
     return () => {
       this._anyListeners = this._anyListeners.filter(l => l !== listener);
     };
+  }
+
+  /**
+   * Elimina todos los listeners, incluyendo los de onAny.
+   */
+  removeAllListeners(eventName) {
+    super.removeAllListeners(eventName);
+    if (!eventName) {
+      this._anyListeners = [];
+    }
+    return this;
   }
 }
 

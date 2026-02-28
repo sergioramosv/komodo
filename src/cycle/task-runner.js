@@ -309,7 +309,7 @@ export async function runTask(projectId, cwd) {
 
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'REVIEWER',
-      previousState: AGENT_STATES.WORKING,
+      previousState: AGENT_STATES.WAITING,
       newState: AGENT_STATES.IDLE,
     });
 
