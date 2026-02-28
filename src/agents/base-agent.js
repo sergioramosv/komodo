@@ -143,7 +143,18 @@ export function buildMcpServers(serverNames) {
  */
 function spawnCli(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    // En Windows con shell=true, Node.js auto-envuelve args con espacios en comillas dobles
+    // pero NO escapa las comillas dobles embebidas dentro del arg.
+    // Esto causa que cmd.exe rompa el parsing: un arg como
+    //   'texto "valor-con-guion" más texto'
+    // se convierte en:  "texto "valor-con-guion" más texto"
+    // y cmd.exe ve "valor-con-guion" como un token separado.
+    // Fix: escapar " como \" (el C runtime de Windows entiende \" dentro de strings quoted).
+    const safeArgs = process.platform === 'win32'
+      ? args.map(a => a.replace(/"/g, '\\"'))
+      : args;
+
+    const child = spawn(command, safeArgs, {
       cwd: options.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env },

@@ -245,7 +245,7 @@ async function main() {
   }
 
   // MCPs
-  for (const mcp of ['planning-task-mcp', 'github-mcp', 'memory-mcp']) {
+  for (const mcp of ['planning-task-mcp', 'github-mcp', 'memory-mcp', 'komodo-mcp']) {
     const mcpDir = resolve(ROOT, 'skills', mcp);
     if (existsSync(resolve(mcpDir, 'package.json'))) {
       try {
@@ -281,6 +281,42 @@ async function main() {
     const localCmdDir = resolve(ROOT, '.claude', 'commands');
     mkdirSync(localCmdDir, { recursive: true });
     writeFileSync(resolve(localCmdDir, 'komodo.md'), slashCmd);
+  }
+
+  // ═══════════════════════════════════════════
+  // Komodo MCP para Claude Code
+  // ═══════════════════════════════════════════
+
+  if (availableClis.includes('claude')) {
+    const mcpConfigPath = resolve(ROOT, 'skills', 'komodo-mcp', 'src', 'index.js');
+    if (existsSync(mcpConfigPath)) {
+      // Registrar komodo-mcp en settings.local.json del proyecto
+      const settingsDir = resolve(ROOT, '.claude');
+      mkdirSync(settingsDir, { recursive: true });
+      const settingsPath = resolve(settingsDir, 'settings.local.json');
+
+      let settings = {};
+      if (existsSync(settingsPath)) {
+        try {
+          settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+        } catch {
+          settings = {};
+        }
+      }
+
+      // Add komodo-mcp to MCP servers
+      if (!settings.mcpServers) settings.mcpServers = {};
+      settings.mcpServers['komodo'] = {
+        command: 'node',
+        args: [mcpConfigPath],
+        env: {
+          KOMODO_ROOT: ROOT,
+        },
+      };
+
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+      ok('komodo-mcp registrado en Claude Code (.claude/settings.local.json)');
+    }
   }
 
   // ═══════════════════════════════════════════

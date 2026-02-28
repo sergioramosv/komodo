@@ -315,15 +315,21 @@ komodo/
 │   │   │       └── merge.js    # merge_pr, close_pr
 │   │   ├── INSTRUCTIONS.md     # Guía para agentes IA
 │   │   └── package.json
-│   └── memory-mcp/             # MCP de memoria de errores (5 tools)
+│   ├── memory-mcp/             # MCP de memoria de errores (5 tools)
+│   │   ├── src/
+│   │   │   ├── index.js        # Entry point MCP server
+│   │   │   ├── config.js       # Valida directorio de memoria
+│   │   │   ├── store.js        # Lee/escribe memory/patterns.json (atómico)
+│   │   │   └── tools/
+│   │   │       ├── patterns.js # record_pattern, query_patterns
+│   │   │       └── stats.js    # get_review_brief, record_review_outcome, get_stats
+│   │   ├── INSTRUCTIONS.md     # Guía para agentes IA
+│   │   └── package.json
+│   └── komodo-mcp/             # MCP del orquestador (7 tools)
 │       ├── src/
 │       │   ├── index.js        # Entry point MCP server
-│       │   ├── config.js       # Valida directorio de memoria
-│       │   ├── store.js        # Lee/escribe memory/patterns.json (atómico)
-│       │   └── tools/
-│       │       ├── patterns.js # record_pattern, query_patterns
-│       │       └── stats.js    # get_review_brief, record_review_outcome, get_stats
-│       ├── INSTRUCTIONS.md     # Guía para agentes IA
+│       │   └── tools.js        # Tools: plan, code, review, fix, finalize, run, status
+│       ├── INSTRUCTIONS.md     # Flujo paso a paso para IAs
 │       └── package.json
 │
 └── memory/
@@ -419,6 +425,42 @@ Merge → tarea "done"
 ```
 
 ## MCPs (Model Context Protocol Servers)
+
+### komodo-mcp (7 tools)
+
+MCP del propio orquestador. Permite usar Komodo desde cualquier cliente MCP (Claude Code Pro, Codex, etc.) **sin necesidad del CLI**.
+
+| Tool | Descripción |
+|------|-------------|
+| `komodo_plan` | Planner elige la siguiente tarea del backlog |
+| `komodo_code` | Coder implementa: crea branch, escribe código, abre PR |
+| `komodo_review` | Reviewer revisa la PR (8 criterios estrictos) |
+| `komodo_fix` | Coder arregla issues encontrados en el review |
+| `komodo_finalize` | Merge/close PR + actualizar estado de tarea |
+| `komodo_run` | Ciclo completo automático de N tareas |
+| `komodo_status` | Configuración actual de Komodo |
+
+**Flujo recomendado (paso a paso):**
+
+```
+komodo_plan → komodo_code → komodo_review → (komodo_fix) → komodo_finalize
+```
+
+**Configuración:** El setup wizard lo registra automáticamente en Claude Code. Para configurar manualmente en cualquier cliente MCP:
+
+```json
+{
+  "mcpServers": {
+    "komodo": {
+      "command": "node",
+      "args": ["<ruta>/skills/komodo-mcp/src/index.js"],
+      "env": { "KOMODO_ROOT": "<ruta>" }
+    }
+  }
+}
+```
+
+Internamente, cada tool lanza un agente CLI (claude/codex/gemini) como subproceso, igual que el CLI de Komodo. El MCP es un wrapper que expone la misma funcionalidad como herramientas MCP.
 
 ### planning-task-mcp (existente)
 

@@ -60,7 +60,8 @@ komodo/
 ├── skills/
 │   ├── planning-task-mcp/         # Ya existía - 38 tools sobre Firebase
 │   ├── github-mcp/                # 10 tools - wrapper de gh CLI
-│   └── memory-mcp/                # 5 tools - patrones de error en JSON local
+│   ├── memory-mcp/                # 5 tools - patrones de error en JSON local
+│   └── komodo-mcp/                # 7 tools - orquestador como MCP
 │
 └── memory/
     └── patterns.json              # Almacén de patrones (autogenerado)
@@ -608,6 +609,64 @@ Durante review:
 
 Después de review:
   record_review_outcome() → { passed: false, cycles: 2 }
+```
+
+---
+
+## MCP: `skills/komodo-mcp`
+
+MCP del propio orquestador. Expone las funciones de Komodo como tools MCP, permitiendo usar el orquestador desde cualquier cliente MCP (Claude Code Pro, Codex, etc.) sin el CLI.
+
+### Arquitectura
+
+```
+Cliente MCP (Claude Code, Codex, etc.)
+    │
+    ├── komodo_plan ──→ pickNextTask() ──→ spawns Planner CLI ──→ planning-task-mcp
+    ├── komodo_code ──→ implementTask() ──→ spawns Coder CLI ──→ github-mcp
+    ├── komodo_review ──→ reviewPR() ──→ spawns Reviewer CLI ──→ github-mcp + memory-mcp
+    ├── komodo_fix ──→ fixReviewIssues() ──→ spawns Coder CLI ──→ github-mcp
+    ├── komodo_finalize ──→ gh merge/close + changeTaskStatus()
+    ├── komodo_run ──→ orchestrator.run() (ciclo completo)
+    └── komodo_status ──→ config + validateConfig()
+```
+
+Cada tool lanza un subproceso CLI real (claude/codex/gemini). El MCP es un wrapper que expone las mismas funciones del orquestador como herramientas MCP.
+
+### Carga de configuración
+
+El entry point (`src/index.js`) carga `.env` con `dotenv.config({ path })` apuntando al root del proyecto ANTES de importar los módulos del orquestador (via dynamic imports). Esto garantiza que `src/config.js` encuentre las variables de entorno ya cargadas (dotenv no sobreescribe vars existentes).
+
+El root se resuelve de 2 formas:
+1. `KOMODO_ROOT` env var (si la pasa el MCP config)
+2. Ruta relativa `../../..` desde `skills/komodo-mcp/src/` (fallback)
+
+### 7 Tools
+
+| Tool | Función interna | Params principales |
+|------|-----------------|--------------------|
+| `komodo_plan` | `pickNextTask(projectId)` | `projectId?` |
+| `komodo_code` | `implementTask(taskSpec, cwd)` | `taskId, title, branchName, repoUrl, cwd?` |
+| `komodo_review` | `reviewPR(opts)` | `prNumber, repo, taskTitle, cwd?` |
+| `komodo_fix` | `fixReviewIssues(task, pr, feedback, cwd)` | `taskId, prNumber, reviewIssues[], cwd?` |
+| `komodo_finalize` | `runGh() + changeTaskStatus()` | `taskId, prNumber, repo, approved` |
+| `komodo_run` | `run(projectId, opts)` | `projectId?, tasks?, cwd?, dryRun?` |
+| `komodo_status` | `validateConfig()` | ninguno |
+
+### Registro en Claude Code
+
+El setup wizard registra automáticamente komodo-mcp en `.claude/settings.local.json`:
+
+```json
+{
+  "mcpServers": {
+    "komodo": {
+      "command": "node",
+      "args": ["<root>/skills/komodo-mcp/src/index.js"],
+      "env": { "KOMODO_ROOT": "<root>" }
+    }
+  }
+}
 ```
 
 ---

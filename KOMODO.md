@@ -50,6 +50,46 @@ Cuando el usuario pida ejecutar tareas de Komodo, mapea a los comandos:
 
 Si algo falla a mitad: Komodo cierra PRs huérfanas y devuelve la tarea a "to-do".
 
+## Modo MCP (komodo-mcp)
+
+Komodo también funciona como servidor MCP. Esto permite usar el orquestador desde **cualquier cliente MCP** (Claude Code Pro, Codex, etc.) sin necesidad del CLI.
+
+### Tools disponibles
+
+| Tool | Descripción |
+|------|-------------|
+| `komodo_plan` | Planner elige la siguiente tarea del backlog |
+| `komodo_code` | Coder implementa: branch, código, PR |
+| `komodo_review` | Reviewer revisa la PR (8 criterios) |
+| `komodo_fix` | Coder arregla issues del review |
+| `komodo_finalize` | Merge/close PR + actualizar tarea |
+| `komodo_run` | Ciclo completo de N tareas |
+| `komodo_status` | Configuración actual de Komodo |
+
+### Flujo paso a paso (recomendado)
+
+```
+komodo_plan → komodo_code → komodo_review → (komodo_fix →) komodo_finalize
+```
+
+**Regla**: siempre paso a paso. Entre cada tool, informa al usuario qué pasó y qué viene.
+
+### Configuración MCP
+
+El setup wizard (`node src/setup.js`) registra komodo-mcp automáticamente en `.claude/settings.local.json`. También se puede configurar manualmente:
+
+```json
+{
+  "mcpServers": {
+    "komodo": {
+      "command": "node",
+      "args": ["<ruta-a-komodo>/skills/komodo-mcp/src/index.js"],
+      "env": { "KOMODO_ROOT": "<ruta-a-komodo>" }
+    }
+  }
+}
+```
+
 ## Configuración
 
 Todo en `.env`. Para reconfigurar ejecuta: `node src/index.js setup`
