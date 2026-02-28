@@ -2,6 +2,7 @@ import { reviewPR } from '../agents/reviewer.js';
 import { fixReviewIssues } from '../agents/coder.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
 
 /**
  * Ejecuta el bucle Coder ↔ Reviewer.
@@ -32,8 +33,32 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
     cycles = i;
     logger.info(`Review cycle ${i}/${maxCycles}`, 'KOMODO');
 
+    eventBus.emitEvent(EVENT_TYPES.REVIEW_CYCLE, {
+      agentName: 'REVIEWER',
+      metadata: { cycle: i, maxCycles, prNumber, repo },
+    });
+
     // === REVIEWER ===
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'REVIEWER',
+      previousState: i === 1 ? AGENT_STATES.WORKING : AGENT_STATES.WAITING,
+      newState: AGENT_STATES.WORKING,
+    });
+
     const reviewResult = await reviewPR({ prNumber, repo, taskSpec, cwd });
+
+    if (reviewResult.cost) {
+      eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+        agentName: 'REVIEWER',
+        metadata: { cost: reviewResult.cost },
+      });
+    }
+
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'REVIEWER',
+      previousState: AGENT_STATES.WORKING,
+      newState: AGENT_STATES.WAITING,
+    });
 
     if (!reviewResult.success) {
       logger.error(`Reviewer falló en ciclo ${i}: ${reviewResult.error}`, 'KOMODO');
@@ -66,7 +91,26 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
     // === CODER FIX ===
     logger.info(`Coder arreglando ${(lastReview.issues || []).length} issues...`, 'KOMODO');
 
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'CODER',
+      previousState: i === 1 ? AGENT_STATES.IDLE : AGENT_STATES.WAITING,
+      newState: AGENT_STATES.WORKING,
+    });
+
     const fixResult = await fixReviewIssues(taskSpec, prNumber, lastReview, cwd);
+
+    if (fixResult.cost) {
+      eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+        agentName: 'CODER',
+        metadata: { cost: fixResult.cost },
+      });
+    }
+
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'CODER',
+      previousState: AGENT_STATES.WORKING,
+      newState: AGENT_STATES.WAITING,
+    });
 
     if (!fixResult.success) {
       logger.error(`Coder no pudo arreglar issues en ciclo ${i}: ${fixResult.error}`, 'KOMODO');

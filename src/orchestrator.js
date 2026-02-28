@@ -1,6 +1,10 @@
 import { runTask, runTaskDryRun } from './cycle/task-runner.js';
 import { validateConfig, config } from './config.js';
 import { logger } from './utils/logger.js';
+import { eventBus, EVENT_TYPES, AGENT_STATES } from './events/event-bus.js';
+
+// Re-export para que consumidores externos puedan suscribirse
+export { eventBus, EVENT_TYPES, AGENT_STATES };
 
 /**
  * Ejecuta N tareas del backlog de un proyecto.
