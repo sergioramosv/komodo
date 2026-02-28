@@ -1,7 +1,6 @@
 'use client';
 
-import { useKomodoSocket } from '@/hooks/useKomodoSocket';
-import type { AgentName, AgentState, Phase } from '@/lib/types';
+import type { AgentName, AgentState, KomodoSnapshot, Phase } from '@/lib/types';
 
 export interface AgentVisualState extends AgentState {
   /** What the agent is currently doing — for tooltip display */
@@ -16,13 +15,13 @@ export interface UseAgentStatesReturn {
   connected: boolean;
 }
 
-const DEFAULT_AGENTS: Record<AgentName, AgentVisualState> = {
+export const DEFAULT_AGENTS: Record<AgentName, AgentVisualState> = {
   PLANNER: { name: 'PLANNER', status: 'idle', currentTask: null, startedAt: null, avatar: '', activity: null, reviewCycle: 0 },
   CODER: { name: 'CODER', status: 'idle', currentTask: null, startedAt: null, avatar: '', activity: null, reviewCycle: 0 },
   REVIEWER: { name: 'REVIEWER', status: 'idle', currentTask: null, startedAt: null, avatar: '', activity: null, reviewCycle: 0 },
 };
 
-function getAgentActivity(agent: AgentState, phase: Phase): string | null {
+export function getAgentActivity(agent: AgentState, phase: Phase): string | null {
   if (agent.status === 'idle') return null;
   if (agent.status === 'walking') return 'Walking to desk...';
   if (agent.status === 'done') return 'Done!';
@@ -43,13 +42,14 @@ function getAgentActivity(agent: AgentState, phase: Phase): string | null {
 }
 
 /**
- * Hook that consumes the WebSocket and returns agent states
- * enriched with visual metadata (activity text, review cycle).
- * Reacts instantly to agent:state-change events via useKomodoSocket.
+ * Hook that derives enriched agent visual states from a snapshot.
+ * Receives snapshot and connected status from the caller (useKomodoSocket)
+ * to avoid creating duplicate WebSocket connections.
  */
-export function useAgentStates(): UseAgentStatesReturn {
-  const { snapshot, connected } = useKomodoSocket();
-
+export function useAgentStates(
+  snapshot: KomodoSnapshot | null,
+  connected: boolean,
+): UseAgentStatesReturn {
   if (!snapshot) {
     return { agents: DEFAULT_AGENTS, phase: 'idle', connected };
   }

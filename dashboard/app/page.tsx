@@ -51,7 +51,7 @@ const EVENT_COLORS: Record<string, string> = {
 
 export default function DashboardPage() {
   const { snapshot, connected, events } = useKomodoSocket();
-  const agentStates = useAgentStates();
+  const agentStates = useAgentStates(snapshot, connected);
 
   return (
     <div className="space-y-6">
