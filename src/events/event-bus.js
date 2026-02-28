@@ -8,9 +8,22 @@ export const EVENT_TYPES = {
   TASK_STARTED: 'task:started',
   TASK_COMPLETED: 'task:completed',
   REVIEW_CYCLE: 'review:cycle',
+  REVIEW_CYCLE_START: 'review:cycle:start',
+  REVIEW_CYCLE_END: 'review:cycle:end',
   PR_CREATED: 'pr:created',
   PR_MERGED: 'pr:merged',
   COST_UPDATED: 'cost:updated',
+
+  // Agent-specific convenience events
+  AGENT_PLANNER_WORKING: 'agent:planner:working',
+  AGENT_PLANNER_DONE: 'agent:planner:done',
+  AGENT_PLANNER_IDLE: 'agent:planner:idle',
+  AGENT_CODER_WORKING: 'agent:coder:working',
+  AGENT_CODER_DONE: 'agent:coder:done',
+  AGENT_CODER_IDLE: 'agent:coder:idle',
+  AGENT_REVIEWER_WORKING: 'agent:reviewer:working',
+  AGENT_REVIEWER_DONE: 'agent:reviewer:done',
+  AGENT_REVIEWER_IDLE: 'agent:reviewer:idle',
 };
 
 /**
@@ -67,6 +80,22 @@ export class KomodoEventBus extends EventEmitter {
     }
 
     return payload;
+  }
+
+  /**
+   * Emite un evento específico de agente (agent:X:state).
+   *
+   * Emite tanto el evento específico (agent:planner:working) como el genérico
+   * (agent:state-change) para mantener compatibilidad.
+   *
+   * @param {string} agentName - PLANNER, CODER o REVIEWER
+   * @param {'working'|'done'|'idle'} state - Estado del agente
+   * @param {Object} [metadata] - Datos adicionales
+   * @returns {Object} El payload emitido
+   */
+  emitAgentEvent(agentName, state, metadata = {}) {
+    const eventName = `agent:${agentName.toLowerCase()}:${state}`;
+    return this.emitEvent(eventName, { agentName, metadata });
   }
 
   /**
