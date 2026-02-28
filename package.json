@@ -10,6 +10,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "setup": "node src/setup.js",
+    "dashboard": "npm --prefix dashboard run dev",
     "test": "vitest run",
     "test:watch": "vitest"
   },
