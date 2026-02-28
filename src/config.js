@@ -10,12 +10,15 @@ const ROOT_DIR = resolve(__dirname, '..');
 
 /**
  * Detecta si un CLI está instalado en el sistema.
+ * On Windows, npm installs CLIs as .cmd/.ps1 wrappers that require shell to resolve.
+ * We use `where` (Windows) or `which` (Unix) to check if the command is in PATH.
  * @param {string} command
  * @returns {boolean}
  */
 function cliExists(command) {
   try {
-    execFileSync(command, ['--version'], { stdio: 'pipe', encoding: 'utf-8' });
+    const checkCmd = process.platform === 'win32' ? 'where' : 'which';
+    execFileSync(checkCmd, [command], { stdio: 'pipe', encoding: 'utf-8' });
     return true;
   } catch {
     return false;

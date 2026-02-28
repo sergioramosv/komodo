@@ -56,6 +56,7 @@ DEBES responder con un JSON con esta estructura:
 - Mensaje en inglés, formato: \`feat: descripción corta\` o \`fix: descripción\`
 - Un commit por concepto lógico (no un megacommit)
 - No commitear archivos generados (node_modules, .env, etc.)
+- NUNCA añadir "Co-Authored-By" ni trailers de co-autoría en los commits
 
 ## Reglas para la PR
 
@@ -80,6 +81,7 @@ Lee el feedback del Reviewer, entiende cada issue, y arréglalo en el código. N
 2. **No rompas lo que ya funciona** — solo modifica lo necesario
 3. **Commitea con mensaje descriptivo** — \`fix: descripción del arreglo\`
 4. **Haz push al mismo branch** — no crees branch nueva
+5. **NUNCA añadir "Co-Authored-By"** ni trailers de co-autoría en los commits
 
 ## Herramientas disponibles
 

@@ -74,28 +74,98 @@ const CLI_ADAPTERS = {
   },
 
   codex: {
-    buildArgs({ mcpConfigPath, maxTurns }) {
-      return ['--quiet', '--full-auto'];
+    /**
+     * OpenAI Codex CLI (codex).
+     * - `codex exec -` reads prompt from stdin
+     * - `--json` enables JSON Lines output for events
+     * - `--full-auto` enables workspace-write + on-request approvals
+     * - `--dangerously-bypass-approvals-and-sandbox` disables all safety checks
+     * - MCP is configured via ~/.codex/config.toml, NOT via CLI flags
+     *   We generate a temp config.toml if mcpServerNames are provided.
+     */
+    buildArgs({ model }) {
+      const args = ['exec', '--json', '--full-auto'];
+      if (model) args.push('-m', model);
+      // Codex reads prompt from stdin when positional arg is `-`
+      args.push('-');
+      return args;
     },
     buildStdin({ systemPrompt, userPrompt }) {
       if (systemPrompt) return `${systemPrompt}\n\n---\n\n${userPrompt}`;
       return userPrompt;
     },
+    /**
+     * Parse codex --json output.
+     * Codex emits JSON Lines events. Look for the last message content.
+     */
     parseOutput(stdout) {
-      return { rawResult: stdout, cost: null, turns: 0 };
+      const lines = stdout.trim().split('\n').filter(l => l.trim());
+      let result = null;
+
+      for (const line of lines) {
+        try {
+          const msg = JSON.parse(line);
+          // Codex events have different shapes; extract text from message events
+          if (msg.type === 'message' && msg.content) {
+            result = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+          } else if (msg.message) {
+            result = typeof msg.message === 'string' ? msg.message : JSON.stringify(msg.message);
+          }
+        } catch {
+          // Non-JSON line — might be the raw text output
+          if (!result && line.trim()) result = line.trim();
+        }
+      }
+
+      return { rawResult: result || stdout, cost: null, turns: 0 };
     },
   },
 
   gemini: {
-    buildArgs({ mcpConfigPath, maxTurns }) {
-      return [];
+    /**
+     * Google Gemini CLI (@google/gemini-cli).
+     * - Reads prompt from stdin pipe (like: echo "prompt" | gemini)
+     * - `--output-format json` for structured output
+     * - `-m` for model selection
+     * - `--yolo` for auto-approve all tool calls
+     * - MCP is configured via settings.json, NOT via CLI flags
+     *   We write a temp settings.json with MCP servers.
+     */
+    buildArgs({ model }) {
+      const args = ['--output-format', 'json', '--yolo'];
+      if (model) args.push('-m', model);
+      return args;
     },
     buildStdin({ systemPrompt, userPrompt }) {
       if (systemPrompt) return `${systemPrompt}\n\n---\n\n${userPrompt}`;
       return userPrompt;
     },
+    /**
+     * Parse gemini --output-format json output.
+     * Try to find a JSON result, or fall back to raw text.
+     */
     parseOutput(stdout) {
-      return { rawResult: stdout, cost: null, turns: 0 };
+      const lines = stdout.trim().split('\n').filter(l => l.trim());
+      let result = null;
+
+      for (const line of lines) {
+        try {
+          const msg = JSON.parse(line);
+          // Look for result-like fields
+          if (msg.result) {
+            result = typeof msg.result === 'string' ? msg.result : JSON.stringify(msg.result);
+          } else if (msg.response) {
+            result = typeof msg.response === 'string' ? msg.response : JSON.stringify(msg.response);
+          } else if (msg.text) {
+            result = msg.text;
+          }
+        } catch {
+          // Non-JSON line
+          if (!result && line.trim()) result = line.trim();
+        }
+      }
+
+      return { rawResult: result || stdout, cost: null, turns: 0 };
     },
   },
 };
@@ -169,17 +239,34 @@ export function buildMcpServers(serverNames) {
 /**
  * Spawn a CLI process, pipe stdinData, and collect stdout.
  *
+ * Supports two timeout modes:
+ * - idleTimeout: kills if no stdout/stderr for N ms (good for Planner/Reviewer)
+ * - totalTimeout: kills after N ms total regardless of output (good for Coder)
+ *
+ * On Windows, stdout from child processes can be fully buffered by cmd.exe,
+ * so the idle timer never resets even though the process IS working.
+ * Use totalTimeout for long-running agents like the Coder.
+ *
  * @param {string}   command   - CLI to run (e.g. "claude")
  * @param {string[]} args      - Short, safe flags only
  * @param {Object}   options
  * @param {string}   [options.cwd]          - Working directory
  * @param {string}   [options.stdinData]    - Data to pipe to stdin (the prompt)
  * @param {number}   [options.idleTimeout]  - Kill if silent for this many ms (default 180s)
+ * @param {number}   [options.totalTimeout] - Kill after this many ms total (overrides idleTimeout)
  * @param {Function} [options.onOutput]     - Callback for stdout chunks
  * @returns {Promise<string>} stdout
  */
 function spawnCli(command, args, options = {}) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+
+    function settle(fn, value) {
+      if (settled) return;
+      settled = true;
+      fn(value);
+    }
+
     const child = spawn(command, args, {
       cwd: options.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -200,46 +287,64 @@ function spawnCli(command, args, options = {}) {
     let stdout = '';
     let stderr = '';
 
-    // Idle timeout: resets every time the CLI produces output.
-    // Only kills if the process goes completely silent.
-    const idleMs = options.idleTimeout || 180_000;
-    let idleTimer = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error(`Idle timeout: ${command} silent for ${idleMs / 1000}s`));
-    }, idleMs);
+    // Timeout strategy: totalTimeout OR idleTimeout (not both)
+    let idleTimer = null;
+    let totalTimer = null;
 
-    function resetIdle() {
-      clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => {
+    if (options.totalTimeout) {
+      // Total timeout: hard limit on entire process duration.
+      // Use this for agents like Coder where Windows stdout buffering
+      // prevents idle timer from resetting.
+      totalTimer = setTimeout(() => {
         child.kill('SIGTERM');
-        reject(new Error(`Idle timeout: ${command} silent for ${idleMs / 1000}s`));
-      }, idleMs);
+        settle(reject, new Error(`Total timeout: ${command} exceeded ${options.totalTimeout / 1000}s`));
+      }, options.totalTimeout);
+    } else {
+      // Idle timeout: resets every time the CLI produces output.
+      const idleMs = options.idleTimeout || 180_000;
+
+      function startIdle() {
+        return setTimeout(() => {
+          child.kill('SIGTERM');
+          settle(reject, new Error(`Idle timeout: ${command} silent for ${idleMs / 1000}s`));
+        }, idleMs);
+      }
+
+      idleTimer = startIdle();
+
+      // Save resetIdle on options so stdout/stderr handlers can use it
+      options._resetIdle = () => {
+        clearTimeout(idleTimer);
+        idleTimer = startIdle();
+      };
     }
 
     child.stdout.on('data', (data) => {
       const text = data.toString();
       stdout += text;
-      resetIdle();
+      if (options._resetIdle) options._resetIdle();
       if (options.onOutput) options.onOutput(text);
     });
 
     child.stderr.on('data', (data) => {
       stderr += data.toString();
-      resetIdle();
+      if (options._resetIdle) options._resetIdle();
     });
 
     child.on('close', (code) => {
       clearTimeout(idleTimer);
+      clearTimeout(totalTimer);
       if (code === 0) {
-        resolve(stdout);
+        settle(resolve, stdout);
       } else {
-        reject(new Error(stderr.trim() || stdout.trim() || `exit code ${code}`));
+        settle(reject, new Error(stderr.trim() || stdout.trim() || `exit code ${code}`));
       }
     });
 
     child.on('error', (err) => {
       clearTimeout(idleTimer);
-      reject(new Error(`Failed to launch "${command}": ${err.message}`));
+      clearTimeout(totalTimer);
+      settle(reject, new Error(`Failed to launch "${command}": ${err.message}`));
     });
   });
 }
@@ -263,6 +368,7 @@ function spawnCli(command, args, options = {}) {
  * @param {string[]} [options.disallowedTools]
  * @param {string}   [options.model]
  * @param {number}   [options.idleTimeout]  - Idle timeout ms (default 180000)
+ * @param {number}   [options.totalTimeout] - Total timeout ms (overrides idleTimeout, use for Coder on Windows)
  * @returns {Promise<{success, result, rawResult, cost, turns, duration, error?}>}
  */
 export async function runAgent({
@@ -277,6 +383,7 @@ export async function runAgent({
   disallowedTools,
   model,
   idleTimeout,
+  totalTimeout,
 }) {
   // Resolve which CLI to use
   const cliMap = {
@@ -302,10 +409,18 @@ export async function runAgent({
   let mcpConfigPath = null;
 
   try {
-    // Generate MCP config file if needed
+    // Generate MCP config file if needed (only works with Claude's --mcp-config)
     if (mcpServerNames.length > 0) {
       const mcpServers = buildMcpServers(mcpServerNames);
       mcpConfigPath = generateMcpConfig(mcpServers);
+
+      // Warn if using non-Claude CLI — they don't support --mcp-config
+      if (resolvedCli !== 'claude') {
+        logger.warn(
+          `${resolvedCli} does not support --mcp-config. MCP servers must be configured globally.`,
+          name
+        );
+      }
     }
 
     // Build CLI args (short flags only, no prompts)
@@ -322,11 +437,38 @@ export async function runAgent({
 
     logger.info(`Launching ${resolvedCli} CLI (stdin pipe)...`, name);
 
+    // Progress logging: parse JSON lines from Claude's --output-format json
+    // to log what the agent is doing in real time.
+    const onOutput = (chunk) => {
+      for (const line of chunk.split('\n')) {
+        if (!line.trim()) continue;
+        try {
+          const msg = JSON.parse(line);
+          // Claude JSON lines: log tool uses for progress visibility
+          if (msg.type === 'assistant' && msg.message?.content) {
+            const toolUses = msg.message.content.filter(c => c.type === 'tool_use');
+            for (const tu of toolUses) {
+              logger.info(`[tool] ${tu.name}`, name);
+            }
+            const textBlocks = msg.message.content.filter(c => c.type === 'text' && c.text);
+            for (const tb of textBlocks) {
+              const preview = tb.text.slice(0, 120).replace(/\n/g, ' ');
+              logger.info(`[text] ${preview}${tb.text.length > 120 ? '...' : ''}`, name);
+            }
+          }
+        } catch {
+          // Non-JSON line, skip
+        }
+      }
+    };
+
     // Spawn the process and pipe the prompt via stdin
     const stdout = await spawnCli(resolvedCli, args, {
       cwd: cwd || config.rootDir,
       idleTimeout,
+      totalTimeout,
       stdinData,
+      onOutput,
     });
 
     // Parse CLI output

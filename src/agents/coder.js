@@ -51,6 +51,7 @@ Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, 
     mcpServerNames: ['github-mcp'],
     cwd,
     maxTurns: 50,
+    totalTimeout: 900_000, // 15 min — total limit (no idle timer, Windows buffers stdout)
   });
 
   if (!result.success || !result.result) {
@@ -143,6 +144,7 @@ Devuelve el resultado como JSON con: fixed, issuesResolved, filesChanged, summar
     mcpServerNames: ['github-mcp'],
     cwd,
     maxTurns: 40,
+    totalTimeout: 900_000, // 15 min — total limit (no idle timer, Windows buffers stdout)
   });
 
   if (!result.success || !result.result) {
