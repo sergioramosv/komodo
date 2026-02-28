@@ -1,7 +1,9 @@
 'use client';
 
 import { useKomodoSocket } from '@/hooks/useKomodoSocket';
+import { useAgentStates } from '@/hooks/useAgentStates';
 import { ConnectionStatus } from '@/components/connection-status';
+import { OfficeScene } from '@/components/office-scene';
 import type { Phase, AgentStatus, DashboardEvent } from '@/lib/types';
 
 /* ── Phase config ── */
@@ -49,6 +51,7 @@ const EVENT_COLORS: Record<string, string> = {
 
 export default function DashboardPage() {
   const { snapshot, connected, events } = useKomodoSocket();
+  const agentStates = useAgentStates(snapshot, connected);
 
   return (
     <div className="space-y-6">
@@ -95,6 +98,9 @@ export default function DashboardPage() {
               <p className="text-neutral-500">No task running</p>
             )}
           </section>
+
+          {/* Office Scene — real-time agent visualization */}
+          <OfficeScene agents={agentStates.agents} phase={agentStates.phase} />
 
           {/* Phase Indicator */}
           <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
