@@ -306,7 +306,7 @@ async function main() {
 
       // Add komodo-mcp to MCP servers
       if (!settings.mcpServers) settings.mcpServers = {};
-      settings.mcpServers['komodo'] = {
+      settings.mcpServers['komodo-mcp'] = {
         command: 'node',
         args: [mcpConfigPath],
         env: {
