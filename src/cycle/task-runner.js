@@ -5,6 +5,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { runGh } from '../../skills/github-mcp/src/gh-cli.js';
 import { runAgent } from '../agents/base-agent.js';
+import { bus, EventTypes, AgentStates } from '../events/event-bus.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -200,8 +201,10 @@ export async function runTask(projectId, cwd) {
     // PASO 1: PLANNER — Elegir tarea
     // ═══════════════════════════════════════════
     logger.logStep(1, 4, 'Planner eligiendo tarea...', 'KOMODO');
+    bus.agentStateChange('PLANNER', AgentStates.WORKING);
 
     const plannerResult = await pickNextTask(projectId);
+    bus.agentStateChange('PLANNER', AgentStates.IDLE);
 
     if (!plannerResult.success) {
       return makeResult({ success: false, startTime, error: plannerResult.error });
@@ -217,12 +220,22 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    bus.emitEvent(EventTypes.TASK_STARTED, {
+      agentName: 'KOMODO',
+      taskId: taskSpec.taskId,
+      taskTitle: taskSpec.title,
+      branchName: taskSpec.branchName,
+      metadata: { repo },
+    });
+
     // ═══════════════════════════════════════════
     // PASO 2: CODER — Implementar
     // ═══════════════════════════════════════════
     logger.logStep(2, 4, 'Coder implementando...', 'KOMODO');
+    bus.agentStateChange('CODER', AgentStates.WORKING);
 
     const coderResult = await implementTask(taskSpec, cwd);
+    bus.agentStateChange('CODER', AgentStates.IDLE);
 
     if (!coderResult.success) {
       // Recovery: devolver tarea a to-do
@@ -235,6 +248,13 @@ export async function runTask(projectId, cwd) {
 
     prNumber = coderResult.pr.prNumber;
     logger.info(`PR #${prNumber} creada`, 'KOMODO');
+
+    bus.emitEvent(EventTypes.PR_CREATED, {
+      agentName: 'CODER',
+      taskId: taskSpec.taskId,
+      prNumber,
+      metadata: { repo, branchName: taskSpec.branchName },
+    });
 
     // ═══════════════════════════════════════════
     // PASO 3: REVIEW LOOP — Reviewer ↔ Coder
@@ -272,6 +292,13 @@ export async function runTask(projectId, cwd) {
       try {
         mergePR(repo, prNumber);
         merged = true;
+
+        bus.emitEvent(EventTypes.PR_MERGED, {
+          agentName: 'KOMODO',
+          taskId: taskSpec.taskId,
+          prNumber,
+          metadata: { repo },
+        });
       } catch (err) {
         logger.error(`Error al mergear PR #${prNumber}: ${err.message}`, 'KOMODO');
       }
@@ -292,6 +319,19 @@ export async function runTask(projectId, cwd) {
     }
 
     const totalDuration = (Date.now() - startTime) / 1000;
+
+    bus.emitEvent(EventTypes.TASK_COMPLETED, {
+      agentName: 'KOMODO',
+      taskId: taskSpec.taskId,
+      taskTitle: taskSpec.title,
+      metadata: {
+        prNumber,
+        approved: true,
+        merged,
+        reviewCycles: reviewResult.cycles,
+        totalDuration,
+      },
+    });
 
     // Resumen final
     logger.taskHeader('RESUMEN');

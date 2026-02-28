@@ -2,6 +2,7 @@ import { reviewPR } from '../agents/reviewer.js';
 import { fixReviewIssues } from '../agents/coder.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { bus, EventTypes, AgentStates } from '../events/event-bus.js';
 
 /**
  * Ejecuta el bucle Coder ↔ Reviewer.
@@ -33,7 +34,9 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
     logger.info(`Review cycle ${i}/${maxCycles}`, 'KOMODO');
 
     // === REVIEWER ===
+    bus.agentStateChange('REVIEWER', AgentStates.WORKING);
     const reviewResult = await reviewPR({ prNumber, repo, taskSpec, cwd });
+    bus.agentStateChange('REVIEWER', AgentStates.IDLE);
 
     if (!reviewResult.success) {
       logger.error(`Reviewer falló en ciclo ${i}: ${reviewResult.error}`, 'KOMODO');
@@ -46,6 +49,18 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
     }
 
     lastReview = reviewResult.review;
+
+    bus.emitEvent(EventTypes.REVIEW_CYCLE, {
+      agentName: 'REVIEWER',
+      cycle: i,
+      maxCycles,
+      prNumber,
+      verdict: lastReview.verdict,
+      metadata: {
+        issuesCount: (lastReview.issues || []).length,
+        taskId: taskSpec?.taskId,
+      },
+    });
 
     // ¿Aprobado?
     if (lastReview.verdict === 'APPROVED') {
@@ -65,8 +80,10 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
 
     // === CODER FIX ===
     logger.info(`Coder arreglando ${(lastReview.issues || []).length} issues...`, 'KOMODO');
+    bus.agentStateChange('CODER', AgentStates.WORKING);
 
     const fixResult = await fixReviewIssues(taskSpec, prNumber, lastReview, cwd);
+    bus.agentStateChange('CODER', AgentStates.IDLE);
 
     if (!fixResult.success) {
       logger.error(`Coder no pudo arreglar issues en ciclo ${i}: ${fixResult.error}`, 'KOMODO');
