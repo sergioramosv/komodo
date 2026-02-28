@@ -200,6 +200,57 @@ describe('KomodoEventBus', () => {
     });
   });
 
+  // ── emitAgentEvent ────────────────────────────────────
+
+  describe('emitAgentEvent', () => {
+    it('emite evento con formato agent:nombre:estado', () => {
+      const listener = vi.fn();
+      bus.onAny(listener);
+
+      bus.emitAgentEvent('PLANNER', 'working');
+
+      expect(listener).toHaveBeenCalledOnce();
+      expect(listener.mock.calls[0][0].type).toBe('agent:planner:working');
+      expect(listener.mock.calls[0][0].agentName).toBe('PLANNER');
+    });
+
+    it('convierte el nombre del agente a minúsculas en el evento', () => {
+      const listener = vi.fn();
+      bus.onAny(listener);
+
+      bus.emitAgentEvent('CODER', 'done');
+      expect(listener.mock.calls[0][0].type).toBe('agent:coder:done');
+
+      bus.emitAgentEvent('REVIEWER', 'idle');
+      expect(listener.mock.calls[1][0].type).toBe('agent:reviewer:idle');
+    });
+
+    it('incluye metadata en el payload', () => {
+      const listener = vi.fn();
+      bus.onAny(listener);
+
+      bus.emitAgentEvent('CODER', 'working', { taskId: 'task-123' });
+
+      expect(listener.mock.calls[0][0].metadata).toEqual({ taskId: 'task-123' });
+    });
+
+    it('funciona sin metadata', () => {
+      const listener = vi.fn();
+      bus.onAny(listener);
+
+      bus.emitAgentEvent('PLANNER', 'idle');
+
+      expect(listener.mock.calls[0][0].metadata).toEqual({});
+    });
+
+    it('retorna el payload emitido', () => {
+      const result = bus.emitAgentEvent('REVIEWER', 'working');
+
+      expect(result).toHaveProperty('type', 'agent:reviewer:working');
+      expect(result).toHaveProperty('agentName', 'REVIEWER');
+    });
+  });
+
   // ── constants ──────────────────────────────────────────
 
   describe('constants', () => {
@@ -208,9 +259,23 @@ describe('KomodoEventBus', () => {
       expect(EVENT_TYPES.TASK_STARTED).toBe('task:started');
       expect(EVENT_TYPES.TASK_COMPLETED).toBe('task:completed');
       expect(EVENT_TYPES.REVIEW_CYCLE).toBe('review:cycle');
+      expect(EVENT_TYPES.REVIEW_CYCLE_START).toBe('review:cycle:start');
+      expect(EVENT_TYPES.REVIEW_CYCLE_END).toBe('review:cycle:end');
       expect(EVENT_TYPES.PR_CREATED).toBe('pr:created');
       expect(EVENT_TYPES.PR_MERGED).toBe('pr:merged');
       expect(EVENT_TYPES.COST_UPDATED).toBe('cost:updated');
+    });
+
+    it('EVENT_TYPES contiene eventos específicos de agentes', () => {
+      expect(EVENT_TYPES.AGENT_PLANNER_WORKING).toBe('agent:planner:working');
+      expect(EVENT_TYPES.AGENT_PLANNER_DONE).toBe('agent:planner:done');
+      expect(EVENT_TYPES.AGENT_PLANNER_IDLE).toBe('agent:planner:idle');
+      expect(EVENT_TYPES.AGENT_CODER_WORKING).toBe('agent:coder:working');
+      expect(EVENT_TYPES.AGENT_CODER_DONE).toBe('agent:coder:done');
+      expect(EVENT_TYPES.AGENT_CODER_IDLE).toBe('agent:coder:idle');
+      expect(EVENT_TYPES.AGENT_REVIEWER_WORKING).toBe('agent:reviewer:working');
+      expect(EVENT_TYPES.AGENT_REVIEWER_DONE).toBe('agent:reviewer:done');
+      expect(EVENT_TYPES.AGENT_REVIEWER_IDLE).toBe('agent:reviewer:idle');
     });
 
     it('AGENT_STATES contiene todos los estados esperados', () => {
