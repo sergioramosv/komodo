@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import type { AgentName, AgentState, Phase } from '@/lib/types';
 
 /* ── Types ── */
@@ -9,29 +10,30 @@ interface OfficeSceneProps {
   phase: Phase;
 }
 
-type Zone = 'coder' | 'reviewer' | 'planner' | 'waiting';
+/* ── Movement constants ── */
 
-/* ── Agent zone logic ── */
+const TRANSITION_MS = 1000;
 
-function getAgentZone(agent: AgentState): Zone {
-  if (agent.status === 'idle' || agent.status === 'walking') return 'waiting';
-  if (agent.name === 'PLANNER') return 'planner';
-  if (agent.name === 'CODER') return 'coder';
-  if (agent.name === 'REVIEWER') return 'reviewer';
-  return 'waiting';
-}
+/**
+ * Horizontal positions as percentages of the work floor grid.
+ * Grid has 4 equal columns → centers at 12.5%, 37.5%, 62.5%, 87.5%.
+ * Waiting room positions are staggered so agents don't overlap.
+ */
+const WAITING_LEFT: Record<AgentName, string> = {
+  CODER:    '7%',
+  PLANNER:  '12.5%',
+  REVIEWER: '18%',
+};
 
-function groupAgentsByZone(agents: Record<AgentName, AgentState>): Record<Zone, AgentState[]> {
-  const zones: Record<Zone, AgentState[]> = {
-    coder: [],
-    reviewer: [],
-    planner: [],
-    waiting: [],
-  };
-  for (const agent of Object.values(agents)) {
-    zones[getAgentZone(agent)].push(agent);
-  }
-  return zones;
+const DESK_LEFT: Record<AgentName, string> = {
+  CODER:    '37.5%',
+  REVIEWER: '62.5%',
+  PLANNER:  '87.5%',
+};
+
+function getAgentLeft(agent: AgentState): string {
+  if (agent.status === 'idle') return WAITING_LEFT[agent.name];
+  return DESK_LEFT[agent.name];
 }
 
 /* ── Style constants ── */
@@ -58,12 +60,50 @@ const PHASE_MONITOR: Record<Phase, string> = {
   merging: 'bg-green-950/60',
 };
 
+/* ── Movement detection hook ── */
+
+/**
+ * Detects when an agent's position changes (e.g. done→idle) and returns
+ * a Set of agent names currently in transit so we can show walking animation
+ * even when the agent status itself doesn't indicate "walking".
+ */
+function useAgentMovement(agents: Record<AgentName, AgentState>): Set<AgentName> {
+  const prevLeftRef = useRef<Record<string, string>>({});
+  const [movingAgents, setMovingAgents] = useState<Set<AgentName>>(new Set());
+
+  const statusKey = Object.values(agents)
+    .map((a) => `${a.name}:${a.status}`)
+    .join(',');
+
+  useEffect(() => {
+    const moving = new Set<AgentName>();
+
+    for (const agent of Object.values(agents)) {
+      const newLeft = getAgentLeft(agent);
+      const prevLeft = prevLeftRef.current[agent.name];
+
+      if (prevLeft !== undefined && prevLeft !== newLeft) {
+        moving.add(agent.name);
+      }
+      prevLeftRef.current[agent.name] = newLeft;
+    }
+
+    if (moving.size > 0) {
+      setMovingAgents(moving);
+      const timer = setTimeout(() => setMovingAgents(new Set()), TRANSITION_MS);
+      return () => clearTimeout(timer);
+    }
+  }, [statusKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return movingAgents;
+}
+
 /* ── Sub-components ── */
 
-function AgentCharacter({ agent }: { agent: AgentState }) {
+function AgentCharacter({ agent, isMoving = false }: { agent: AgentState; isMoving?: boolean }) {
   const colors = AGENT_COLORS[agent.name];
   const isWorking = agent.status === 'working';
-  const isWalking = agent.status === 'walking';
+  const shouldBounce = agent.status === 'walking' || isMoving;
 
   return (
     <div className="flex flex-col items-center gap-0.5">
@@ -73,7 +113,7 @@ function AgentCharacter({ agent }: { agent: AgentState }) {
           flex items-center justify-center text-sm font-bold text-white
           border-2 ${colors.border}
           ${isWorking ? 'animate-pulse' : ''}
-          ${isWalking ? 'animate-bounce' : ''}
+          ${shouldBounce ? 'animate-bounce' : ''}
         `}
       >
         {agent.name[0]}
@@ -133,9 +173,9 @@ function BossZone({ phase }: { phase: Phase }) {
   );
 }
 
-function CoderDesk({ agents }: { agents: AgentState[] }) {
+function CoderDesk() {
   return (
-    <div className="flex flex-col items-center gap-2 min-w-[140px]">
+    <div className="flex flex-col items-center gap-2">
       <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">
         Coder
       </span>
@@ -155,20 +195,15 @@ function CoderDesk({ agents }: { agents: AgentState[] }) {
       {/* Keyboard */}
       <div className="w-16 h-2.5 -mt-1 rounded-sm bg-neutral-700/80 border border-neutral-600/50" />
 
-      {/* Chair + agent */}
+      {/* Chair */}
       <div className="w-10 h-4 rounded-b bg-neutral-700/50 border border-neutral-600/40" />
-      <div className="flex gap-2 mt-1">
-        {agents.map((a) => (
-          <AgentCharacter key={a.name} agent={a} />
-        ))}
-      </div>
     </div>
   );
 }
 
-function ReviewerDesk({ agents }: { agents: AgentState[] }) {
+function ReviewerDesk() {
   return (
-    <div className="flex flex-col items-center gap-2 min-w-[140px]">
+    <div className="flex flex-col items-center gap-2">
       <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">
         Reviewer
       </span>
@@ -189,25 +224,20 @@ function ReviewerDesk({ agents }: { agents: AgentState[] }) {
           </div>
         </div>
 
-        {/* Magnifying glass (simple CSS) */}
+        {/* Magnifying glass */}
         <div className="relative w-8 h-10">
           <div className="w-7 h-7 rounded-full border-[3px] border-amber-400/70" />
           <div className="absolute bottom-0 right-0 w-[3px] h-4 bg-amber-600/70 rounded-full rotate-[40deg] origin-top" />
         </div>
       </div>
 
-      {/* Chair + agent */}
+      {/* Chair */}
       <div className="w-10 h-4 rounded-b bg-neutral-700/50 border border-neutral-600/40" />
-      <div className="flex gap-2 mt-1">
-        {agents.map((a) => (
-          <AgentCharacter key={a.name} agent={a} />
-        ))}
-      </div>
     </div>
   );
 }
 
-function TaskBoard({ agents }: { agents: AgentState[] }) {
+function TaskBoard() {
   const postItColors = [
     'bg-yellow-300',
     'bg-pink-300',
@@ -218,7 +248,7 @@ function TaskBoard({ agents }: { agents: AgentState[] }) {
   ];
 
   return (
-    <div className="flex flex-col items-center gap-2 min-w-[140px]">
+    <div className="flex flex-col items-center gap-2">
       <span className="text-[10px] font-bold text-violet-400 uppercase tracking-wider">
         Planner
       </span>
@@ -242,20 +272,13 @@ function TaskBoard({ agents }: { agents: AgentState[] }) {
           ))}
         </div>
       </div>
-
-      {/* Agent */}
-      <div className="flex gap-2 mt-1">
-        {agents.map((a) => (
-          <AgentCharacter key={a.name} agent={a} />
-        ))}
-      </div>
     </div>
   );
 }
 
-function WaitingRoom({ agents }: { agents: AgentState[] }) {
+function WaitingRoom() {
   return (
-    <div className="flex flex-col items-center gap-2 min-w-[130px]">
+    <div className="flex flex-col items-center gap-2">
       <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
         Waiting Room
       </span>
@@ -277,15 +300,38 @@ function WaitingRoom({ agents }: { agents: AgentState[] }) {
       <div className="w-14 h-5 rounded-sm bg-amber-950/60 border border-amber-900/40 flex items-center justify-center">
         <span className="text-[9px]">&#9749;</span>
       </div>
+    </div>
+  );
+}
 
-      {/* Agents sitting here */}
-      <div className="flex gap-3 flex-wrap justify-center min-h-[44px]">
-        {agents.length > 0 ? (
-          agents.map((a) => <AgentCharacter key={a.name} agent={a} />)
-        ) : (
-          <span className="text-[9px] text-neutral-600 italic self-center">empty</span>
-        )}
-      </div>
+/* ── Agent movement layer ── */
+
+function AgentLayer({
+  agents,
+  movingAgents,
+}: {
+  agents: Record<AgentName, AgentState>;
+  movingAgents: Set<AgentName>;
+}) {
+  return (
+    <div className="relative w-full h-14 mt-1">
+      {Object.values(agents).map((agent) => {
+        const left = getAgentLeft(agent);
+        const isMoving = movingAgents.has(agent.name);
+
+        return (
+          <div
+            key={agent.name}
+            className="absolute top-0 -translate-x-1/2"
+            style={{
+              left,
+              transition: `left ${TRANSITION_MS}ms ease-in-out`,
+            }}
+          >
+            <AgentCharacter agent={agent} isMoving={isMoving} />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -317,7 +363,7 @@ function PlantPot() {
 /* ── Main Component ── */
 
 export function OfficeScene({ agents, phase }: OfficeSceneProps) {
-  const zones = groupAgentsByZone(agents);
+  const movingAgents = useAgentMovement(agents);
 
   return (
     <div
@@ -346,7 +392,7 @@ export function OfficeScene({ agents, phase }: OfficeSceneProps) {
 
       {/* Scene */}
       <div className="p-6 lg:p-8 flex flex-col items-center gap-8 min-h-[480px]">
-        {/* Row 1: Boss Komodo desk — top center */}
+        {/* Row 1: Boss Komodo desk */}
         <BossZone phase={phase} />
 
         {/* Wall/Divider between boss and work floor */}
@@ -358,12 +404,25 @@ export function OfficeScene({ agents, phase }: OfficeSceneProps) {
           <div className="flex-1 border-t border-dashed border-neutral-800" />
         </div>
 
-        {/* Row 2: Work floor — 4 zones side by side */}
-        <div className="flex flex-wrap justify-center gap-8 lg:gap-12 w-full">
-          <WaitingRoom agents={zones.waiting} />
-          <CoderDesk agents={zones.coder} />
-          <ReviewerDesk agents={zones.reviewer} />
-          <TaskBoard agents={zones.planner} />
+        {/* Row 2: Work floor — zones grid + agent movement layer */}
+        <div className="w-full max-w-3xl">
+          <div className="grid grid-cols-4 gap-4 lg:gap-8 w-full">
+            <div className="flex justify-center">
+              <WaitingRoom />
+            </div>
+            <div className="flex justify-center">
+              <CoderDesk />
+            </div>
+            <div className="flex justify-center">
+              <ReviewerDesk />
+            </div>
+            <div className="flex justify-center">
+              <TaskBoard />
+            </div>
+          </div>
+
+          {/* Agents — positioned absolutely, CSS transition on left */}
+          <AgentLayer agents={agents} movingAgents={movingAgents} />
         </div>
 
         {/* Floor decoration */}
