@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { AgentName, AgentState, Phase } from '@/lib/types';
+import type { AgentName, Phase } from '@/lib/types';
+import type { AgentVisualState } from '@/hooks/useAgentStates';
 
 /* ── Types ── */
 
 interface OfficeSceneProps {
-  agents: Record<AgentName, AgentState>;
+  agents: Record<AgentName, AgentVisualState>;
   phase: Phase;
 }
 
@@ -31,7 +32,7 @@ const DESK_LEFT: Record<AgentName, string> = {
   PLANNER:  '87.5%',
 };
 
-function getAgentLeft(agent: AgentState): string {
+function getAgentLeft(agent: AgentVisualState): string {
   if (agent.status === 'idle') return WAITING_LEFT[agent.name];
   return DESK_LEFT[agent.name];
 }
@@ -67,7 +68,7 @@ const PHASE_MONITOR: Record<Phase, string> = {
  * a Set of agent names currently in transit so we can show walking animation
  * even when the agent status itself doesn't indicate "walking".
  */
-function useAgentMovement(agents: Record<AgentName, AgentState>): Set<AgentName> {
+function useAgentMovement(agents: Record<AgentName, AgentVisualState>): Set<AgentName> {
   const prevLeftRef = useRef<Record<string, string>>({});
   const [movingAgents, setMovingAgents] = useState<Set<AgentName>>(new Set());
 
@@ -100,34 +101,66 @@ function useAgentMovement(agents: Record<AgentName, AgentState>): Set<AgentName>
 
 /* ── Sub-components ── */
 
-function AgentCharacter({ agent, isMoving = false }: { agent: AgentState; isMoving?: boolean }) {
+function ActivityBubble({ text }: { text: string }) {
+  return (
+    <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap z-10">
+      <div className="relative bg-neutral-800 border border-neutral-700 rounded px-1.5 py-0.5 shadow-lg">
+        <span className="text-[8px] text-neutral-200 leading-none">{text}</span>
+        {/* Triangle pointer */}
+        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-l-transparent border-r-transparent border-t-neutral-700" />
+      </div>
+    </div>
+  );
+}
+
+function ReviewCycleBadge({ cycle }: { cycle: number }) {
+  return (
+    <div className="absolute -top-2 -left-2 z-10">
+      <div className="w-4 h-4 rounded-full bg-orange-500 border border-orange-400 flex items-center justify-center shadow-md">
+        <span className="text-[8px] font-bold text-white leading-none">{cycle}</span>
+      </div>
+    </div>
+  );
+}
+
+function AgentCharacter({ agent, isMoving = false }: { agent: AgentVisualState; isMoving?: boolean }) {
   const colors = AGENT_COLORS[agent.name];
   const isWorking = agent.status === 'working';
   const shouldBounce = agent.status === 'walking' || isMoving;
+  const showBubble = agent.activity && !isMoving;
+  const showReviewCycle = agent.name === 'REVIEWER' && agent.reviewCycle > 0 && agent.status === 'working';
 
   return (
     <div className="flex flex-col items-center gap-0.5">
-      <div
-        className={`
-          relative w-9 h-9 rounded-full ${colors.bg}
-          flex items-center justify-center text-sm font-bold text-white
-          border-2 ${colors.border}
-          ${isWorking ? 'animate-pulse' : ''}
-          ${shouldBounce ? 'animate-bounce' : ''}
-        `}
-      >
-        {agent.name[0]}
+      <div className="relative">
+        {/* Activity bubble */}
+        {showBubble && <ActivityBubble text={agent.activity!} />}
+
+        {/* Review cycle badge */}
+        {showReviewCycle && <ReviewCycleBadge cycle={agent.reviewCycle} />}
+
         <div
-          className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-[#16181d] ${
-            agent.status === 'working'
-              ? 'bg-green-400'
-              : agent.status === 'walking'
-                ? 'bg-yellow-400'
-                : agent.status === 'done'
-                  ? 'bg-emerald-400'
-                  : 'bg-neutral-500'
-          }`}
-        />
+          className={`
+            relative w-9 h-9 rounded-full ${colors.bg}
+            flex items-center justify-center text-sm font-bold text-white
+            border-2 ${colors.border}
+            ${isWorking ? 'animate-pulse' : ''}
+            ${shouldBounce ? 'animate-bounce' : ''}
+          `}
+        >
+          {agent.name[0]}
+          <div
+            className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-[#16181d] ${
+              agent.status === 'working'
+                ? 'bg-green-400'
+                : agent.status === 'walking'
+                  ? 'bg-yellow-400'
+                  : agent.status === 'done'
+                    ? 'bg-emerald-400'
+                    : 'bg-neutral-500'
+            }`}
+          />
+        </div>
       </div>
       <span className={`text-[10px] font-semibold ${colors.text} leading-none`}>
         {agent.name}
@@ -310,7 +343,7 @@ function AgentLayer({
   agents,
   movingAgents,
 }: {
-  agents: Record<AgentName, AgentState>;
+  agents: Record<AgentName, AgentVisualState>;
   movingAgents: Set<AgentName>;
 }) {
   return (
