@@ -75,10 +75,12 @@ describe('KomodoState', () => {
         },
         phase: 'idle',
         currentTask: null,
+        taskDetails: null,
         currentPR: null,
         reviewCycle: 0,
         totalCost: 0,
         tasksCompleted: 0,
+        totalTasks: 0,
       });
     });
 

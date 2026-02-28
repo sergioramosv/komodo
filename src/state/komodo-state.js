@@ -58,6 +58,9 @@ export class KomodoState {
     /** @type {string|null} */
     this.currentTask = null;
 
+    /** @type {{ id: string, title: string, userStory: string|null, sprint: string|null, devPoints: number|null }|null} */
+    this.taskDetails = null;
+
     /** @type {string|null} */
     this.currentPR = null;
 
@@ -69,6 +72,9 @@ export class KomodoState {
 
     /** @type {number} */
     this.tasksCompleted = 0;
+
+    /** @type {number} */
+    this.totalTasks = 0;
   }
 
   /**
@@ -85,10 +91,12 @@ export class KomodoState {
       },
       phase: this.phase,
       currentTask: this.currentTask,
+      taskDetails: this.taskDetails ? { ...this.taskDetails } : null,
       currentPR: this.currentPR,
       reviewCycle: this.reviewCycle,
       totalCost: this.totalCost,
       tasksCompleted: this.tasksCompleted,
+      totalTasks: this.totalTasks,
     };
   }
 
@@ -132,15 +140,19 @@ export class KomodoState {
    * @param {number} [metadata.reviewCycle] - Ciclo de review actual
    * @param {number} [metadata.totalCost] - Costo total acumulado
    * @param {number} [metadata.tasksCompleted] - Tareas completadas
+   * @param {Object|null} [metadata.taskDetails] - Detalles de la tarea actual
+   * @param {number} [metadata.totalTasks] - Total de tareas del sprint
    */
   updatePhase(newPhase, metadata = {}) {
     this.phase = newPhase;
 
     if (metadata.currentTask !== undefined) this.currentTask = metadata.currentTask;
+    if (metadata.taskDetails !== undefined) this.taskDetails = metadata.taskDetails;
     if (metadata.currentPR !== undefined) this.currentPR = metadata.currentPR;
     if (metadata.reviewCycle !== undefined) this.reviewCycle = metadata.reviewCycle;
     if (metadata.totalCost !== undefined) this.totalCost = metadata.totalCost;
     if (metadata.tasksCompleted !== undefined) this.tasksCompleted = metadata.tasksCompleted;
+    if (metadata.totalTasks !== undefined) this.totalTasks = metadata.totalTasks;
   }
 }
 
