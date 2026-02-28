@@ -2,10 +2,11 @@ import { runTask, runTaskDryRun } from './cycle/task-runner.js';
 import { validateConfig, config } from './config.js';
 import { logger } from './utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from './events/event-bus.js';
+import { komodoState, PHASES } from './state/komodo-state.js';
 import { KomodoWsServer } from './server/ws-server.js';
 
 // Re-export para que consumidores externos puedan suscribirse
-export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer };
+export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES };
 
 /**
  * Ejecuta N tareas del backlog de un proyecto.
@@ -57,6 +58,14 @@ export async function run(projectId, options = {}) {
   logger.info(`Auto-merge: ${config.autoMerge ? 'sí' : 'no (manual)'}`, 'KOMODO');
   logger.info(`Max review cycles: ${config.maxReviewCycles}`, 'KOMODO');
 
+  // Reset global state for fresh run
+  komodoState.updatePhase(PHASES.IDLE, {
+    currentTask: null,
+    currentPR: null,
+    reviewCycle: 0,
+    tasksCompleted: 0,
+  });
+
   // Iniciar WebSocket server para dashboard en tiempo real
   const wsServer = new KomodoWsServer();
   try {
@@ -90,9 +99,11 @@ export async function run(projectId, options = {}) {
 
       if (result.success) {
         tasksCompleted++;
+        komodoState.updatePhase(PHASES.IDLE, { tasksCompleted });
         logger.success(`Tarea "${result.taskTitle}" completada`, 'KOMODO');
       } else {
         tasksFailed++;
+        komodoState.updatePhase(PHASES.IDLE);
         logger.error(`Tarea "${result.taskTitle}" falló: ${result.error}`, 'KOMODO');
 
         // En modo no-continuo, parar si falla

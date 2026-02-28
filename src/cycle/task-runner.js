@@ -6,6 +6,7 @@ import { logger } from '../utils/logger.js';
 import { runGh } from '../../skills/github-mcp/src/gh-cli.js';
 import { runAgent } from '../agents/base-agent.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
+import { komodoState, PHASES, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -202,11 +203,15 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     logger.logStep(1, 4, 'Planner eligiendo tarea...', 'KOMODO');
 
+    komodoState.updatePhase(PHASES.PLANNING);
+    komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.WORKING });
+
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'PLANNER',
       previousState: AGENT_STATES.IDLE,
       newState: AGENT_STATES.WORKING,
     });
+    eventBus.emitAgentEvent('PLANNER', 'working');
 
     const plannerResult = await pickNextTask(projectId);
 
@@ -217,11 +222,14 @@ export async function runTask(projectId, cwd) {
       });
     }
 
+    eventBus.emitAgentEvent('PLANNER', 'done');
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'PLANNER',
       previousState: AGENT_STATES.WORKING,
       newState: AGENT_STATES.IDLE,
     });
+    eventBus.emitAgentEvent('PLANNER', 'idle');
+    komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
     if (!plannerResult.success) {
       return makeResult({ success: false, startTime, error: plannerResult.error });
@@ -237,6 +245,8 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    komodoState.updatePhase(PHASES.PLANNING, { currentTask: taskSpec.taskId });
+
     eventBus.emitEvent(EVENT_TYPES.TASK_STARTED, {
       metadata: {
         taskId: taskSpec.taskId,
@@ -251,11 +261,15 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     logger.logStep(2, 4, 'Coder implementando...', 'KOMODO');
 
+    komodoState.updatePhase(PHASES.CODING, { currentTask: taskSpec.taskId });
+    komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId });
+
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'CODER',
       previousState: AGENT_STATES.IDLE,
       newState: AGENT_STATES.WORKING,
     });
+    eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
 
     const coderResult = await implementTask(taskSpec, cwd);
 
@@ -266,11 +280,14 @@ export async function runTask(projectId, cwd) {
       });
     }
 
+    eventBus.emitAgentEvent('CODER', 'done');
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'CODER',
       previousState: AGENT_STATES.WORKING,
       newState: AGENT_STATES.IDLE,
     });
+    eventBus.emitAgentEvent('CODER', 'idle');
+    komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
     if (!coderResult.success) {
       // Recovery: devolver tarea a to-do
@@ -299,19 +316,26 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     logger.logStep(3, 4, 'Review loop...', 'KOMODO');
 
+    komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
+    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING });
+
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'REVIEWER',
       previousState: AGENT_STATES.IDLE,
       newState: AGENT_STATES.WORKING,
     });
+    eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
 
     const reviewResult = await reviewLoop({ prNumber, repo, taskSpec, cwd });
 
+    eventBus.emitAgentEvent('REVIEWER', 'done');
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'REVIEWER',
       previousState: AGENT_STATES.WAITING,
       newState: AGENT_STATES.IDLE,
     });
+    eventBus.emitAgentEvent('REVIEWER', 'idle');
+    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
     // Registrar outcome en memoria (best effort)
     try {
@@ -335,6 +359,8 @@ export async function runTask(projectId, cwd) {
     // PASO 4: MERGE + UPDATE TASK
     // ═══════════════════════════════════════════
     logger.logStep(4, 4, 'Finalizando...', 'KOMODO');
+
+    komodoState.updatePhase(PHASES.MERGING, { currentPR: prNumber });
 
     let merged = false;
 
@@ -384,6 +410,12 @@ export async function runTask(projectId, cwd) {
         reviewCycles: reviewResult.cycles,
         totalDuration,
       },
+    });
+
+    komodoState.updatePhase(PHASES.IDLE, {
+      currentTask: null,
+      currentPR: null,
+      reviewCycle: 0,
     });
 
     return {
