@@ -2,9 +2,10 @@ import { runTask, runTaskDryRun } from './cycle/task-runner.js';
 import { validateConfig, config } from './config.js';
 import { logger } from './utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from './events/event-bus.js';
+import { KomodoWsServer } from './server/ws-server.js';
 
 // Re-export para que consumidores externos puedan suscribirse
-export { eventBus, EVENT_TYPES, AGENT_STATES };
+export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer };
 
 /**
  * Ejecuta N tareas del backlog de un proyecto.
@@ -56,6 +57,14 @@ export async function run(projectId, options = {}) {
   logger.info(`Auto-merge: ${config.autoMerge ? 'sí' : 'no (manual)'}`, 'KOMODO');
   logger.info(`Max review cycles: ${config.maxReviewCycles}`, 'KOMODO');
 
+  // Iniciar WebSocket server para dashboard en tiempo real
+  const wsServer = new KomodoWsServer();
+  try {
+    await wsServer.start();
+  } catch (err) {
+    logger.warn(`No se pudo iniciar WS server: ${err.message}`, 'KOMODO');
+  }
+
   const results = [];
   let tasksCompleted = 0;
   let tasksFailed = 0;
@@ -97,6 +106,9 @@ export async function run(projectId, options = {}) {
       if (!continuous) break;
     }
   }
+
+  // Detener WebSocket server
+  await wsServer.stop();
 
   // Resumen final
   logger.taskHeader('RESUMEN FINAL');
