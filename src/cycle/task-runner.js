@@ -5,6 +5,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { runGh } from '../../skills/github-mcp/src/gh-cli.js';
 import { runAgent } from '../agents/base-agent.js';
+import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -201,7 +202,26 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     logger.logStep(1, 4, 'Planner eligiendo tarea...', 'KOMODO');
 
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'PLANNER',
+      previousState: AGENT_STATES.IDLE,
+      newState: AGENT_STATES.WORKING,
+    });
+
     const plannerResult = await pickNextTask(projectId);
+
+    if (plannerResult.cost) {
+      eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+        agentName: 'PLANNER',
+        metadata: { cost: plannerResult.cost },
+      });
+    }
+
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'PLANNER',
+      previousState: AGENT_STATES.WORKING,
+      newState: AGENT_STATES.IDLE,
+    });
 
     if (!plannerResult.success) {
       return makeResult({ success: false, startTime, error: plannerResult.error });
@@ -217,12 +237,40 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    eventBus.emitEvent(EVENT_TYPES.TASK_STARTED, {
+      metadata: {
+        taskId: taskSpec.taskId,
+        title: taskSpec.title,
+        branchName: taskSpec.branchName,
+        repo,
+      },
+    });
+
     // ═══════════════════════════════════════════
     // PASO 2: CODER — Implementar
     // ═══════════════════════════════════════════
     logger.logStep(2, 4, 'Coder implementando...', 'KOMODO');
 
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'CODER',
+      previousState: AGENT_STATES.IDLE,
+      newState: AGENT_STATES.WORKING,
+    });
+
     const coderResult = await implementTask(taskSpec, cwd);
+
+    if (coderResult.cost) {
+      eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+        agentName: 'CODER',
+        metadata: { cost: coderResult.cost },
+      });
+    }
+
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'CODER',
+      previousState: AGENT_STATES.WORKING,
+      newState: AGENT_STATES.IDLE,
+    });
 
     if (!coderResult.success) {
       // Recovery: devolver tarea a to-do
@@ -236,12 +284,34 @@ export async function runTask(projectId, cwd) {
     prNumber = coderResult.pr.prNumber;
     logger.info(`PR #${prNumber} creada`, 'KOMODO');
 
+    eventBus.emitEvent(EVENT_TYPES.PR_CREATED, {
+      agentName: 'CODER',
+      metadata: {
+        prNumber,
+        repo,
+        taskId: taskSpec.taskId,
+        branchName: taskSpec.branchName,
+      },
+    });
+
     // ═══════════════════════════════════════════
     // PASO 3: REVIEW LOOP — Reviewer ↔ Coder
     // ═══════════════════════════════════════════
     logger.logStep(3, 4, 'Review loop...', 'KOMODO');
 
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'REVIEWER',
+      previousState: AGENT_STATES.IDLE,
+      newState: AGENT_STATES.WORKING,
+    });
+
     const reviewResult = await reviewLoop({ prNumber, repo, taskSpec, cwd });
+
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'REVIEWER',
+      previousState: AGENT_STATES.WORKING,
+      newState: AGENT_STATES.IDLE,
+    });
 
     // Registrar outcome en memoria (best effort)
     try {
@@ -272,6 +342,9 @@ export async function runTask(projectId, cwd) {
       try {
         mergePR(repo, prNumber);
         merged = true;
+        eventBus.emitEvent(EVENT_TYPES.PR_MERGED, {
+          metadata: { prNumber, repo, taskId: taskSpec.taskId },
+        });
       } catch (err) {
         logger.error(`Error al mergear PR #${prNumber}: ${err.message}`, 'KOMODO');
       }
@@ -300,6 +373,18 @@ export async function runTask(projectId, cwd) {
     logger.info(`Review cycles: ${reviewResult.cycles}`, 'KOMODO');
     logger.info(`Merged: ${merged ? 'sí' : 'no (manual)'}`, 'KOMODO');
     logger.info(`Duración total: ${totalDuration.toFixed(1)}s`, 'KOMODO');
+
+    eventBus.emitEvent(EVENT_TYPES.TASK_COMPLETED, {
+      metadata: {
+        taskId: taskSpec.taskId,
+        title: taskSpec.title,
+        prNumber,
+        approved: true,
+        merged,
+        reviewCycles: reviewResult.cycles,
+        totalDuration,
+      },
+    });
 
     return {
       success: true,
