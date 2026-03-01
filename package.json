@@ -12,6 +12,7 @@
     "setup": "node src/setup.js",
     "dashboard": "npm --prefix dashboard run dev",
     "ws-server": "node src/server/ws-server-standalone.js",
+    "chrome:debug": "node scripts/launch-chrome-debug.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
