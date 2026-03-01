@@ -11,18 +11,18 @@ interface OfficeScene3DProps {
 
 export function OfficeScene3D({ agents }: OfficeScene3DProps) {
   return (
-    <div className="w-full h-full relative bg-zinc-950 rounded-lg overflow-hidden border border-white/10">
+    <div className="w-full h-full relative bg-zinc-950 overflow-hidden">
       <Canvas shadows>
         {/* Cámara Isométrica estilo 2.5D */}
         <OrthographicCamera 
           makeDefault 
           position={[20, 20, 20]} 
-          zoom={45} 
+          zoom={35} 
           near={-100} 
           far={100}
         />
         
-        {/* Controles: Permitimos rotar y hacer zoom limitados, pero sin girar debajo del piso */}
+        {/* Controles */}
         <OrbitControls 
           enablePan={false}
           minPolarAngle={0} 

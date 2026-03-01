@@ -1,0 +1,4 @@
+stash@{0}: On feature/3d-office-scene: WIP: 3d office scene changes
+stash@{1}: WIP on feature/task-uDK-notificaciones-resumen-tareas: b324a58 feat: add notification system with toasts, badge, and history panel
+stash@{2}: WIP on feature/task-blMB-sprites-avatares-agentes-animaciones: e80ee62 feat: connect office animation to real orchestrator state via WebSocket (#16)
+stash@{3}: On feature/task-AzG89-crear-eventbus-interno-del-orquestador: WIP: previous eventbus attempt

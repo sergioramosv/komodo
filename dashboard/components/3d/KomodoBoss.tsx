@@ -6,66 +6,158 @@ import { Box, Sphere, Cylinder } from '@react-three/drei';
 import * as THREE from 'three';
 
 export function KomodoBoss({ position }: { position: [number, number, number] }) {
-  const handsRef = useRef<THREE.Group>(null);
+  const leftArmRef = useRef<THREE.Group>(null);
+  const rightArmRef = useRef<THREE.Group>(null);
+  const tailRef = useRef<THREE.Group>(null);
   
-  // Animación de bucle para Komodo tecleando
+  // Animación de bucle para Komodo tecleando y moviendo la cola
   useFrame((state) => {
-    if (handsRef.current) {
-      const time = state.clock.elapsedTime;
-      // Movimiento rápido de manos en Y y Z para simular tecleo
-      handsRef.current.children[0].position.y = 0.6 + Math.sin(time * 15) * 0.05;
-      handsRef.current.children[1].position.y = 0.6 + Math.cos(time * 18) * 0.05;
+    const time = state.clock.elapsedTime;
+    if (leftArmRef.current && rightArmRef.current) {
+      // Movimiento rápido de brazos articulados para simular tecleo intenso
+      leftArmRef.current.rotation.x = -Math.PI / 2.5 + Math.sin(time * 20) * 0.1;
+      rightArmRef.current.rotation.x = -Math.PI / 2.5 + Math.cos(time * 25) * 0.1;
+    }
+    if (tailRef.current) {
+      // Cola moviéndose felizmente mientras trabaja
+      tailRef.current.rotation.y = Math.sin(time * 3) * 0.2;
     }
   });
 
   return (
     <group position={position}>
-      {/* Silla */}
-      <Cylinder args={[0.3, 0.3, 0.5]} position={[0, 0.25, 0]} castShadow receiveShadow>
+      {/* ===== SILLA BOSS ===== */}
+      <Box args={[0.8, 0.1, 0.8]} position={[0, 0.4, 0]} castShadow receiveShadow>
+        <meshStandardMaterial color="#1a1a1a" />
+      </Box>
+      <Box args={[0.1, 0.4, 0.1]} position={[0, 0.2, 0]} castShadow receiveShadow>
         <meshStandardMaterial color="#444" />
-      </Cylinder>
+      </Box>
+      {/* Ruedas y base */}
+      <Box args={[0.8, 0.05, 0.1]} position={[0, 0.05, 0]} castShadow />
+      <Box args={[0.1, 0.05, 0.8]} position={[0, 0.05, 0]} castShadow />
       
-      {/* Cuerpo (Komodo Dragon / Boss) - Verde */}
-      <Box args={[0.8, 1, 0.6]} position={[0, 1, 0]} castShadow receiveShadow>
+      {/* Respaldo Alto (Silla Gaming/Boss) */}
+      <Box args={[0.8, 1.2, 0.1]} position={[0, 1.05, -0.35]} castShadow receiveShadow>
+        <meshStandardMaterial color="#1a1a1a" />
+      </Box>
+      {/* Acentos silla */}
+      <Box args={[0.6, 1.0, 0.11]} position={[0, 1.05, -0.34]} castShadow>
         <meshStandardMaterial color="#2E8B57" />
       </Box>
 
-      {/* Cabeza */}
-      <Box args={[0.5, 0.5, 0.6]} position={[0, 1.75, 0.2]} castShadow receiveShadow>
-        <meshStandardMaterial color="#3CB371" />
-      </Box>
+      {/* ===== KOMODO DRAGON VOXEL ===== */}
+      <group position={[0, 0.45, 0]}>
+        {/* Piernas Sentadas */}
+        <Box args={[0.25, 0.25, 0.6]} position={[-0.2, 0.125, 0.2]} castShadow>
+           <meshStandardMaterial color="#228B22" />
+        </Box>
+        <Box args={[0.25, 0.25, 0.6]} position={[0.2, 0.125, 0.2]} castShadow>
+           <meshStandardMaterial color="#228B22" />
+        </Box>
 
-      {/* Manos */}
-      <group ref={handsRef}>
-        <Sphere args={[0.15]} position={[-0.3, 0.6, 0.5]} castShadow>
+        {/* Torso */}
+        <Box args={[0.6, 0.8, 0.5]} position={[0, 0.6, 0]} castShadow receiveShadow>
           <meshStandardMaterial color="#3CB371" />
-        </Sphere>
-        <Sphere args={[0.15]} position={[0.3, 0.6, 0.5]} castShadow>
-          <meshStandardMaterial color="#3CB371" />
-        </Sphere>
+        </Box>
+        {/* Barriga más clara */}
+        <Box args={[0.4, 0.6, 0.52]} position={[0, 0.55, 0.01]} castShadow receiveShadow>
+          <meshStandardMaterial color="#98FB98" />
+        </Box>
+
+        {/* Cola (Pivote en la base de la espalda) */}
+        <group ref={tailRef} position={[0, 0.2, -0.25]}>
+          <Box args={[0.2, 0.2, 0.8]} position={[0, 0, -0.4]} castShadow>
+            <meshStandardMaterial color="#228B22" />
+          </Box>
+        </group>
+
+        {/* Cabeza (Komodo) */}
+        <group position={[0, 1.2, 0.1]}>
+           {/* Cráneo */}
+           <Box args={[0.5, 0.4, 0.5]} position={[0, 0, 0]} castShadow receiveShadow>
+             <meshStandardMaterial color="#3CB371" />
+           </Box>
+           {/* Hocico Voxel */}
+           <Box args={[0.4, 0.2, 0.4]} position={[0, -0.1, 0.45]} castShadow receiveShadow>
+             <meshStandardMaterial color="#228B22" />
+           </Box>
+           {/* Ojos */}
+           <Box args={[0.1, 0.1, 0.1]} position={[-0.26, 0.1, 0.1]} castShadow>
+             <meshStandardMaterial color="#000" />
+           </Box>
+           <Box args={[0.1, 0.1, 0.1]} position={[0.26, 0.1, 0.1]} castShadow>
+             <meshStandardMaterial color="#000" />
+           </Box>
+           {/* Cresta dorsal (Spikes) */}
+           <Box args={[0.1, 0.1, 0.4]} position={[0, 0.25, -0.1]} castShadow>
+             <meshStandardMaterial color="#ADFF2F" />
+           </Box>
+        </group>
+
+        {/* Brazo Izquierdo (Pivote hombro) */}
+        <group ref={leftArmRef} position={[-0.4, 0.8, 0]}>
+          <Box args={[0.2, 0.5, 0.2]} position={[0, -0.2, 0]} castShadow>
+             <meshStandardMaterial color="#3CB371" />
+          </Box>
+          <Box args={[0.2, 0.15, 0.2]} position={[0, -0.5, 0]} castShadow>
+             <meshStandardMaterial color="#228B22" />
+          </Box>
+        </group>
+
+        {/* Brazo Derecho (Pivote hombro) */}
+        <group ref={rightArmRef} position={[0.4, 0.8, 0]}>
+          <Box args={[0.2, 0.5, 0.2]} position={[0, -0.2, 0]} castShadow>
+             <meshStandardMaterial color="#3CB371" />
+          </Box>
+          <Box args={[0.2, 0.15, 0.2]} position={[0, -0.5, 0]} castShadow>
+             <meshStandardMaterial color="#228B22" />
+          </Box>
+        </group>
       </group>
 
-      {/* Escritorio Jefe */}
-      <Box args={[2, 0.1, 1]} position={[0, 0.8, 1]} castShadow receiveShadow>
-        <meshStandardMaterial color="#8B4513" />
-      </Box>
-      <Box args={[0.1, 0.8, 0.8]} position={[-0.9, 0.4, 1]} castShadow receiveShadow>
-         <meshStandardMaterial color="#5C4033" />
-      </Box>
-      <Box args={[0.1, 0.8, 0.8]} position={[0.9, 0.4, 1]} castShadow receiveShadow>
-         <meshStandardMaterial color="#5C4033" />
-      </Box>
+      {/* ===== ESCRITORIO DEL JEFE (L-SHAPE + MULTI-MONITOR) ===== */}
+      <group position={[0, 0, 0.2]}>
+        <Box args={[2.5, 0.1, 1]} position={[0, 0.8, 1]} castShadow receiveShadow>
+          <meshStandardMaterial color="#3e2723" />
+        </Box>
+        {/* L-Shape ala izquierda */}
+        <Box args={[1, 0.1, 2]} position={[-1.75, 0.8, 0.5]} castShadow receiveShadow>
+          <meshStandardMaterial color="#3e2723" />
+        </Box>
+        {/* Patas */}
+        <Box args={[0.1, 0.8, 0.8]} position={[-1.1, 0.4, 1]} castShadow receiveShadow>
+           <meshStandardMaterial color="#1f1f1f" />
+        </Box>
+        <Box args={[0.1, 0.8, 0.8]} position={[1.1, 0.4, 1]} castShadow receiveShadow>
+           <meshStandardMaterial color="#1f1f1f" />
+        </Box>
 
-      {/* Monitor Jefe (Siempre encendido) */}
-      <Box args={[1.2, 0.7, 0.1]} position={[0, 1.2, 1.2]} castShadow receiveShadow>
-        <meshStandardMaterial color="#222" />
-      </Box>
-      <Box args={[1.1, 0.6, 0.11]} position={[0, 1.2, 1.15]} castShadow receiveShadow>
-        <meshStandardMaterial color="#00ff00" emissive="#00ff00" emissiveIntensity={0.5} />
-      </Box>
-      
-      {/* Luz de pantalla del jefe */}
-      <pointLight position={[0, 1.3, 0.8]} intensity={5} distance={3} color="#bbffbb" />
+        {/* Monitor Principal Ultrawide */}
+        <Box args={[1.6, 0.7, 0.1]} position={[0, 1.25, 1.2]} castShadow receiveShadow>
+          <meshStandardMaterial color="#222" />
+        </Box>
+        <Box args={[1.5, 0.6, 0.11]} position={[0, 1.25, 1.15]} castShadow receiveShadow>
+          {/* Pantalla mostrando código matriz verde */}
+          <meshStandardMaterial color="#00ff00" emissive="#00cc00" emissiveIntensity={0.6} />
+        </Box>
+        
+        {/* Monitor Secundario (Vertical) */}
+        <Box args={[0.7, 1.2, 0.1]} position={[-1.2, 1.5, 1.0]} rotation={[0, Math.PI / 4, 0]} castShadow receiveShadow>
+          <meshStandardMaterial color="#222" />
+        </Box>
+        <Box args={[0.6, 1.1, 0.11]} position={[-1.15, 1.5, 0.95]} rotation={[0, Math.PI / 4, 0]} castShadow>
+          <meshStandardMaterial color="#2196F3" emissive="#2196F3" emissiveIntensity={0.4} />
+        </Box>
+
+        {/* Taza de café */}
+        <Cylinder args={[0.08, 0.08, 0.2]} position={[0.8, 0.95, 0.8]} castShadow>
+          <meshStandardMaterial color="#ff5252" />
+        </Cylinder>
+        
+        {/* Luz de pantalla del jefe iluminándole la cara */}
+        <pointLight position={[0, 1.4, 0.8]} intensity={4} distance={4} color="#bbffbb" />
+      </group>
     </group>
   );
 }

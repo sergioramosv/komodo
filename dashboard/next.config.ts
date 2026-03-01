@@ -1,5 +1,7 @@
 import type { NextConfig } from 'next';
 
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+    // Forced HMR restart 
+};
 
 export default nextConfig;
