@@ -5,6 +5,7 @@ import { useAgentStates } from '@/hooks/useAgentStates';
 import { useOfficeFeedback } from '@/hooks/useOfficeFeedback';
 import { ConnectionStatus } from '@/components/connection-status';
 import { OfficeScene } from '@/components/office-scene';
+import { ExecutionControls } from '@/components/execution-controls';
 import type { Phase, AgentStatus, DashboardEvent } from '@/lib/types';
 
 /* ── Phase config ── */
@@ -46,12 +47,13 @@ const EVENT_COLORS: Record<string, string> = {
   'cost:updated': 'text-amber-400',
   'review:cycle:start': 'text-orange-400',
   'review:cycle:end': 'text-orange-400',
+  'execution:state-change': 'text-emerald-400',
 };
 
 /* ── Page ── */
 
 export default function DashboardPage() {
-  const { snapshot, connected, events } = useKomodoSocket();
+  const { snapshot, connected, events, sendCommand } = useKomodoSocket();
   const agentStates = useAgentStates(snapshot, connected);
   const feedback = useOfficeFeedback(events, snapshot);
 
@@ -100,6 +102,15 @@ export default function DashboardPage() {
               <p className="text-neutral-500">No task running</p>
             )}
           </section>
+
+          {/* Execution Controls */}
+          <ExecutionControls
+            executionState={snapshot.executionState ?? 'stopped'}
+            phase={snapshot.phase}
+            connected={connected}
+            onPause={() => sendCommand('pause')}
+            onStop={() => sendCommand('stop')}
+          />
 
           {/* Office Scene — real-time agent visualization */}
           <OfficeScene

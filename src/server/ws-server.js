@@ -1,9 +1,12 @@
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { eventBus } from '../events/event-bus.js';
-import { komodoState } from '../state/komodo-state.js';
+import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+
+/** Valid command types from dashboard. */
+const VALID_COMMANDS = new Set(['pause', 'stop']);
 
 /**
  * Servidor WebSocket + HTTP para emitir estado en tiempo real al dashboard.
@@ -46,6 +49,18 @@ export class KomodoWsServer {
 
         // Enviar snapshot inicial
         this._send(ws, { type: 'snapshot', data: komodoState.getSnapshot() });
+
+        // Handle incoming commands from dashboard
+        ws.on('message', (raw) => {
+          try {
+            const msg = JSON.parse(raw.toString());
+            if (msg.type === 'command' && VALID_COMMANDS.has(msg.command)) {
+              this._handleCommand(msg.command, ws);
+            }
+          } catch {
+            // Ignore malformed messages
+          }
+        });
 
         ws.on('close', () => {
           const total = this._wss ? this._wss.clients.size : 0;
@@ -100,6 +115,28 @@ export class KomodoWsServer {
   }
 
   /**
+   * Handles an execution command from the dashboard.
+   *
+   * @param {string} command - 'pause' | 'stop'
+   * @param {import('ws').WebSocket} ws - The client that sent the command
+   */
+  _handleCommand(command, ws) {
+    switch (command) {
+      case 'pause':
+        logger.info('Pause command received from dashboard', 'WS');
+        komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
+        break;
+      case 'stop':
+        logger.info('Stop command received from dashboard', 'WS');
+        komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
+        break;
+    }
+
+    // Acknowledge the command
+    this._send(ws, { type: 'command:ack', command });
+  }
+
+  /**
    * Maneja peticiones HTTP (REST endpoint).
    *
    * @param {import('http').IncomingMessage} req
@@ -108,7 +145,7 @@ export class KomodoWsServer {
   _handleHttp(req, res) {
     // CORS headers para el dashboard
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
     if (req.method === 'OPTIONS') {

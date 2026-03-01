@@ -40,6 +40,7 @@ function createInitialState() {
     totalCost: 0,
     tasksCompleted: 0,
     totalTasks: 0,
+    executionState: 'stopped',
   };
 }
 
@@ -94,6 +95,12 @@ function applyEvent(state, event) {
     case 'review:cycle:end':
       if (event.metadata?.cycle !== undefined) {
         state.reviewCycle = event.metadata.cycle;
+      }
+      break;
+
+    case 'execution:state-change':
+      if (event.metadata?.current) {
+        state.executionState = event.metadata.current;
       }
       break;
   }
@@ -222,6 +229,39 @@ export function createStandaloneServer() {
 
   wss = new WebSocketServer({ server: httpServer });
 
+  const VALID_COMMANDS = new Set(['pause', 'stop']);
+
+  function handleCommand(command, ws) {
+    switch (command) {
+      case 'pause':
+        console.log('[WS] Pause command received from dashboard');
+        state.executionState = 'paused';
+        break;
+      case 'stop':
+        console.log('[WS] Stop command received from dashboard');
+        state.executionState = 'stopped';
+        break;
+    }
+
+    // Broadcast execution state change
+    const event = {
+      type: 'execution:state-change',
+      timestamp: new Date().toISOString(),
+      agentName: null,
+      previousState: null,
+      newState: null,
+      metadata: { previous: state.executionState === command ? null : state.executionState, current: state.executionState },
+    };
+    broadcast({ type: 'event', data: event });
+
+    // Acknowledge
+    try {
+      ws.send(JSON.stringify({ type: 'command:ack', command }));
+    } catch {
+      // Ignore
+    }
+  }
+
   wss.on('connection', (ws) => {
     const total = wss.clients.size;
     console.log(`[WS] Dashboard conectado (total: ${total})`);
@@ -232,6 +272,18 @@ export function createStandaloneServer() {
     } catch {
       // Ignorar si falla el envío inicial
     }
+
+    // Handle incoming commands from dashboard
+    ws.on('message', (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        if (msg.type === 'command' && VALID_COMMANDS.has(msg.command)) {
+          handleCommand(msg.command, ws);
+        }
+      } catch {
+        // Ignore malformed messages
+      }
+    });
 
     ws.on('close', () => {
       console.log(`[WS] Dashboard desconectado (total: ${wss.clients.size})`);

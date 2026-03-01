@@ -22,6 +22,15 @@ export const PHASES = {
 };
 
 /**
+ * Estados de ejecución del orquestador.
+ */
+export const EXECUTION_STATES = {
+  STOPPED: 'stopped',
+  RUNNING: 'running',
+  PAUSED: 'paused',
+};
+
+/**
  * Crea el estado inicial de un agente.
  *
  * @param {string} name - Nombre del agente (PLANNER, CODER, REVIEWER)
@@ -80,6 +89,9 @@ export class KomodoState {
 
     /** @type {number} */
     this.totalTasks = 0;
+
+    /** @type {string} */
+    this.executionState = EXECUTION_STATES.STOPPED;
   }
 
   /**
@@ -102,6 +114,7 @@ export class KomodoState {
       totalCost: this.totalCost,
       tasksCompleted: this.tasksCompleted,
       totalTasks: this.totalTasks,
+      executionState: this.executionState,
     };
   }
 
@@ -158,6 +171,35 @@ export class KomodoState {
     if (metadata.totalCost !== undefined) this.totalCost = metadata.totalCost;
     if (metadata.tasksCompleted !== undefined) this.tasksCompleted = metadata.tasksCompleted;
     if (metadata.totalTasks !== undefined) this.totalTasks = metadata.totalTasks;
+  }
+
+  /**
+   * Updates the execution state and emits an event.
+   *
+   * @param {string} newState - New execution state (stopped|running|paused)
+   */
+  setExecutionState(newState) {
+    const previous = this.executionState;
+    if (previous === newState) return;
+
+    this.executionState = newState;
+    eventBus.emitEvent(EVENT_TYPES.EXECUTION_STATE_CHANGE, {
+      metadata: { previous, current: newState },
+    });
+  }
+
+  /**
+   * @returns {boolean} True if the orchestrator should pause after the current task.
+   */
+  isPauseRequested() {
+    return this.executionState === EXECUTION_STATES.PAUSED;
+  }
+
+  /**
+   * @returns {boolean} True if the orchestrator should stop immediately.
+   */
+  isStopRequested() {
+    return this.executionState === EXECUTION_STATES.STOPPED;
   }
 }
 
