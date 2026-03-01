@@ -50,6 +50,7 @@ const EVENT_COLORS: Record<string, string> = {
   'review:cycle:start': 'text-orange-400',
   'review:cycle:end': 'text-orange-400',
   'execution:state-change': 'text-emerald-400',
+  'browser:check': 'text-pink-400',
 };
 
 /* ── Page ── */
@@ -259,14 +260,48 @@ function EventRow({ event }: { event: DashboardEvent }) {
     : '--:--:--';
 
   const color = EVENT_COLORS[event.type] ?? 'text-neutral-400';
+  const isBrowserCheck = event.type === 'browser:check';
+  const screenshot = isBrowserCheck ? (event.metadata?.screenshot as string | undefined) : undefined;
+  const errors = isBrowserCheck ? (event.metadata?.errors as string[] | undefined) : undefined;
 
   return (
-    <div className="flex items-start gap-3 rounded px-2 py-1.5 text-sm hover:bg-neutral-800/50">
-      <span className="shrink-0 tabular-nums text-neutral-600">{time}</span>
-      {event.agentName && (
-        <span className={`shrink-0 font-medium ${color}`}>{event.agentName}</span>
+    <div className="rounded px-2 py-1.5 text-sm hover:bg-neutral-800/50">
+      <div className="flex items-start gap-3">
+        <span className="shrink-0 tabular-nums text-neutral-600">{time}</span>
+        {isBrowserCheck && <span className="shrink-0">🌐</span>}
+        {event.agentName && (
+          <span className={`shrink-0 font-medium ${color}`}>{event.agentName}</span>
+        )}
+        <span className="text-neutral-300">{event.message}</span>
+      </div>
+      {/* Console errors */}
+      {errors && errors.length > 0 && (
+        <div className="mt-1.5 ml-8 space-y-0.5">
+          {errors.slice(0, 5).map((err, i) => (
+            <p key={i} className="truncate rounded bg-red-500/10 px-2 py-0.5 font-mono text-xs text-red-400">
+              {err}
+            </p>
+          ))}
+          {errors.length > 5 && (
+            <p className="text-xs text-neutral-500">+{errors.length - 5} more</p>
+          )}
+        </div>
       )}
-      <span className="text-neutral-300">{event.message}</span>
+      {/* Screenshot thumbnail */}
+      {screenshot && (
+        <a
+          href={screenshot}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1.5 ml-8 inline-block"
+        >
+          <img
+            src={screenshot}
+            alt="Browser screenshot"
+            className="h-16 w-28 rounded border border-neutral-700 object-cover transition-opacity hover:opacity-80"
+          />
+        </a>
+      )}
     </div>
   );
 }

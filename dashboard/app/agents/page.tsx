@@ -134,9 +134,17 @@ export default function AgentsPage() {
                     )}
                   </div>
 
+                  {/* Browser validation indicator */}
+                  {agent.browserValidation && (
+                    <div className="mt-3 flex items-center gap-1.5 rounded bg-pink-500/10 px-2 py-1 text-xs font-medium text-pink-400">
+                      <span>🌐</span>
+                      Browser Validation
+                    </div>
+                  )}
+
                   {/* Current task */}
                   {agent.currentTask && (
-                    <p className="mt-3 truncate text-xs text-neutral-400">
+                    <p className={`${agent.browserValidation ? 'mt-1.5' : 'mt-3'} truncate text-xs text-neutral-400`}>
                       {agent.currentTask}
                     </p>
                   )}
@@ -233,6 +241,7 @@ interface AgentDetailProps {
     totalCost?: number;
     totalTurns?: number;
     completedTasks?: number;
+    browserValidation?: boolean;
   };
   logs: AgentLog[];
   events: { id: string; type: string; timestamp: string; agentName: string | null; message: string }[];
@@ -283,6 +292,9 @@ function AgentDetail({ agent, logs, events, accent, onClose }: AgentDetailProps)
       {/* Stats Bar */}
       <div className="flex flex-wrap gap-6 border-b border-neutral-800 px-5 py-3">
         <Stat label="Status" value={agent.status} />
+        {agent.browserValidation && (
+          <Stat label="Mode" value="🌐 Browser" />
+        )}
         <Stat label="Active Time" value={getElapsedTime(agent.startedAt)} />
         <Stat label="Cost" value={`$${(agent.totalCost ?? 0).toFixed(2)}`} />
         <Stat label="Turns" value={String(agent.totalTurns ?? 0)} />
