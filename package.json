@@ -11,6 +11,7 @@
     "dev": "node --watch src/index.js",
     "setup": "node src/setup.js",
     "dashboard": "npm --prefix dashboard run dev",
+    "ws-server": "node src/server/ws-server-standalone.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
