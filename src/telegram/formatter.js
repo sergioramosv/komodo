@@ -22,6 +22,17 @@ export function escapeMarkdown(text) {
 }
 
 /**
+ * Escapa una URL para usarla dentro de links MarkdownV2 [text](url).
+ * Solo escapa ')' y '\' — los únicos caracteres que rompen la sintaxis de link.
+ * @param {string} url
+ * @returns {string}
+ */
+export function escapeUrl(url) {
+  if (!url) return '';
+  return String(url).replace(/([)\\])/g, '\\$1');
+}
+
+/**
  * Notificación: Planner eligió tarea.
  */
 export function formatTaskStarted(metadata) {
@@ -50,7 +61,7 @@ export function formatPRCreated(metadata) {
   const lines = [
     `\u{1F4E6} *Coder creó PR*`,
     ``,
-    `*PR:* [\\#${pr}](${escapeMarkdown(prUrl)})`,
+    `*PR:* [\\#${pr}](${escapeUrl(prUrl)})`,
     `*Branch:* \`${branch}\``,
   ];
 
@@ -125,7 +136,7 @@ export function formatPRMerged(metadata) {
   const lines = [
     `\u{1F389} *PR mergeada*`,
     ``,
-    `*PR:* [\\#${pr}](${escapeMarkdown(prUrl)})`,
+    `*PR:* [\\#${pr}](${escapeUrl(prUrl)})`,
   ];
 
   if (metadata.taskId) {
