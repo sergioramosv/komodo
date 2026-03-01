@@ -10,6 +10,21 @@ export interface AgentState {
   currentTask: string | null;
   startedAt: string | null;
   avatar: string;
+  cli?: string | null;
+  model?: string | null;
+  totalCost?: number;
+  totalTurns?: number;
+  completedTasks?: number;
+}
+
+/* ── Agent Logs ── */
+
+export interface AgentLog {
+  id: string;
+  timestamp: string;
+  kind: 'tool' | 'text' | 'status';
+  content: string;
+  detail?: string;
 }
 
 export interface TaskDetails {

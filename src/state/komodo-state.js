@@ -34,6 +34,11 @@ function createAgentState(name) {
     currentTask: null,
     startedAt: null,
     avatar: name.toLowerCase(),
+    cli: null,
+    model: null,
+    totalCost: 0,
+    totalTurns: 0,
+    completedTasks: 0,
   };
 }
 

@@ -1,24 +1,28 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { KomodoSnapshot, WsMessage, WsEventMessage, DashboardEvent } from '@/lib/types';
+import type { KomodoSnapshot, WsMessage, WsEventMessage, DashboardEvent, AgentLog } from '@/lib/types';
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
 const RECONNECT_DELAY = 3000;
 const MAX_EVENTS = 20;
+const MAX_AGENT_LOGS = 200;
 
 interface UseKomodoSocketReturn {
   snapshot: KomodoSnapshot | null;
   connected: boolean;
   events: DashboardEvent[];
+  agentLogs: Record<string, AgentLog[]>;
 }
 
 let eventCounter = 0;
+let logCounter = 0;
 
 export function useKomodoSocket(): UseKomodoSocketReturn {
   const [snapshot, setSnapshot] = useState<KomodoSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
   const [events, setEvents] = useState<DashboardEvent[]>([]);
+  const [agentLogs, setAgentLogs] = useState<Record<string, AgentLog[]>>({});
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -39,14 +43,38 @@ export function useKomodoSocket(): UseKomodoSocketReturn {
         if (msg.type === 'snapshot') {
           setSnapshot(msg.data);
         } else if (msg.type === 'event') {
+          const eventData = msg.data;
+
+          // Handle agent:output → accumulate in agent logs
+          if (eventData.type === 'agent:output' && eventData.agentName) {
+            const meta = eventData.metadata as Record<string, string>;
+            const log: AgentLog = {
+              id: `log-${++logCounter}`,
+              timestamp: eventData.timestamp,
+              kind: (meta?.kind as AgentLog['kind']) || 'text',
+              content: meta?.tool || meta?.text || '',
+              detail: meta?.input,
+            };
+            const agentName = eventData.agentName;
+            setAgentLogs((prev) => {
+              const current = prev[agentName] || [];
+              return {
+                ...prev,
+                [agentName]: [...current, log].slice(-MAX_AGENT_LOGS),
+              };
+            });
+            // Don't add agent:output to the main event timeline
+            return;
+          }
+
           // Apply incremental updates based on event type
           setSnapshot((prev) => {
             if (!prev) return prev;
-            return applyEvent(prev, msg.data);
+            return applyEvent(prev, eventData);
           });
 
           // Track event in timeline
-          const dashEvent = formatEvent(msg.data);
+          const dashEvent = formatEvent(eventData);
           if (dashEvent) {
             setEvents((prev) => [dashEvent, ...prev].slice(0, MAX_EVENTS));
           }
@@ -79,7 +107,7 @@ export function useKomodoSocket(): UseKomodoSocketReturn {
     };
   }, [connect]);
 
-  return { snapshot, connected, events };
+  return { snapshot, connected, events, agentLogs };
 }
 
 function applyEvent(
