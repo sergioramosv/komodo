@@ -1,7 +1,20 @@
 import { runAgent } from './base-agent.js';
 import { getCoderSystemPrompt, getCoderFixSystemPrompt } from '../prompts/coder-system.js';
+import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
+
+/**
+ * Build the MCP server list for the Coder agent.
+ * Always includes github-mcp; adds chrome-devtools when ENABLE_BROWSER_MCP=true.
+ */
+function getCoderMcpServers() {
+  const servers = ['github-mcp'];
+  if (config.enableBrowserMcp) {
+    servers.push('chrome-devtools');
+  }
+  return servers;
+}
 
 /**
  * Ejecuta el agente Coder para implementar una tarea.
@@ -48,7 +61,7 @@ Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, 
     name: 'CODER',
     systemPrompt,
     userPrompt,
-    mcpServerNames: ['github-mcp'],
+    mcpServerNames: getCoderMcpServers(),
     cwd,
     maxTurns: 50,
     totalTimeout: 900_000, // 15 min — total limit (no idle timer, Windows buffers stdout)
@@ -141,7 +154,7 @@ Devuelve el resultado como JSON con: fixed, issuesResolved, filesChanged, summar
     name: 'CODER',
     systemPrompt,
     userPrompt,
-    mcpServerNames: ['github-mcp'],
+    mcpServerNames: getCoderMcpServers(),
     cwd,
     maxTurns: 40,
     totalTimeout: 900_000, // 15 min — total limit (no idle timer, Windows buffers stdout)
