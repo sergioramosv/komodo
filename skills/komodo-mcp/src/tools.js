@@ -27,6 +27,7 @@ const { reviewPR } = await import('../../../src/agents/reviewer.js');
 const { run } = await import('../../../src/orchestrator.js');
 const { config, validateConfig } = await import('../../../src/config.js');
 const { runAgent } = await import('../../../src/agents/base-agent.js');
+const { eventBus, EVENT_TYPES } = await import('../../../src/events/event-bus.js');
 
 let runGh;
 try {
@@ -82,7 +83,21 @@ export const tools = {
         throw new Error('projectId requerido. No hay DEFAULT_PROJECT_ID configurado en .env.');
       }
 
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'PLANNER',
+        previousState: 'idle',
+        newState: 'working',
+        metadata: { phase: 'planning' },
+      });
+
       const result = await pickNextTask(pid);
+
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'PLANNER',
+        previousState: 'working',
+        newState: 'idle',
+        metadata: { phase: 'idle' },
+      });
 
       if (!result.success) {
         return { success: false, error: result.error, duration: result.duration };
@@ -150,7 +165,21 @@ export const tools = {
         bizPoints: params.bizPoints || 0,
       };
 
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'CODER',
+        previousState: 'idle',
+        newState: 'working',
+        metadata: { phase: 'coding', taskId: params.taskId },
+      });
+
       const result = await implementTask(taskSpec, params.cwd);
+
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'CODER',
+        previousState: 'working',
+        newState: 'idle',
+        metadata: { phase: 'idle' },
+      });
 
       if (!result.success) {
         return { success: false, error: result.error, duration: result.duration };
@@ -200,11 +229,25 @@ export const tools = {
         acceptanceCriteria: params.acceptanceCriteria || [],
       };
 
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'REVIEWER',
+        previousState: 'idle',
+        newState: 'working',
+        metadata: { phase: 'reviewing', prNumber: params.prNumber },
+      });
+
       const result = await reviewPR({
         prNumber: params.prNumber,
         repo: params.repo,
         taskSpec,
         cwd: params.cwd,
+      });
+
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'REVIEWER',
+        previousState: 'working',
+        newState: 'idle',
+        metadata: { phase: 'idle' },
       });
 
       if (!result.success) {
@@ -263,7 +306,21 @@ export const tools = {
         issues: params.reviewIssues.map(desc => ({ description: desc })),
       };
 
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'CODER',
+        previousState: 'idle',
+        newState: 'working',
+        metadata: { phase: 'coding', prNumber: params.prNumber, fixing: true },
+      });
+
       const result = await fixReviewIssues(taskSpec, params.prNumber, reviewFeedback, params.cwd);
+
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'CODER',
+        previousState: 'working',
+        newState: 'idle',
+        metadata: { phase: 'idle' },
+      });
 
       if (!result.success) {
         return { success: false, error: result.error, duration: result.duration };

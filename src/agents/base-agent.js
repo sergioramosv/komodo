@@ -253,7 +253,7 @@ export function buildMcpServers(serverNames) {
  * @param {Object}   options
  * @param {string}   [options.cwd]          - Working directory
  * @param {string}   [options.stdinData]    - Data to pipe to stdin (the prompt)
- * @param {number}   [options.idleTimeout]  - Kill if silent for this many ms (default 180s)
+ * @param {number}   [options.idleTimeout]  - Kill if silent for this many ms (default 600s)
  * @param {number}   [options.totalTimeout] - Kill after this many ms total (overrides idleTimeout)
  * @param {Function} [options.onOutput]     - Callback for stdout chunks
  * @returns {Promise<string>} stdout
@@ -302,7 +302,7 @@ function spawnCli(command, args, options = {}) {
       }, options.totalTimeout);
     } else {
       // Idle timeout: resets every time the CLI produces output.
-      const idleMs = options.idleTimeout || 180_000;
+      const idleMs = options.idleTimeout || 600_000;
 
       function startIdle() {
         return setTimeout(() => {
@@ -368,7 +368,7 @@ function spawnCli(command, args, options = {}) {
  * @param {string[]} [options.allowedTools]
  * @param {string[]} [options.disallowedTools]
  * @param {string}   [options.model]
- * @param {number}   [options.idleTimeout]  - Idle timeout ms (default 180000)
+ * @param {number}   [options.idleTimeout]  - Idle timeout ms (default 600000)
  * @param {number}   [options.totalTimeout] - Total timeout ms (overrides idleTimeout, use for Coder on Windows)
  * @returns {Promise<{success, result, rawResult, cost, turns, duration, error?}>}
  */
