@@ -152,7 +152,7 @@ describe('review-loop events', () => {
     await reviewLoop(baseOptions);
 
     expect(eventBus.emitAgentEvent).toHaveBeenCalledWith('CODER', 'working', expect.objectContaining({ fixing: true }));
-    expect(eventBus.emitAgentEvent).toHaveBeenCalledWith('CODER', 'done');
+    expect(eventBus.emitAgentEvent).toHaveBeenCalledWith('CODER', 'done', expect.objectContaining({ fixing: true }));
     expect(eventBus.emitAgentEvent).toHaveBeenCalledWith('CODER', 'idle');
   });
 
