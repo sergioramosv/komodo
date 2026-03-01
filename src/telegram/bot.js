@@ -1,7 +1,6 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-import { isAuthorized } from './auth.js';
 import { registerCommands } from './commands.js';
 
 const AGENT = 'TELEGRAM';
@@ -25,12 +24,14 @@ export function startBot() {
 
   bot = new TelegramBot(config.telegramBotToken, { polling: true });
 
-  // Auth middleware: intercept all messages before processing
+  // Log all incoming messages (auth is handled per-handler via withAuth)
   bot.on('message', (msg) => {
-    if (!isAuthorized(msg.from.id)) {
-      logger.warn(`Unauthorized message from user ${msg.from.id} (@${msg.from.username || 'unknown'})`, AGENT);
-      return;
-    }
+    logger.info(`Message from ${msg.from.id} (@${msg.from.username || 'unknown'}): ${msg.text || '[non-text]'}`, AGENT);
+  });
+
+  // Handle polling errors
+  bot.on('polling_error', (err) => {
+    logger.error(`Polling error: ${err.message}`, AGENT);
   });
 
   // Register commands
