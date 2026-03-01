@@ -2,117 +2,188 @@
 
 import React, { useRef, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Box, Sphere, Cylinder } from '@react-three/drei';
+import { Box, Sphere } from '@react-three/drei';
 import * as THREE from 'three';
 
-// Define positions and states for agents
 interface Agent3DProps {
   id: string; // 'PLANNER' | 'CODER' | 'REVIEWER'
   status: 'idle' | 'working' | 'walking';
-  color: string;
-  waitPosition: [number, number, number];
-  workPosition: [number, number, number];
-  lookAtWork: [number, number, number]; // Rotation when working (euler radians)
-  lookAtWait: [number, number, number]; // Rotation when waiting
+  hairColor: string;
+  shirtColor: string;
+  hairStyle: 'short' | 'long' | 'bun';
+  pathWaypoints: [number, number, number][]; // Array of points from Wait (idx 0) to Work (idx length-1)
+  rotationWork: [number, number, number]; // Rotation when working (euler radians)
+  rotationWait: [number, number, number]; // Rotation when waiting
   isWhiteboard?: boolean; // True for Planner (doesn't sit, no computer)
 }
 
-// Vector interpolation speed
 const LERP_SPEED = 3.5;
 
-export function Agent3D({ id, status, color, waitPosition, workPosition, lookAtWork, lookAtWait, isWhiteboard }: Agent3DProps) {
+export function Agent3D({ id, status, hairColor, shirtColor, hairStyle, pathWaypoints, rotationWork, rotationWait, isWhiteboard }: Agent3DProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const handsRef = useRef<THREE.Group>(null);
+  
+  const leftArmRef = useRef<THREE.Group>(null);
+  const rightArmRef = useRef<THREE.Group>(null);
+  const leftLegRef = useRef<THREE.Group>(null);
+  const rightLegRef = useRef<THREE.Group>(null);
+  
+  const [waypointIndex, setWaypointIndex] = useState(status === 'working' ? pathWaypoints.length - 1 : 0);
+  const targetIndex = status === 'working' ? pathWaypoints.length - 1 : 0;
+  const isAtDestination = waypointIndex === targetIndex;
 
-  // Determine current target position and rotation
-  const targetPosition = useMemo(() => new THREE.Vector3(...(status === 'working' ? workPosition : waitPosition)), [status, workPosition, waitPosition]);
-  const targetRotation = useMemo(() => new THREE.Euler(...(status === 'working' ? lookAtWork : lookAtWait)), [status, lookAtWork, lookAtWait]);
+  const targetRotation = useMemo(() => new THREE.Euler(...(status === 'working' ? rotationWork : rotationWait)), [status, rotationWork, rotationWait]);
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
 
-    // 1. Move position smoothly
-    groupRef.current.position.lerp(targetPosition, delta * LERP_SPEED);
+    const isSitting = status !== 'walking' && (!isWhiteboard || status !== 'working') && isAtDestination;
 
-    // 2. Rotate smoothly (quaternion slerp)
-    const currentQuat = groupRef.current.quaternion;
-    const targetQuat = new THREE.Quaternion().setFromEuler(targetRotation);
-    currentQuat.slerp(targetQuat, delta * LERP_SPEED);
+    const currentWaypoint = new THREE.Vector3(...pathWaypoints[waypointIndex]);
+    currentWaypoint.y = isSitting ? -0.3 : 0; 
 
-    // 3. Hands Animation
-    if (handsRef.current) {
-      const time = state.clock.elapsedTime;
-      // Define walking bobbing logic
-      const distanceToTarget = groupRef.current.position.distanceTo(targetPosition);
-      const isWalking = distanceToTarget > 0.1;
+    const distToWaypoint = groupRef.current.position.distanceTo(currentWaypoint);
 
+    if (distToWaypoint < 0.2 && !isAtDestination) {
+      setWaypointIndex(prev => prev < targetIndex ? prev + 1 : prev - 1);
+    }
+
+    groupRef.current.position.lerp(currentWaypoint, delta * LERP_SPEED);
+
+    let quatTarget = new THREE.Quaternion().setFromEuler(targetRotation);
+    
+    if (!isAtDestination && distToWaypoint > 0.5) {
+       const dir = currentWaypoint.clone().sub(groupRef.current.position).normalize();
+       const angle = Math.atan2(dir.x, dir.z);
+       quatTarget = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+    }
+
+    groupRef.current.quaternion.slerp(quatTarget, delta * LERP_SPEED);
+
+    const time = state.clock.elapsedTime;
+    const isWalking = !isAtDestination || distToWaypoint > 0.1;
+    
+    const walkSpeed = 15;
+    const walkAngle = Math.sin(time * walkSpeed) * 0.6;
+
+    if (leftArmRef.current && rightArmRef.current && leftLegRef.current && rightLegRef.current) {
       if (isWalking) {
-        // Walking arm swing
-        handsRef.current.children[0].position.z = Math.sin(time * 10) * 0.3;
-        handsRef.current.children[1].position.z = Math.sin(time * 10 + Math.PI) * 0.3;
-        handsRef.current.children[0].position.y = 0.5;
-        handsRef.current.children[1].position.y = 0.5;
+        leftArmRef.current.rotation.x = walkAngle;
+        rightArmRef.current.rotation.x = -walkAngle;
+        leftLegRef.current.rotation.x = -walkAngle;
+        rightLegRef.current.rotation.x = walkAngle;
+        leftArmRef.current.rotation.z = 0;
+        rightArmRef.current.rotation.z = 0;
       } else if (status === 'working') {
-        // Working / Typing / Drawing
-        if (isWhiteboard) {
-          // Drawing animation (one hand up)
-          handsRef.current.children[0].position.y = 1.0 + Math.sin(time * 5) * 0.2;
-          handsRef.current.children[0].position.z = 0.5 + Math.cos(time * 4) * 0.2;
-          handsRef.current.children[1].position.y = 0.5;
-          handsRef.current.children[1].position.z = 0.5;
+        if (isSitting) {
+          leftLegRef.current.rotation.x = -Math.PI / 2;
+          rightLegRef.current.rotation.x = -Math.PI / 2;
         } else {
-          // Typing animation
-          handsRef.current.children[0].position.y = 0.6 + Math.sin(time * 15) * 0.05;
-          handsRef.current.children[1].position.y = 0.6 + Math.cos(time * 18) * 0.05;
-          handsRef.current.children[0].position.z = 0.5;
-          handsRef.current.children[1].position.z = 0.5;
+          leftLegRef.current.rotation.x = 0;
+          rightLegRef.current.rotation.x = 0;
+        }
+
+        if (isWhiteboard) {
+          leftArmRef.current.rotation.x = -0.2;
+          rightArmRef.current.rotation.x = -Math.PI / 1.5 + Math.sin(time * 8) * 0.2;
+          rightArmRef.current.rotation.z = 0.2 + Math.cos(time * 6) * 0.1;
+        } else {
+          const typeAngle = -Math.PI / 2.5;
+          leftArmRef.current.rotation.x = typeAngle + Math.sin(time * 20) * 0.05;
+          rightArmRef.current.rotation.x = typeAngle + Math.cos(time * 25) * 0.05;
+          leftArmRef.current.rotation.z = 0.1;
+          rightArmRef.current.rotation.z = -0.1;
         }
       } else {
-        // Idle (hands resting)
-        handsRef.current.children[0].position.y = 0.4;
-        handsRef.current.children[1].position.y = 0.4;
-        handsRef.current.children[0].position.z = 0.2;
-        handsRef.current.children[1].position.z = 0.2;
+        if (isSitting) {
+          leftLegRef.current.rotation.x = -Math.PI / 2;
+          rightLegRef.current.rotation.x = -Math.PI / 2;
+        } else {
+          leftLegRef.current.rotation.x = 0;
+          rightLegRef.current.rotation.x = 0;
+        }
+        leftArmRef.current.rotation.x = 0;
+        rightArmRef.current.rotation.x = 0;
+        leftArmRef.current.rotation.z = 0;
+        rightArmRef.current.rotation.z = 0;
       }
     }
   });
 
-  const isAtDesk = status === 'working' && !isWhiteboard;
+  const isAtDesk = status === 'working' && !isWhiteboard && isAtDestination;
 
   return (
-    <group ref={groupRef} position={waitPosition}>
-      {/* Etiqueta Flotante */}
-      <mesh position={[0, 2.5, 0]}>
-        <planeGeometry args={[0.01, 0.01]} />
-        <meshBasicMaterial transparent opacity={0} />
-      </mesh>
-
-      {/* Cuerpo */}
-      <Box args={[0.8, 1, 0.6]} position={[0, 1, 0]} castShadow receiveShadow>
-        <meshStandardMaterial color={color} />
+    <group ref={groupRef} position={pathWaypoints[0]}>
+      <Box args={[0.5, 0.5, 0.5]} position={[0, 1.75, 0]} castShadow receiveShadow>
+        <meshStandardMaterial color="#fcd5ce" /> 
       </Box>
 
-      {/* Cabeza */}
-      <Sphere args={[0.4]} position={[0, 1.8, 0]} castShadow receiveShadow>
-        <meshStandardMaterial color={color} />
-      </Sphere>
+      {hairStyle === 'short' && (
+        <Box args={[0.55, 0.2, 0.55]} position={[0, 1.95, 0]} castShadow receiveShadow>
+          <meshStandardMaterial color={hairColor} />
+        </Box>
+      )}
+      {hairStyle === 'long' && (
+        <group>
+          <Box args={[0.55, 0.2, 0.55]} position={[0, 1.95, 0]} castShadow receiveShadow>
+            <meshStandardMaterial color={hairColor} />
+          </Box>
+          <Box args={[0.6, 0.5, 0.2]} position={[0, 1.6, -0.2]} castShadow receiveShadow>
+            <meshStandardMaterial color={hairColor} />
+          </Box>
+        </group>
+      )}
+      {hairStyle === 'bun' && (
+        <group>
+          <Box args={[0.55, 0.2, 0.55]} position={[0, 1.95, 0]} castShadow receiveShadow>
+            <meshStandardMaterial color={hairColor} />
+          </Box>
+          <Sphere args={[0.15]} position={[0, 2.05, -0.2]} castShadow receiveShadow>
+             <meshStandardMaterial color={hairColor} />
+          </Sphere>
+        </group>
+      )}
 
-      {/* Gafas/Ojos (para saber a dónde miran) */}
-      <Box args={[0.5, 0.15, 0.1]} position={[0, 1.85, 0.38]} castShadow>
+      <Box args={[0.08, 0.08, 0.05]} position={[-0.15, 1.75, 0.26]} castShadow>
+        <meshStandardMaterial color="#111" />
+      </Box>
+      <Box args={[0.08, 0.08, 0.05]} position={[0.15, 1.75, 0.26]} castShadow>
         <meshStandardMaterial color="#111" />
       </Box>
 
-      {/* Manos */}
-      <group ref={handsRef}>
-        <Sphere args={[0.15]} position={[-0.45, 0.5, 0.2]} castShadow>
-          <meshStandardMaterial color={color} />
-        </Sphere>
-        <Sphere args={[0.15]} position={[0.45, 0.5, 0.2]} castShadow>
-          <meshStandardMaterial color={color} />
-        </Sphere>
+      <Box args={[0.6, 0.7, 0.4]} position={[0, 1.15, 0]} castShadow receiveShadow>
+        <meshStandardMaterial color={shirtColor} />
+      </Box>
+
+      <group ref={leftArmRef} position={[-0.4, 1.4, 0]}>
+        <Box args={[0.2, 0.6, 0.2]} position={[0, -0.25, 0]} castShadow receiveShadow>
+           <meshStandardMaterial color={shirtColor} />
+        </Box>
+        <Box args={[0.2, 0.15, 0.2]} position={[0, -0.6, 0]} castShadow receiveShadow>
+           <meshStandardMaterial color="#fcd5ce" />
+        </Box>
       </group>
 
-      {/* Luz Point emit for computer face glow when working */}
+      <group ref={rightArmRef} position={[0.4, 1.4, 0]}>
+        <Box args={[0.2, 0.6, 0.2]} position={[0, -0.25, 0]} castShadow receiveShadow>
+           <meshStandardMaterial color={shirtColor} />
+        </Box>
+        <Box args={[0.2, 0.15, 0.2]} position={[0, -0.6, 0]} castShadow receiveShadow>
+           <meshStandardMaterial color="#fcd5ce" />
+        </Box>
+      </group>
+
+      <group ref={leftLegRef} position={[-0.15, 0.8, 0]}>
+        <Box args={[0.25, 0.8, 0.25]} position={[0, -0.4, 0]} castShadow receiveShadow>
+           <meshStandardMaterial color="#2980b9" />
+        </Box>
+      </group>
+
+      <group ref={rightLegRef} position={[0.15, 0.8, 0]}>
+        <Box args={[0.25, 0.8, 0.25]} position={[0, -0.4, 0]} castShadow receiveShadow>
+           <meshStandardMaterial color="#2980b9" />
+        </Box>
+      </group>
+
       {isAtDesk && (
         <pointLight position={[0, 1.5, 1]} intensity={3} distance={2} color="#aaf" />
       )}
