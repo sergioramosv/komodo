@@ -59,3 +59,17 @@ export interface WsEventMessage {
 }
 
 export type WsMessage = WsSnapshotMessage | WsEventMessage;
+
+/* ── Notifications ── */
+
+export type NotificationType = 'success' | 'warning' | 'error' | 'info';
+
+export interface KomodoNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  timestamp: string;
+  read: boolean;
+  source?: string; // event type that generated it
+}

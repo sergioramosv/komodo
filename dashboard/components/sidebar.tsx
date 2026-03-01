@@ -2,16 +2,19 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useNotifications } from '@/hooks/useNotifications';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: '▣' },
   { href: '/agents', label: 'Agents', icon: '⚙' },
+  { href: '/notifications', label: 'Notifications', icon: '🔔' },
   { href: '/memory', label: 'Memory', icon: '◉' },
   { href: '/settings', label: 'Settings', icon: '☰' },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { unreadCount } = useNotifications();
 
   return (
     <aside className="flex h-screen w-56 flex-col border-r border-neutral-800 bg-neutral-950 text-neutral-300">
@@ -22,6 +25,8 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 p-3">
         {NAV_ITEMS.map((item) => {
           const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+          const showBadge = item.href === '/notifications' && unreadCount > 0;
+
           return (
             <Link
               key={item.href}
@@ -34,6 +39,11 @@ export function Sidebar() {
             >
               <span className="text-base">{item.icon}</span>
               {item.label}
+              {showBadge && (
+                <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-bold text-white">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
             </Link>
           );
         })}

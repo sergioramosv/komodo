@@ -150,3 +150,23 @@
 .postit-pulse {
   animation: postit-glow 2s ease-in-out infinite;
 }
+
+/* ── Toast notifications ── */
+
+@keyframes toast-slide-in {
+  0% { transform: translateX(100%); opacity: 0; }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toast-slide-out {
+  0% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+.toast-enter {
+  animation: toast-slide-in 0.3s ease-out forwards;
+}
+
+.toast-exit {
+  animation: toast-slide-out 0.25s ease-in forwards;
+}
