@@ -359,3 +359,127 @@ function buildProgressBar(percent) {
   const empty = 10 - filled;
   return escapeMarkdown('\u2588'.repeat(filled) + '\u2591'.repeat(empty));
 }
+
+// --- Run command formatters ---
+
+/**
+ * Formats the immediate feedback when /run is triggered.
+ * @param {Object} options
+ * @param {number} options.tasks - Number of tasks (0 = all)
+ * @returns {string} MarkdownV2 message
+ */
+export function formatRunStarted({ tasks }) {
+  const mode = tasks === 0
+    ? 'todas las tareas del backlog'
+    : `${escapeMarkdown(String(tasks))} tarea${tasks > 1 ? 's' : ''}`;
+
+  return [
+    `\u{1F680} *Ejecuci\u00f3n iniciada*`,
+    ``,
+    `*Modo:* ${mode}`,
+    `_Recibir\u00e1s notificaciones de progreso\\.\\.\\._`,
+  ].join('\n');
+}
+
+/**
+ * Formats the summary after execution completes.
+ * @param {Object} result - From orchestrator.run()
+ * @param {number} result.tasksCompleted
+ * @param {number} result.tasksFailed
+ * @param {Array} result.results
+ * @returns {string} MarkdownV2 message
+ */
+export function formatRunSummary(result) {
+  const completed = escapeMarkdown(String(result.tasksCompleted));
+  const failed = escapeMarkdown(String(result.tasksFailed));
+
+  const lines = [
+    `\u{1F3C1} *Ejecuci\u00f3n finalizada*`,
+    ``,
+    `*Completadas:* ${completed}`,
+    `*Fallidas:* ${failed}`,
+  ];
+
+  // Add details per task result
+  for (const r of result.results) {
+    if (!r.taskId) continue;
+
+    const emoji = r.success ? '\u2705' : '\u274C';
+    const title = escapeMarkdown(r.taskTitle || r.taskId);
+    const detail = [];
+
+    if (r.prNumber) detail.push(`PR \\#${escapeMarkdown(String(r.prNumber))}`);
+    if (r.reviewCycles) detail.push(`${escapeMarkdown(String(r.reviewCycles))} review cycles`);
+    if (r.merged) detail.push('merged');
+
+    const suffix = detail.length > 0 ? ` \\(${detail.join(', ')}\\)` : '';
+    lines.push(`${emoji} ${title}${suffix}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Formats the dry-run result.
+ * @param {Object} result - From orchestrator.run() with dryRun=true
+ * @returns {string} MarkdownV2 message
+ */
+export function formatDryRunResult(result) {
+  if (!result.results || result.results.length === 0) {
+    return `\u{1F50D} *Dry\\-run*\n\nNo se pudo obtener resultado\\.`;
+  }
+
+  const dryResult = result.results[0];
+
+  if (!dryResult.task) {
+    return `\u{1F50D} *Dry\\-run*\n\nNo hay tareas pendientes en el backlog\\.`;
+  }
+
+  const task = dryResult.task;
+  const title = escapeMarkdown(task.title || 'Sin t\u00edtulo');
+  const taskId = escapeMarkdown(task.taskId || '?');
+  const branch = escapeMarkdown(task.branchName || '?');
+  const dev = escapeMarkdown(String(task.devPoints || '?'));
+  const biz = escapeMarkdown(String(task.bizPoints || '?'));
+
+  return [
+    `\u{1F50D} *Dry\\-run*`,
+    ``,
+    `*Siguiente tarea:* ${title}`,
+    `*ID:* \`${taskId}\``,
+    `*Branch:* \`${branch}\``,
+    `*Puntos:* biz\\=${biz} dev\\=${dev}`,
+  ].join('\n');
+}
+
+/**
+ * Formats the /stop confirmation.
+ * @returns {string} MarkdownV2 message
+ */
+export function formatStopConfirmed() {
+  return [
+    `\u{1F6D1} *Stop solicitado*`,
+    ``,
+    `_La ejecuci\u00f3n se detendr\u00e1 al terminar la tarea actual\\._`,
+  ].join('\n');
+}
+
+/**
+ * Formats the message when /run is called but execution is already running.
+ * @returns {string} MarkdownV2 message
+ */
+export function formatAlreadyRunning() {
+  return [
+    `\u26A0\uFE0F *Ya hay una ejecuci\u00f3n en curso*`,
+    ``,
+    `Usa /stop para detenerla o /status para ver el progreso\\.`,
+  ].join('\n');
+}
+
+/**
+ * Formats the message when /stop is called but nothing is running.
+ * @returns {string} MarkdownV2 message
+ */
+export function formatNothingRunning() {
+  return `\u2139\uFE0F No hay ninguna ejecuci\u00f3n en curso\\.`;
+}
