@@ -1,1 +1,68 @@
 @import 'tailwindcss';
+
+/* ── Agent avatar animations ── */
+
+@keyframes agent-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes agent-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+
+@keyframes agent-walk {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  25% { transform: translateY(-4px) rotate(-3deg); }
+  50% { transform: translateY(0) rotate(0deg); }
+  75% { transform: translateY(-4px) rotate(3deg); }
+}
+
+@keyframes agent-work-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+}
+
+@keyframes agent-typing {
+  0%, 100% { transform: translateY(0); }
+  25% { transform: translateY(-1px); }
+  75% { transform: translateY(1px); }
+}
+
+@keyframes agent-accessory-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* State animations on container */
+.agent-avatar.agent-idle {
+  animation: agent-breathe 3s ease-in-out infinite;
+}
+
+.agent-avatar.agent-walking {
+  animation: agent-walk 0.5s ease-in-out infinite;
+}
+
+.agent-avatar.agent-working {
+  animation: agent-work-bob 2s ease-in-out infinite;
+}
+
+/* Eye blinking — only when idle */
+.agent-avatar.agent-idle .agent-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: agent-blink 4s ease-in-out infinite;
+}
+
+/* Arm movement — only when working */
+.agent-avatar.agent-working .agent-arms {
+  transform-box: fill-box;
+  transform-origin: center top;
+  animation: agent-typing 0.8s ease-in-out infinite;
+}
+
+/* Accessory pulse — only when working */
+.agent-avatar.agent-working .agent-accessory {
+  animation: agent-accessory-pulse 1.5s ease-in-out infinite;
+}

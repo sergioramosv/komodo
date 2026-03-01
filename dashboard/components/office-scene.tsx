@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AgentName, Phase } from '@/lib/types';
 import type { AgentVisualState } from '@/hooks/useAgentStates';
+import { AgentAvatar } from './agent-avatar';
+import type { AgentType, AnimationState } from './agent-avatar';
 
 /* ── Types ── */
 
@@ -125,10 +127,13 @@ function ReviewCycleBadge({ cycle }: { cycle: number }) {
 
 function AgentCharacter({ agent, isMoving = false }: { agent: AgentVisualState; isMoving?: boolean }) {
   const colors = AGENT_COLORS[agent.name];
-  const isWorking = agent.status === 'working';
-  const shouldBounce = agent.status === 'walking' || isMoving;
   const showBubble = agent.activity && !isMoving;
   const showReviewCycle = agent.name === 'REVIEWER' && agent.reviewCycle > 0 && agent.status === 'working';
+
+  const avatarName = agent.name.toLowerCase() as AgentType;
+  let animState: AnimationState = 'idle';
+  if (isMoving || agent.status === 'walking') animState = 'walking';
+  else if (agent.status === 'working') animState = 'working';
 
   return (
     <div className="flex flex-col items-center gap-0.5">
@@ -139,16 +144,9 @@ function AgentCharacter({ agent, isMoving = false }: { agent: AgentVisualState; 
         {/* Review cycle badge */}
         {showReviewCycle && <ReviewCycleBadge cycle={agent.reviewCycle} />}
 
-        <div
-          className={`
-            relative w-9 h-9 rounded-full ${colors.bg}
-            flex items-center justify-center text-sm font-bold text-white
-            border-2 ${colors.border}
-            ${isWorking ? 'animate-pulse' : ''}
-            ${shouldBounce ? 'animate-bounce' : ''}
-          `}
-        >
-          {agent.name[0]}
+        <div className="relative">
+          <AgentAvatar name={avatarName} state={animState} size={32} />
+          {/* Status dot */}
           <div
             className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-[#16181d] ${
               agent.status === 'working'
@@ -197,9 +195,11 @@ function BossZone({ phase }: { phase: Phase }) {
 
       {/* Komodo boss character */}
       <div className="flex flex-col items-center">
-        <div className="w-11 h-11 rounded-full bg-emerald-600 border-2 border-emerald-400 flex items-center justify-center text-base font-bold text-white">
-          K
-        </div>
+        <AgentAvatar
+          name="komodo"
+          state={phase === 'idle' ? 'idle' : 'working'}
+          size={44}
+        />
         <span className="text-[10px] font-bold text-emerald-300 mt-0.5">KOMODO</span>
       </div>
     </div>
@@ -347,7 +347,7 @@ function AgentLayer({
   movingAgents: Set<AgentName>;
 }) {
   return (
-    <div className="relative w-full h-14 mt-1">
+    <div className="relative w-full h-16 mt-1">
       {Object.values(agents).map((agent) => {
         const left = getAgentLeft(agent);
         const isMoving = movingAgents.has(agent.name);
