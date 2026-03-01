@@ -38,6 +38,7 @@ export interface DashboardEvent {
   timestamp: string;
   agentName: string | null;
   message: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface WsSnapshotMessage {
