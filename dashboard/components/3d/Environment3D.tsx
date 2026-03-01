@@ -129,7 +129,7 @@ function Sofa({ position, rotation, color }: { position: [number, number, number
   );
 }
 
-function MiniSofa({ position, rotation, color }: { position: [number, number, number], rotation: [number, number, number], color?: string }) {
+function MiniSofa({ position, rotation, color="#3378d1ff" }: { position: [number, number, number], rotation: [number, number, number], color?: string }) {
   return (
     <group position={position} rotation={rotation}>
       <Box args={[1.5, 0.4, 1]} position={[0, 0.2, 0]} castShadow receiveShadow>
@@ -343,14 +343,14 @@ export function Environment3D({ agents }: Environment3DProps) {
       {/* -- ROOM 3: CODER (Abajo Izquierda: X=-5, Z=4) -- */}
       <WindowProps position={[-7.9, 1.5, 4]} rotation={[0, Math.PI / 2, 0]} />
       <LDesk position={[-6, 0, 4.5]} rotation={[0, Math.PI, 0]} />
-      <MiniSofa position={[-5.8, 0, 1.7]} rotation={[0, 0, 0]} color="#636363ff" />
+      <MiniSofa position={[-5.8, 0, 1.7]} rotation={[0, 0, 0]} color="#21578aff" />
       <PottedPlant position={[-7.2, 0, 1.7]} />
 
       {/* -- ROOM 4: REVIEWER (Abajo Derecha: X=5, Z=4) -- */}
       <LDesk position={[5, 0, 4.5]} rotation={[0, Math.PI, 0]} />
       <FilingCabinet position={[7.5, 0, 1.5]} rotation={[0, -Math.PI / 2, 0]} />
       <PottedPlant position={[7.5, 0, 6.5]} />
-      <Bookshelf position={[2.5, 0, 6.5]} rotation={[0, -Math.PI / 2, 0]} />
+      <Bookshelf position={[2.5, 0, 6]} rotation={[0, -Math.PI / 2, 0]} />
 
 
       {/* ==== AGENTES DINÁMICOS ==== */}

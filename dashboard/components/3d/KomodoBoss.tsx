@@ -142,13 +142,6 @@ export function KomodoBoss({ position }: { position: [number, number, number] })
           <meshStandardMaterial color="#00ff00" emissive="#00cc00" emissiveIntensity={0.6} />
         </Box>
         
-        {/* Monitor Secundario (Vertical) */}
-        <Box args={[0.7, 1.2, 0.1]} position={[-1.2, 1.5, 1.0]} rotation={[0, Math.PI / 4, 0]} castShadow receiveShadow>
-          <meshStandardMaterial color="#222" />
-        </Box>
-        <Box args={[0.6, 1.1, 0.11]} position={[-1.15, 1.5, 0.95]} rotation={[0, Math.PI / 4, 0]} castShadow>
-          <meshStandardMaterial color="#2196F3" emissive="#2196F3" emissiveIntensity={0.4} />
-        </Box>
 
         {/* Keyboard */}
         <Box args={[0.6, 0.02, 0.2]} position={[0, 0.86, 0.8]} rotation={[0, 0, 0]} castShadow>
