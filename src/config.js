@@ -61,6 +61,7 @@ export const config = {
     .split(',')
     .map(id => id.trim())
     .filter(Boolean),
+  telegramVerbosity: process.env.TELEGRAM_VERBOSITY || 'verbose', // 'verbose' | 'minimal'
 
   // Paths
   rootDir: ROOT_DIR,
