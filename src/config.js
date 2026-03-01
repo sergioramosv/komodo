@@ -49,6 +49,10 @@ export const config = {
   autoMerge: process.env.AUTO_MERGE !== 'false', // default: true
   defaultProjectId: process.env.DEFAULT_PROJECT_ID || '',
 
+  // Browser MCP (Chrome DevTools)
+  enableBrowserMcp: process.env.ENABLE_BROWSER_MCP === 'true',
+  chromeDebuggerPort: parseInt(process.env.CHROME_DEBUGGER_PORT || '9222', 10),
+
   // Paths
   rootDir: ROOT_DIR,
   memoryDir: resolve(ROOT_DIR, 'memory'),
