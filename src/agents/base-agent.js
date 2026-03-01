@@ -216,6 +216,16 @@ export function buildMcpServers(serverNames) {
       args: [resolve(config.memoryMcpDir, 'src', 'index.js')],
       env: {},
     },
+    ...(config.enableBrowserMcp ? {
+      'chrome-devtools': {
+        command: 'npx',
+        args: [
+          '-y', 'chrome-devtools-mcp@latest',
+          `--browserUrl=http://127.0.0.1:${config.chromeDebuggerPort}`,
+        ],
+        env: {},
+      },
+    } : {}),
   };
 
   const servers = {};
