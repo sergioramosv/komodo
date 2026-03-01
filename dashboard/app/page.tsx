@@ -4,8 +4,10 @@ import { useKomodoSocket } from '@/hooks/useKomodoSocket';
 import { useAgentStates } from '@/hooks/useAgentStates';
 import { useOfficeFeedback } from '@/hooks/useOfficeFeedback';
 import { ConnectionStatus } from '@/components/connection-status';
-import { OfficeScene } from '@/components/office-scene';
+import dynamic from 'next/dynamic';
 import { ExecutionControls } from '@/components/execution-controls';
+
+const OfficeScene3D = dynamic(() => import('@/components/office-scene-3d').then(mod => mod.OfficeScene3D), { ssr: false });
 import type { Phase, AgentStatus, DashboardEvent } from '@/lib/types';
 
 /* ── Phase config ── */
@@ -113,11 +115,9 @@ export default function DashboardPage() {
           />
 
           {/* Office Scene — real-time agent visualization */}
-          <OfficeScene
-            agents={agentStates.agents}
-            phase={agentStates.phase}
-            feedback={feedback}
-          />
+          <section className="h-[400px] w-full rounded-lg border border-neutral-800 bg-neutral-900 overflow-hidden">
+             <OfficeScene3D agents={agentStates.agents} />
+          </section>
 
           {/* Phase Indicator */}
           <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
