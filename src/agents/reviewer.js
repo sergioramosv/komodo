@@ -35,11 +35,35 @@ function getReviewerMcpServers() {
 export async function reviewPR({ prNumber, repo, taskSpec, cwd }) {
   logger.taskHeader(`REVIEWER - Revisando PR #${prNumber}`);
 
-  const systemPrompt = getReviewerSystemPrompt();
+  const systemPrompt = getReviewerSystemPrompt({
+    enableBrowserMcp: config.enableBrowserMcp,
+  });
 
   const criteriaList = (taskSpec.acceptanceCriteria || [])
     .map((c, i) => `${i + 1}. ${c}`)
     .join('\n');
+
+  const browserCheckInstruction = config.enableBrowserMcp
+    ? `
+5. Si la PR toca código frontend, haz browser validation:
+   a. Levanta el dev server con Bash en background
+   b. Navega a la app con navigate_page
+   c. Revisa consola con list_console_messages buscando errores y excepciones
+   d. Compara visualmente con los criterios de aceptación
+   e. Toma screenshot con take_screenshot como evidencia
+   f. Detén el dev server cuando termines
+   g. Incluye los resultados en una sección "Browser Validation" de tu review
+6. Registra cada issue en memoria con record_pattern()
+7. Envía la review con create_review():
+   - APPROVE si score >= 8 y sin issues critical/major
+   - REQUEST_CHANGES si hay issues critical/major o score < 8
+8. Devuelve el resultado como JSON con: verdict, score, issues, positives, summary`
+    : `
+5. Registra cada issue en memoria con record_pattern()
+6. Envía la review con create_review():
+   - APPROVE si score >= 8 y sin issues critical/major
+   - REQUEST_CHANGES si hay issues critical/major o score < 8
+7. Devuelve el resultado como JSON con: verdict, score, issues, positives, summary`;
 
   const userPrompt = `Revisa la Pull Request #${prNumber} del repositorio "${repo}".
 
@@ -54,11 +78,7 @@ ${criteriaList || 'No especificados'}
 1. Llama a get_review_brief() para ver errores frecuentes del coder
 2. Lee el diff completo con get_pr_diff({ repo: "${repo}", prNumber: ${prNumber} })
 3. Revisa cada criterio (correctitud, error handling, edge cases, naming, tests, seguridad)
-4. Registra cada issue en memoria con record_pattern()
-5. Envía la review con create_review():
-   - APPROVE si score >= 8 y sin issues critical/major
-   - REQUEST_CHANGES si hay issues critical/major o score < 8
-6. Devuelve el resultado como JSON con: verdict, score, issues, positives, summary`;
+4. Si necesitas más contexto, lee archivos del repo con Read/Glob/Grep${browserCheckInstruction}`;
 
   const result = await runAgent({
     name: 'REVIEWER',
