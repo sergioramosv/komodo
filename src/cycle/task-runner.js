@@ -292,10 +292,14 @@ export async function runTask(projectId, cwd) {
     if (!coderResult.success) {
       // Recovery: devolver tarea a to-do
       await rollbackTask(taskSpec.taskId);
-      return makeResult({
+      const result = makeResult({
         success: false, taskSpec, startTime,
         error: coderResult.error,
       });
+      eventBus.emitEvent(EVENT_TYPES.TASK_COMPLETED, {
+        metadata: { ...result, title: taskSpec.title },
+      });
+      return result;
     }
 
     prNumber = coderResult.pr.prNumber;
@@ -348,11 +352,15 @@ export async function runTask(projectId, cwd) {
       // Recovery: cerrar PR huérfana + devolver tarea a to-do
       closePR(repo, prNumber, reviewResult.error || 'Review no aprobada');
       await rollbackTask(taskSpec.taskId);
-      return makeResult({
+      const result = makeResult({
         success: false, taskSpec, prNumber, startTime,
         reviewCycles: reviewResult.cycles,
         error: reviewResult.error,
       });
+      eventBus.emitEvent(EVENT_TYPES.TASK_COMPLETED, {
+        metadata: { ...result, title: taskSpec.title },
+      });
+      return result;
     }
 
     // ═══════════════════════════════════════════
@@ -439,10 +447,14 @@ export async function runTask(projectId, cwd) {
       await rollbackTask(taskSpec.taskId);
     }
 
-    return makeResult({
+    const result = makeResult({
       success: false, taskSpec, prNumber, startTime,
       error: err.message,
     });
+    eventBus.emitEvent(EVENT_TYPES.TASK_COMPLETED, {
+      metadata: { ...result, title: taskSpec?.title },
+    });
+    return result;
   }
 }
 

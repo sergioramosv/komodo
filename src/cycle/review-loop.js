@@ -134,7 +134,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
       });
     }
 
-    eventBus.emitAgentEvent('CODER', 'done');
+    eventBus.emitAgentEvent('CODER', 'done', { cycle: i, fixing: true });
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'CODER',
       previousState: AGENT_STATES.WORKING,

@@ -2,6 +2,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { registerCommands } from './commands.js';
+import { startNotifier, stopNotifier } from './notifier.js';
 
 const AGENT = 'TELEGRAM';
 
@@ -37,6 +38,9 @@ export function startBot() {
   // Register commands
   registerCommands(bot);
 
+  // Start EventBus → Telegram notifications
+  startNotifier();
+
   logger.success('Telegram bot started', AGENT);
   return bot;
 }
@@ -48,6 +52,7 @@ export async function stopBot() {
   if (!bot) return;
 
   try {
+    stopNotifier();
     await bot.stopPolling();
     bot = null;
     logger.info('Telegram bot stopped', AGENT);
