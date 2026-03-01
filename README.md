@@ -228,6 +228,8 @@ cp .env.example .env
 | `MAX_REVIEW_CYCLES` | No | Maximo de rondas coder<->reviewer (default: 5) | `5` |
 | `AUTO_MERGE` | No | Auto-merge PRs aprobadas (default: true) | `true` / `false` |
 | `DEFAULT_PROJECT_ID` | No | Project ID por defecto (evita -p) | `-OmFja...` |
+| `ENABLE_BROWSER_MCP` | No | Habilitar Chrome DevTools MCP (default: false) | `true` / `false` |
+| `CHROME_DEBUGGER_PORT` | No | Puerto de Chrome remote debugging (default: 9222) | `9222` |
 
 Puedes mezclar CLIs: por ejemplo, Planner con Gemini (gratis), Coder con Claude (mejor para codigo), y Reviewer con Codex.
 
@@ -322,6 +324,9 @@ komodo/
 |   +-- utils/
 |       +-- logger.js             # Logging con colores por agente (chalk)
 |       +-- parser.js             # Extrae JSON de respuestas de agentes IA
+|
++-- scripts/
+|   +-- launch-chrome-debug.js    # Lanza Chrome con remote debugging
 |
 +-- skills/
 |   +-- planning-task-mcp/        # MCP de planificacion (38 tools, Firebase)
@@ -436,6 +441,40 @@ Sistema de memoria persistente. Guarda patrones de errores que comete el Coder p
 | `get_review_brief` | Devuelve resumen de los top errores (se inyecta al Reviewer) |
 | `record_review_outcome` | Registra si una review paso o fallo + numero de ciclos |
 | `get_stats` | Estadisticas: total reviews, pass rate, media de ciclos |
+
+### chrome-devtools (opcional)
+
+MCP externo que conecta los agentes con Chrome DevTools. Permite inspeccionar la consola del navegador, tomar screenshots, analizar network, performance y DOM en tiempo real. Util para detectar errores de runtime que solo se ven en el navegador.
+
+**Requisitos:** Chrome instalado y Node.js v20.19+.
+
+**Activar:**
+
+1. En `.env`, establecer `ENABLE_BROWSER_MCP=true`
+2. Lanzar Chrome con remote debugging antes de ejecutar Komodo:
+
+```bash
+# Opcion A: Usar el script incluido (detecta Chrome automaticamente)
+npm run chrome:debug
+
+# Opcion B: Lanzar Chrome manualmente
+# Windows:
+"C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222
+
+# macOS:
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+
+# Linux:
+google-chrome --remote-debugging-port=9222
+```
+
+3. Ejecutar Komodo normalmente. Los agentes que incluyan `chrome-devtools` en su lista de MCPs podran inspeccionar el navegador.
+
+**Puerto personalizado:** Cambiar `CHROME_DEBUGGER_PORT` en `.env` (default: 9222). El script `npm run chrome:debug` acepta `--port`:
+
+```bash
+npm run chrome:debug -- --port 9333
+```
 
 ## Dependencias
 
