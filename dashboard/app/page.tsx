@@ -2,6 +2,7 @@
 
 import { useKomodoSocket } from '@/hooks/useKomodoSocket';
 import { useAgentStates } from '@/hooks/useAgentStates';
+import { useOfficeFeedback } from '@/hooks/useOfficeFeedback';
 import { ConnectionStatus } from '@/components/connection-status';
 import { OfficeScene } from '@/components/office-scene';
 import type { Phase, AgentStatus, DashboardEvent } from '@/lib/types';
@@ -52,6 +53,7 @@ const EVENT_COLORS: Record<string, string> = {
 export default function DashboardPage() {
   const { snapshot, connected, events } = useKomodoSocket();
   const agentStates = useAgentStates(snapshot, connected);
+  const feedback = useOfficeFeedback(events, snapshot);
 
   return (
     <div className="space-y-6">
@@ -100,7 +102,12 @@ export default function DashboardPage() {
           </section>
 
           {/* Office Scene — real-time agent visualization */}
-          <OfficeScene agents={agentStates.agents} phase={agentStates.phase} />
+          <OfficeScene
+            agents={agentStates.agents}
+            phase={agentStates.phase}
+            feedback={feedback}
+            currentTaskTitle={snapshot?.taskDetails?.title ?? null}
+          />
 
           {/* Phase Indicator */}
           <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
