@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { KomodoSnapshot, WsMessage, WsEventMessage, DashboardEvent } from '@/lib/types';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:4681';
 const RECONNECT_DELAY = 3000;
 const MAX_EVENTS = 20;
 

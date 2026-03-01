@@ -44,7 +44,7 @@ export const config = {
   githubToken: process.env.GITHUB_TOKEN || '',
 
   // Komodo
-  wsPort: parseInt(process.env.WS_PORT || '3001', 10),
+  wsPort: parseInt(process.env.WS_PORT || '4681', 10),
   maxReviewCycles: parseInt(process.env.MAX_REVIEW_CYCLES || '5', 10),
   autoMerge: process.env.AUTO_MERGE !== 'false', // default: true
   defaultProjectId: process.env.DEFAULT_PROJECT_ID || '',

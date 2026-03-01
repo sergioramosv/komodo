@@ -264,7 +264,7 @@ export function createStandaloneServer() {
 const isMainModule = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 
 if (isMainModule) {
-  const PORT = parseInt(process.env.WS_PORT || '3001', 10);
+  const PORT = parseInt(process.env.WS_PORT || '4681', 10);
   const { httpServer, shutdown } = createStandaloneServer();
 
   httpServer.listen(PORT, () => {
