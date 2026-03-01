@@ -28,9 +28,9 @@ const MAX_BODY_SIZE = 1 * 1024 * 1024; // 1 MB
 function createInitialState() {
   return {
     agents: {
-      PLANNER: { name: 'PLANNER', status: 'idle', currentTask: null, startedAt: null, avatar: 'planner' },
-      CODER: { name: 'CODER', status: 'idle', currentTask: null, startedAt: null, avatar: 'coder' },
-      REVIEWER: { name: 'REVIEWER', status: 'idle', currentTask: null, startedAt: null, avatar: 'reviewer' },
+      PLANNER: { name: 'PLANNER', status: 'idle', currentTask: null, startedAt: null, avatar: 'planner', cli: null, model: null, totalCost: 0, totalTurns: 0, completedTasks: 0 },
+      CODER: { name: 'CODER', status: 'idle', currentTask: null, startedAt: null, avatar: 'coder', cli: null, model: null, totalCost: 0, totalTurns: 0, completedTasks: 0 },
+      REVIEWER: { name: 'REVIEWER', status: 'idle', currentTask: null, startedAt: null, avatar: 'reviewer', cli: null, model: null, totalCost: 0, totalTurns: 0, completedTasks: 0 },
     },
     phase: 'idle',
     currentTask: null,

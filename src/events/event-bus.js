@@ -5,6 +5,7 @@ import { EventEmitter } from 'events';
  */
 export const EVENT_TYPES = {
   AGENT_STATE_CHANGE: 'agent:state-change',
+  AGENT_OUTPUT: 'agent:output',
   TASK_STARTED: 'task:started',
   TASK_COMPLETED: 'task:completed',
   REVIEW_CYCLE: 'review:cycle',
