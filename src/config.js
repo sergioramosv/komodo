@@ -62,6 +62,7 @@ export const config = {
     .map(id => id.trim())
     .filter(Boolean),
   telegramVerbosity: process.env.TELEGRAM_VERBOSITY || 'verbose', // 'verbose' | 'minimal'
+  telegramClaudeTimeout: parseInt(process.env.TELEGRAM_CLAUDE_TIMEOUT || '120000', 10),
 
   // Paths
   rootDir: ROOT_DIR,

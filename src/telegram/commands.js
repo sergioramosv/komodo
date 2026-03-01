@@ -17,6 +17,8 @@ const COMMANDS_LIST = [
   '/run all - Ejecuta todas las tareas del backlog',
   '/dryrun - Muestra qu\u00e9 tarea se ejecutar\u00eda sin hacerlo',
   '/stop - Detiene la ejecuci\u00f3n actual',
+  '',
+  'Texto libre \u2192 se env\u00eda como prompt a Claude Code',
 ];
 
 /**

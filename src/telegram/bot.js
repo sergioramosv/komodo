@@ -2,6 +2,7 @@ import TelegramBot from 'node-telegram-bot-api';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { registerCommands } from './commands.js';
+import { registerTerminalHandler } from './claude-terminal.js';
 import { startNotifier, stopNotifier } from './notifier.js';
 
 const AGENT = 'TELEGRAM';
@@ -37,6 +38,9 @@ export function startBot() {
 
   // Register commands
   registerCommands(bot);
+
+  // Register free-text terminal handler (non-command messages → Claude Code)
+  registerTerminalHandler(bot);
 
   // Start EventBus → Telegram notifications
   startNotifier();
