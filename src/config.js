@@ -53,6 +53,15 @@ export const config = {
   enableBrowserMcp: process.env.ENABLE_BROWSER_MCP === 'true',
   chromeDebuggerPort: parseInt(process.env.CHROME_DEBUGGER_PORT || '9222', 10),
 
+  // Telegram Bot
+  enableTelegram: process.env.ENABLE_TELEGRAM === 'true',
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
+  telegramAllowedUsers: (process.env.TELEGRAM_ALLOWED_USERS || '')
+    .split(',')
+    .map(id => id.trim())
+    .filter(Boolean),
+
   // Paths
   rootDir: ROOT_DIR,
   memoryDir: resolve(ROOT_DIR, 'memory'),
