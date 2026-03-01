@@ -106,7 +106,6 @@ export default function DashboardPage() {
             agents={agentStates.agents}
             phase={agentStates.phase}
             feedback={feedback}
-            currentTaskTitle={snapshot?.taskDetails?.title ?? null}
           />
 
           {/* Phase Indicator */}

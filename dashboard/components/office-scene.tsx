@@ -13,7 +13,6 @@ interface OfficeSceneProps {
   agents: Record<AgentName, AgentVisualState>;
   phase: Phase;
   feedback?: OfficeFeedback;
-  currentTaskTitle?: string | null;
 }
 
 /* ── Movement constants ── */
@@ -529,7 +528,7 @@ function PlantPot() {
 
 /* ── Main Component ── */
 
-export function OfficeScene({ agents, phase, feedback, currentTaskTitle }: OfficeSceneProps) {
+export function OfficeScene({ agents, phase, feedback }: OfficeSceneProps) {
   const movingAgents = useAgentMovement(agents);
 
   return (

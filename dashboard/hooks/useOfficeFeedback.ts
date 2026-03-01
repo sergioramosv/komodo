@@ -28,6 +28,9 @@ export function useOfficeFeedback(
   const [reviewVerdict, setReviewVerdict] = useState<OfficeFeedback['reviewVerdict']>(null);
   const [prNotification, setPrNotification] = useState<OfficeFeedback['prNotification']>(null);
   const lastEventIdRef = useRef<string | null>(null);
+  const confettiTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const verdictTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (events.length === 0) return;
@@ -37,9 +40,9 @@ export function useOfficeFeedback(
 
     // Task completed → confetti
     if (latest.type === 'task:completed') {
+      if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current);
       setShowConfetti(true);
-      const timer = setTimeout(() => setShowConfetti(false), CONFETTI_DURATION_MS);
-      return () => clearTimeout(timer);
+      confettiTimerRef.current = setTimeout(() => setShowConfetti(false), CONFETTI_DURATION_MS);
     }
 
     // Review verdict → green check or red X
@@ -47,9 +50,9 @@ export function useOfficeFeedback(
       const verdict = latest.metadata?.verdict as string | undefined;
       const cycle = (latest.metadata?.cycle as number) ?? 1;
       if (verdict === 'APPROVED' || verdict === 'REQUEST_CHANGES') {
+        if (verdictTimerRef.current) clearTimeout(verdictTimerRef.current);
         setReviewVerdict({ type: verdict, cycle });
-        const timer = setTimeout(() => setReviewVerdict(null), VERDICT_DURATION_MS);
-        return () => clearTimeout(timer);
+        verdictTimerRef.current = setTimeout(() => setReviewVerdict(null), VERDICT_DURATION_MS);
       }
     }
 
@@ -57,12 +60,21 @@ export function useOfficeFeedback(
     if (latest.type === 'pr:created') {
       const prNumber = latest.metadata?.prNumber as number | undefined;
       if (prNumber) {
+        if (prTimerRef.current) clearTimeout(prTimerRef.current);
         setPrNotification({ number: prNumber });
-        const timer = setTimeout(() => setPrNotification(null), PR_NOTIFICATION_DURATION_MS);
-        return () => clearTimeout(timer);
+        prTimerRef.current = setTimeout(() => setPrNotification(null), PR_NOTIFICATION_DURATION_MS);
       }
     }
   }, [events]);
+
+  // Cleanup all timers on unmount
+  useEffect(() => {
+    return () => {
+      if (confettiTimerRef.current) clearTimeout(confettiTimerRef.current);
+      if (verdictTimerRef.current) clearTimeout(verdictTimerRef.current);
+      if (prTimerRef.current) clearTimeout(prTimerRef.current);
+    };
+  }, []);
 
   const reviewCycleDisplay = snapshot && snapshot.reviewCycle > 0
     ? { current: snapshot.reviewCycle, max: DEFAULT_MAX_REVIEW_CYCLES }
