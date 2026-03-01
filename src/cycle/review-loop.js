@@ -86,7 +86,11 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
 
       eventBus.emitEvent(EVENT_TYPES.REVIEW_CYCLE_END, {
         agentName: 'REVIEWER',
-        metadata: { cycle: i, maxCycles, prNumber, verdict: 'APPROVED' },
+        metadata: {
+          cycle: i, maxCycles, prNumber, verdict: 'APPROVED',
+          score: lastReview.score,
+          issuesCount: (lastReview.issues || []).length,
+        },
       });
 
       return {
@@ -102,7 +106,11 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
 
       eventBus.emitEvent(EVENT_TYPES.REVIEW_CYCLE_END, {
         agentName: 'REVIEWER',
-        metadata: { cycle: i, maxCycles, prNumber, verdict: 'REQUEST_CHANGES' },
+        metadata: {
+          cycle: i, maxCycles, prNumber, verdict: 'REQUEST_CHANGES',
+          score: lastReview.score,
+          issuesCount: (lastReview.issues || []).length,
+        },
       });
 
       break;
@@ -110,7 +118,11 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
 
     eventBus.emitEvent(EVENT_TYPES.REVIEW_CYCLE_END, {
       agentName: 'REVIEWER',
-      metadata: { cycle: i, maxCycles, prNumber, verdict: 'REQUEST_CHANGES' },
+      metadata: {
+        cycle: i, maxCycles, prNumber, verdict: 'REQUEST_CHANGES',
+        score: lastReview.score,
+        issuesCount: (lastReview.issues || []).length,
+      },
     });
 
     // === CODER FIX ===
@@ -134,7 +146,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
       });
     }
 
-    eventBus.emitAgentEvent('CODER', 'done', { cycle: i, fixing: true });
+    eventBus.emitAgentEvent('CODER', 'done', { cycle: i, fixing: true, summary: fixResult.fix?.summary || '' });
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'CODER',
       previousState: AGENT_STATES.WORKING,

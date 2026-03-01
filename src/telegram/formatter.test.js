@@ -68,22 +68,25 @@ describe('escapeUrl', () => {
 });
 
 describe('formatTaskStarted', () => {
-  it('formats with full metadata', () => {
+  it('formats with full metadata including priority', () => {
     const result = formatTaskStarted({
       title: 'Add login',
       branchName: 'feat/login',
       taskId: 'TASK-1',
+      priority: 8,
     });
     expect(result).toContain('*Planner eligió tarea*');
     expect(result).toContain('Add login');
     expect(result).toContain('`TASK\\-1`');
     expect(result).toContain('`feat/login`');
+    expect(result).toContain('*Prioridad:* 8');
   });
 
   it('uses defaults for missing metadata', () => {
     const result = formatTaskStarted({});
     expect(result).toContain('Sin título');
     expect(result).toContain('`?`');
+    expect(result).not.toContain('*Prioridad:*');
   });
 });
 

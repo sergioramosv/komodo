@@ -253,6 +253,7 @@ export async function runTask(projectId, cwd) {
         title: taskSpec.title,
         branchName: taskSpec.branchName,
         repo,
+        priority: taskSpec.bizPoints || null,
       },
     });
 
@@ -312,6 +313,8 @@ export async function runTask(projectId, cwd) {
         repo,
         taskId: taskSpec.taskId,
         branchName: taskSpec.branchName,
+        filesChanged: coderResult.pr.filesChanged || [],
+        summary: coderResult.pr.summary || '',
       },
     });
 

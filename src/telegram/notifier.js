@@ -55,7 +55,7 @@ function sendNotification(text) {
  * @param {string} eventType
  * @returns {boolean}
  */
-function shouldNotify(eventType) {
+export function shouldNotify(eventType) {
   const verbosity = config.telegramVerbosity;
 
   if (MINIMAL_EVENTS.has(eventType)) return true;

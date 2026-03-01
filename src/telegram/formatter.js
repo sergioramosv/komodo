@@ -40,13 +40,19 @@ export function formatTaskStarted(metadata) {
   const branch = escapeMarkdown(metadata.branchName || '?');
   const taskId = escapeMarkdown(metadata.taskId || '?');
 
-  return [
+  const lines = [
     `\u{1F4CB} *Planner eligió tarea*`,
     ``,
     `*Tarea:* ${title}`,
     `*ID:* \`${taskId}\``,
     `*Branch:* \`${branch}\``,
-  ].join('\n');
+  ];
+
+  if (metadata.priority != null) {
+    lines.push(`*Prioridad:* ${escapeMarkdown(String(metadata.priority))}`);
+  }
+
+  return lines.join('\n');
 }
 
 /**
