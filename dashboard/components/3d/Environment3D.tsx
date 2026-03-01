@@ -218,7 +218,7 @@ function PottedPlant({ position }: { position: [number, number, number] }) {
   return (
     <group position={position}>
       <Cylinder args={[0.3, 0.2, 0.5]} position={[0, 0.25, 0]} castShadow>
-        <meshStandardMaterial color="#d4a373" />
+        <meshStandardMaterial color="#aaaaaaff" />
       </Cylinder>
       <Sphere args={[0.5]} position={[0, 0.8, 0]} castShadow>
         <meshStandardMaterial color="#2ecc71" />
@@ -254,15 +254,15 @@ function WallPainting({ position, rotation }: { position: [number, number, numbe
 }
 
 export function Environment3D({ agents }: Environment3DProps) {
-  const plannerState = agents?.PLANNER?.status || 'idle';
-  const coderState = agents?.CODER?.status || 'idle';
-  const reviewerState = agents?.REVIEWER?.status || 'idle';
+  const plannerState = agents?.PLANNER?.status || 'working';
+  const coderState = agents?.CODER?.status || 'working';
+  const reviewerState = agents?.REVIEWER?.status || 'working';
 
   return (
     <group>
       {/* Floor - Light wood/grey */}
       <Plane args={[16, 14]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, 0, 0]}>
-        <meshStandardMaterial color="#c19a6b" /> {/* Madera Losas */}
+        <meshStandardMaterial color="#aaaaaaff" /> {/* Madera Losas */}
       </Plane>
 
       {/* Breakroom floor (Tile) */}
@@ -271,13 +271,13 @@ export function Environment3D({ agents }: Environment3DProps) {
       </Plane>
 
       {/* Floor Labels */}
-      <Text position={[-4.5, 0.03, -2.8]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1.2} color="#7f8c8d" fillOpacity={0.6}>
+      <Text position={[-4.5, 0.03, -2.8]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1} color="#7f8c8d" fillOpacity={0.6}>
         PLANNER
       </Text>
-      <Text position={[-5, 0.03, 4]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1.2} color="#7f8c8d" fillOpacity={0.6}>
+      <Text position={[-5, 0.03, 3]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1} color="#7f8c8d" fillOpacity={0.6}>
         CODER
       </Text>
-      <Text position={[5, 0.03, 4]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1.2} color="#7f8c8d" fillOpacity={0.6}>
+      <Text position={[5, 0.03, 3]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1} color="#7f8c8d" fillOpacity={0.6}>
         REVIEWER
       </Text>
 
@@ -367,11 +367,11 @@ export function Environment3D({ agents }: Environment3DProps) {
           [-1.2, 0, 2.5],     // Sale de Breakroom
           [-2.5, 0, 0],       // Pasillo frente a su puerta
           [-2.5, 0, -4.5],    // Puerta de Planner hacia el escritorio
-          [-5.5, 0, -4.5]     // Frente al escritorio (Trabajando) en LDesk
+          [-3.5, 0, -5.8]     // Frente a Pizarra blanca (Trabajando) en Z=-6.8
         ]}
         rotationWait={[0, Math.PI, 0]}            
-        rotationWork={[0, Math.PI / 2, 0]}        
-        isWhiteboard={false}
+        rotationWork={[0, Math.PI, 0]}        
+        isWhiteboard={true}
       />
 
       {/* CODER */}
@@ -386,7 +386,7 @@ export function Environment3D({ agents }: Environment3DProps) {
           [0, 0, 2.5],        // Sale hacia puerta
           [-3, 0, 0],         // Pasillo hacia puerta Coder
           [-3, 0, 5.3],       // Entra en su habitacion Coder hacia la silla
-          [-6, 0, 5.3]        // Sentado en su silla
+          [-6, 0, 5.5]        // Sentado en su silla
         ]}
         rotationWait={[0, Math.PI, 0]}
         rotationWork={[0, Math.PI, 0]}
@@ -404,7 +404,7 @@ export function Environment3D({ agents }: Environment3DProps) {
           [1.2, 0, 2.5],      // Sale hacia puerta
           [3, 0, 0],          // Pasillo hacia puerta Reviewer
           [3, 0, 5.3],        // Entra en su habitacion Reviewer hacia la silla
-          [5, 0, 5.3]         // Sentado en su silla
+          [5, 0, 5.5]         // Sentado en su silla
         ]}
         rotationWait={[0, Math.PI, 0]}
         rotationWork={[0, Math.PI, 0]}
