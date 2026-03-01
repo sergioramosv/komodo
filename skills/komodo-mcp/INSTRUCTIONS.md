@@ -89,6 +89,7 @@ komodo_finalize({
 3. **El parámetro `cwd`** es el directorio del repositorio TARGET (donde se escribe código), NO el directorio de Komodo
 4. **Si hay error**, muestra el error completo y pregunta cómo proceder
 5. **El `repo`** siempre en formato `owner/repo` (ej: `SergioRVDev/my-app`)
+6. **PROHIBIDO USAR `planning-task-mcp` DIRECTAMENTE**. No llames a `list_tasks` ni otras tools de base de datos bajo NINGÚN CONCEPTO. Tienes que usar `komodo_plan` **SIEMPRE**, ya que esta tool es la única que activa las animaciones del agente Planner en el frontend.
 
 ## Tool: `komodo_status`
 

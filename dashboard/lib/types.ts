@@ -17,6 +17,7 @@ export interface AgentState {
   totalCost?: number;
   totalTurns?: number;
   completedTasks?: number;
+  browserValidation?: boolean;
 }
 
 /* ── Agent Logs ── */

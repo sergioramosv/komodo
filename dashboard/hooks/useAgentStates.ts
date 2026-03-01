@@ -26,6 +26,9 @@ export function getAgentActivity(agent: AgentState, phase: Phase): string | null
   if (agent.status === 'walking') return 'Walking to desk...';
   if (agent.status === 'done') return 'Done!';
 
+  // Browser validation mode takes priority
+  if (agent.browserValidation) return 'Browser validation...';
+
   // Working — derive activity from agent name + phase
   if (agent.currentTask) return agent.currentTask;
 
