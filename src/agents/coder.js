@@ -33,7 +33,7 @@ function getCoderMcpServers() {
 export async function implementTask(taskSpec, cwd) {
   logger.taskHeader(`CODER - Implementando: ${taskSpec.title}`);
 
-  const systemPrompt = getCoderSystemPrompt();
+  const systemPrompt = getCoderSystemPrompt({ enableBrowserMcp: config.enableBrowserMcp });
 
   const userPrompt = `Implementa la siguiente tarea:
 
@@ -122,7 +122,7 @@ Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, 
 export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd) {
   logger.taskHeader(`CODER - Arreglando issues de PR #${prNumber}`);
 
-  const systemPrompt = getCoderFixSystemPrompt();
+  const systemPrompt = getCoderFixSystemPrompt({ enableBrowserMcp: config.enableBrowserMcp });
 
   const issuesList = (reviewFeedback.issues || [])
     .map((issue, i) => `${i + 1}. ${typeof issue === 'string' ? issue : issue.description || JSON.stringify(issue)}`)

@@ -4,7 +4,28 @@
  * El Coder tiene acceso a github-mcp + tools nativos del CLI (Read, Write, Edit, Bash, etc.)
  * Su trabajo: implementar código, crear branch, push, abrir PR.
  */
-export function getCoderSystemPrompt() {
+export function getCoderSystemPrompt({ enableBrowserMcp = false } = {}) {
+  const browserToolsSection = enableBrowserMcp
+    ? `
+- **chrome-devtools** — para verificar la app en el navegador:
+  - \`navigate_page\` — navegar a una URL
+  - \`list_console_messages\` — ver mensajes de consola (errores, warnings)
+  - \`take_screenshot\` — capturar screenshot de la página
+  - \`evaluate_script\` — ejecutar JavaScript en el contexto de la página`
+    : '';
+
+  const browserCheckStep = enableBrowserMcp
+    ? `
+5. **Browser check (solo frontend)** — Si la tarea involucra código frontend (React, CSS, HTML, UI):
+   a. Ejecuta el dev server (\`npm run dev\` o similar) con Bash en background
+   b. Usa \`navigate_page\` para abrir la URL de la app (normalmente http://localhost:5173 o http://localhost:3000)
+   c. Usa \`list_console_messages\` para revisar la consola del navegador
+   d. Si hay errores (console.error, excepciones, errores de TypeScript/React), arregla el código ANTES de continuar
+   e. Usa \`take_screenshot\` para capturar evidencia de que la página renderiza correctamente
+   f. Detén el dev server cuando termines
+   g. **Si la tarea es solo backend/config/scripts**, salta este paso completamente`
+    : '';
+
   return `Eres el CODER de Komodo, un agente IA especializado en implementar código de alta calidad.
 
 ## Tu rol
@@ -26,16 +47,16 @@ Tienes acceso a:
 - **Herramientas de código** — Read, Write, Edit, Bash, Glob, Grep (las del CLI)
 - **github-mcp** — para crear branches y PRs:
   - \`create_branch\` — crear la branch de feature
-  - \`create_pr\` — abrir la Pull Request
+  - \`create_pr\` — abrir la Pull Request${browserToolsSection}
 
 ## Flujo de trabajo para implementar una tarea
 
 1. **Explorar** — Lee el código existente para entender la estructura y convenciones
 2. **Crear branch** — Usa \`create_branch\` con el nombre proporcionado
 3. **Implementar** — Escribe el código necesario siguiendo las convenciones del repo
-4. **Testear** — Si hay tests, ejecuta \`npm test\` o el comando equivalente
-5. **Commit y push** — Commitea con mensaje descriptivo y haz push
-6. **Abrir PR** — Usa \`create_pr\` con título y descripción clara
+4. **Testear** — Si hay tests, ejecuta \`npm test\` o el comando equivalente${browserCheckStep}
+${enableBrowserMcp ? '6' : '5'}. **Commit y push** — Commitea con mensaje descriptivo y haz push
+${enableBrowserMcp ? '7' : '6'}. **Abrir PR** — Usa \`create_pr\` con título y descripción clara
 
 ## Formato de respuesta
 
@@ -68,7 +89,21 @@ DEBES responder con un JSON con esta estructura:
 /**
  * System prompt para el Coder cuando tiene que arreglar issues de una review.
  */
-export function getCoderFixSystemPrompt() {
+export function getCoderFixSystemPrompt({ enableBrowserMcp = false } = {}) {
+  const browserToolsSection = enableBrowserMcp
+    ? `
+- **chrome-devtools** — para verificar los arreglos en el navegador:
+  - \`navigate_page\` — navegar a una URL
+  - \`list_console_messages\` — ver mensajes de consola (errores, warnings)
+  - \`take_screenshot\` — capturar screenshot de la página
+  - \`evaluate_script\` — ejecutar JavaScript en el contexto de la página`
+    : '';
+
+  const browserCheckNote = enableBrowserMcp
+    ? `
+6. **Si el fix es frontend**, levanta el dev server, verifica con \`list_console_messages\` que no hay errores nuevos, y toma un screenshot como evidencia`
+    : '';
+
   return `Eres el CODER de Komodo. El Reviewer ha encontrado problemas en tu PR y necesitas arreglarlos.
 
 ## Tu rol
@@ -86,7 +121,7 @@ Lee el feedback del Reviewer, entiende cada issue, y arréglalo en el código. N
 ## Herramientas disponibles
 
 - **Herramientas de código** — Read, Write, Edit, Bash, Glob, Grep
-- **github-mcp** — NO necesitas crear branch ni PR nueva, solo pushear
+- **github-mcp** — NO necesitas crear branch ni PR nueva, solo pushear${browserToolsSection}${browserCheckNote}
 
 ## Formato de respuesta
 
