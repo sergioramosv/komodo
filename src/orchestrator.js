@@ -2,11 +2,11 @@ import { runTask, runTaskDryRun } from './cycle/task-runner.js';
 import { validateConfig, config } from './config.js';
 import { logger } from './utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from './events/event-bus.js';
-import { komodoState, PHASES } from './state/komodo-state.js';
+import { komodoState, PHASES, EXECUTION_STATES } from './state/komodo-state.js';
 import { KomodoWsServer } from './server/ws-server.js';
 
 // Re-export para que consumidores externos puedan suscribirse
-export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES };
+export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES };
 
 /**
  * Ejecuta N tareas del backlog de un proyecto.
@@ -65,6 +65,7 @@ export async function run(projectId, options = {}) {
     reviewCycle: 0,
     tasksCompleted: 0,
   });
+  komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
 
   // Iniciar WebSocket server para dashboard en tiempo real
   const wsServer = new KomodoWsServer();
@@ -81,6 +82,18 @@ export async function run(projectId, options = {}) {
 
   while (true) {
     taskNumber++;
+
+    // Check for stop signal before starting a new task
+    if (komodoState.isStopRequested()) {
+      logger.info('Stop requested. Stopping orchestrator.', 'KOMODO');
+      break;
+    }
+
+    // Check for pause signal between tasks
+    if (komodoState.isPauseRequested()) {
+      logger.info('Pause requested. Pausing after completing last task.', 'KOMODO');
+      break;
+    }
 
     // ¿Hemos llegado al límite de tareas?
     if (!continuous && taskNumber > maxTasks) break;
@@ -117,6 +130,9 @@ export async function run(projectId, options = {}) {
       if (!continuous) break;
     }
   }
+
+  // Set state to stopped when loop ends
+  komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
 
   // Detener WebSocket server
   await wsServer.stop();

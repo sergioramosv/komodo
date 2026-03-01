@@ -13,6 +13,7 @@ interface UseKomodoSocketReturn {
   connected: boolean;
   events: DashboardEvent[];
   agentLogs: Record<string, AgentLog[]>;
+  sendCommand: (command: 'pause' | 'stop') => void;
 }
 
 let eventCounter = 0;
@@ -95,6 +96,13 @@ export function useKomodoSocket(): UseKomodoSocketReturn {
     };
   }, []);
 
+  const sendCommand = useCallback((command: 'pause' | 'stop') => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'command', command }));
+    }
+  }, []);
+
   useEffect(() => {
     connect();
 
@@ -107,7 +115,7 @@ export function useKomodoSocket(): UseKomodoSocketReturn {
     };
   }, [connect]);
 
-  return { snapshot, connected, events, agentLogs };
+  return { snapshot, connected, events, agentLogs, sendCommand };
 }
 
 function applyEvent(
@@ -154,6 +162,11 @@ function applyEvent(
         next.reviewCycle = (event.metadata as { cycle: number }).cycle;
       }
       break;
+    case 'execution:state-change':
+      if ((event.metadata as { current?: string }).current) {
+        next.executionState = (event.metadata as { current: string }).current as KomodoSnapshot['executionState'];
+      }
+      break;
   }
 
   return next;
@@ -187,6 +200,9 @@ function formatEvent(event: WsEventMessage['data']): DashboardEvent | null {
       break;
     case 'review:cycle:end':
       message = `Review cycle ${meta.cycle ?? ''} ended — ${meta.verdict ?? 'done'}`;
+      break;
+    case 'execution:state-change':
+      message = `Execution state changed to ${meta.current ?? 'unknown'}`;
       break;
     default:
       message = event.type;

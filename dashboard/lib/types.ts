@@ -4,6 +4,8 @@ export type AgentStatus = 'idle' | 'walking' | 'working' | 'done';
 
 export type Phase = 'idle' | 'planning' | 'coding' | 'reviewing' | 'merging';
 
+export type ExecutionState = 'stopped' | 'running' | 'paused';
+
 export interface AgentState {
   name: AgentName;
   status: AgentStatus;
@@ -45,6 +47,7 @@ export interface KomodoSnapshot {
   totalCost: number;
   tasksCompleted: number;
   totalTasks?: number;
+  executionState?: ExecutionState;
 }
 
 export interface DashboardEvent {
@@ -73,7 +76,12 @@ export interface WsEventMessage {
   };
 }
 
-export type WsMessage = WsSnapshotMessage | WsEventMessage;
+export interface WsCommandAckMessage {
+  type: 'command:ack';
+  command: string;
+}
+
+export type WsMessage = WsSnapshotMessage | WsEventMessage | WsCommandAckMessage;
 
 /* ── Notifications ── */
 
