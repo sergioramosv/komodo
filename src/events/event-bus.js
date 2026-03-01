@@ -15,6 +15,9 @@ export const EVENT_TYPES = {
   PR_MERGED: 'pr:merged',
   COST_UPDATED: 'cost:updated',
 
+  // Execution control events
+  EXECUTION_STATE_CHANGE: 'execution:state-change',
+
   // Agent-specific convenience events
   AGENT_PLANNER_WORKING: 'agent:planner:working',
   AGENT_PLANNER_DONE: 'agent:planner:done',
