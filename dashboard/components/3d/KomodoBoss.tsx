@@ -150,6 +150,11 @@ export function KomodoBoss({ position }: { position: [number, number, number] })
           <meshStandardMaterial color="#2196F3" emissive="#2196F3" emissiveIntensity={0.4} />
         </Box>
 
+        {/* Keyboard */}
+        <Box args={[0.6, 0.02, 0.2]} position={[0, 0.86, 0.8]} rotation={[0, 0, 0]} castShadow>
+          <meshStandardMaterial color="#222" />
+        </Box>
+
         {/* Taza de café */}
         <Cylinder args={[0.08, 0.08, 0.2]} position={[0.8, 0.95, 0.8]} castShadow>
           <meshStandardMaterial color="#ff5252" />
