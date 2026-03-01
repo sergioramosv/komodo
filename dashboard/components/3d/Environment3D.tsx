@@ -254,9 +254,9 @@ function WallPainting({ position, rotation }: { position: [number, number, numbe
 }
 
 export function Environment3D({ agents }: Environment3DProps) {
-  const plannerState = agents?.PLANNER?.status || 'working';
-  const coderState = agents?.CODER?.status || 'working';
-  const reviewerState = agents?.REVIEWER?.status || 'working';
+  const plannerState = agents?.PLANNER?.status || 'idle';
+  const coderState = agents?.CODER?.status || 'idle';
+  const reviewerState = agents?.REVIEWER?.status || 'idle';
 
   return (
     <group>

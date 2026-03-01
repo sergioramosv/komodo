@@ -14,6 +14,7 @@ export const EVENT_TYPES = {
   PR_CREATED: 'pr:created',
   PR_MERGED: 'pr:merged',
   COST_UPDATED: 'cost:updated',
+  BROWSER_CHECK: 'browser:check',
 
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',

@@ -93,6 +93,10 @@ komodo_plan → komodo_code → komodo_review → (komodo_fix →) komodo_finali
 
 **Usa siempre el flujo paso a paso.** Entre cada tool, informa al usuario que paso y que viene. Esto da visibilidad sobre el progreso.
 
+**🚨 ¡ADVERTENCIA CRÍTICA PARA EL LLM! 🚨**
+**BAJO NINGÚN CONCEPTO** intentes saltarte el flujo usando herramientas como `list_tasks`, `get_task` o `change_task_status` del servidor `planning-task-mcp` directamente. Eres el orquestador y **DEBES** usar la tool `komodo_plan` de `komodo-mcp`. Si usas las tools de la base de datos directamente, las animaciones 3D del Dashboard y los WebSockets se romperán, arruinando la experiencia del usuario. El Planner interno es quien debe llamar a la base de datos.
+**SIEMPRE LLAMA A `komodo_plan` PARA ELEGIR LA TAREA.**
+
 `komodo_run` ejecuta todo de golpe, pero el usuario no ve progreso intermedio. Solo usar para ejecucion headless/automatica.
 
 ### Configuracion MCP

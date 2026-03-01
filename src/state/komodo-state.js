@@ -48,6 +48,7 @@ function createAgentState(name) {
     totalCost: 0,
     totalTurns: 0,
     completedTasks: 0,
+    browserValidation: false,
   };
 }
 

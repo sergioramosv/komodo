@@ -167,6 +167,16 @@ function applyEvent(
         next.executionState = (event.metadata as { current: string }).current as KomodoSnapshot['executionState'];
       }
       break;
+    case 'browser:check': {
+      const agent = event.agentName as keyof typeof next.agents | null;
+      if (agent && next.agents[agent]) {
+        next.agents[agent] = {
+          ...next.agents[agent],
+          browserValidation: (event.metadata as { status?: string }).status === 'start',
+        };
+      }
+      break;
+    }
   }
 
   return next;
@@ -204,6 +214,19 @@ function formatEvent(event: WsEventMessage['data']): DashboardEvent | null {
     case 'execution:state-change':
       message = `Execution state changed to ${meta.current ?? 'unknown'}`;
       break;
+    case 'browser:check': {
+      const url = meta.url as string | undefined;
+      const errors = meta.errors as string[] | undefined;
+      const status = meta.status as string | undefined;
+      if (status === 'start') {
+        message = `Browser check started${url ? `: ${url}` : ''}`;
+      } else if (errors && errors.length > 0) {
+        message = `Browser check found ${errors.length} error${errors.length > 1 ? 's' : ''}${url ? ` on ${url}` : ''}`;
+      } else {
+        message = `Browser check passed${url ? `: ${url}` : ''}`;
+      }
+      break;
+    }
     default:
       message = event.type;
   }
