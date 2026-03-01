@@ -195,3 +195,167 @@ export function formatError(metadata) {
 
   return lines.join('\n');
 }
+
+// --- Query command formatters ---
+
+/**
+ * Formats elapsed milliseconds as a human-readable string (e.g. "5m 23s").
+ * @param {number} ms
+ * @returns {string}
+ */
+function formatElapsed(ms) {
+  if (!ms || ms < 0) return '0s';
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const parts = [];
+  if (h > 0) parts.push(`${h}h`);
+  if (m > 0) parts.push(`${m}m`);
+  parts.push(`${s}s`);
+  return parts.join(' ');
+}
+
+const PHASE_LABELS = {
+  idle: 'Inactivo',
+  planning: 'Planificando',
+  coding: 'Programando',
+  reviewing: 'Revisando',
+  merging: 'Mergeando',
+};
+
+const STATE_EMOJIS = {
+  running: '\u{1F7E2}',
+  stopped: '\u{1F534}',
+  paused: '\u{1F7E1}',
+};
+
+/**
+ * Formats /status response.
+ * @param {Object} status - From data.getStatus()
+ * @returns {string} MarkdownV2 message
+ */
+export function formatStatus(status) {
+  const stateEmoji = STATE_EMOJIS[status.executionState] || '\u2753';
+  const stateLabel = escapeMarkdown(status.executionState.toUpperCase());
+  const phaseLabel = escapeMarkdown(PHASE_LABELS[status.phase] || status.phase);
+
+  const lines = [
+    `${stateEmoji} *Estado de Komodo*`,
+    ``,
+    `*Estado:* ${stateLabel}`,
+    `*Fase:* ${phaseLabel}`,
+  ];
+
+  if (status.activeAgent) {
+    lines.push(`*Agente activo:* ${escapeMarkdown(status.activeAgent.name)}`);
+  }
+
+  if (status.currentTask) {
+    lines.push(`*Tarea:* ${escapeMarkdown(status.currentTask.title || status.currentTask.id)}`);
+    if (status.currentTask.devPoints) {
+      lines.push(`*Dev points:* ${escapeMarkdown(String(status.currentTask.devPoints))}`);
+    }
+  }
+
+  if (status.currentPR) {
+    lines.push(`*PR:* \\#${escapeMarkdown(String(status.currentPR))}`);
+  }
+
+  if (status.reviewCycle > 0) {
+    lines.push(`*Review cycle:* ${escapeMarkdown(String(status.reviewCycle))}`);
+  }
+
+  if (status.elapsedMs) {
+    lines.push(`*Tiempo:* ${escapeMarkdown(formatElapsed(status.elapsedMs))}`);
+  }
+
+  if (status.totalTasks > 0) {
+    lines.push(`*Progreso:* ${escapeMarkdown(String(status.tasksCompleted))}/${escapeMarkdown(String(status.totalTasks))} tareas`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Formats /tasks response.
+ * @param {Array} tasks - From data.getTasks()
+ * @returns {string} MarkdownV2 message
+ */
+export function formatTaskList(tasks) {
+  if (!tasks || tasks.length === 0) {
+    return '\u{1F4CB} *Tareas to\\-do*\n\nNo hay tareas pendientes\\.';
+  }
+
+  const lines = [
+    `\u{1F4CB} *Tareas to\\-do* \\(${escapeMarkdown(String(tasks.length))}\\)`,
+    ``,
+  ];
+
+  const maxItems = 15;
+  const shown = tasks.slice(0, maxItems);
+
+  for (let i = 0; i < shown.length; i++) {
+    const t = shown[i];
+    const num = escapeMarkdown(String(i + 1));
+    const pts = escapeMarkdown(String(t.devPoints));
+    const title = escapeMarkdown(t.title);
+    lines.push(`${num}\\. \\[${pts} pts\\] ${title}`);
+  }
+
+  if (tasks.length > maxItems) {
+    lines.push(`\n_\\.\\.\\.y ${escapeMarkdown(String(tasks.length - maxItems))} más_`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Formats /backlog response.
+ * @param {Object} backlog - From data.getBacklog()
+ * @returns {string} MarkdownV2 message
+ */
+export function formatBacklog(backlog) {
+  if (backlog.error) {
+    return `\u{1F6A8} *Error:* ${escapeMarkdown(backlog.error)}`;
+  }
+
+  const lines = [
+    `\u{1F4CA} *Resumen del backlog*`,
+    ``,
+    `*Tareas pendientes:* ${escapeMarkdown(String(backlog.pendingCount))}`,
+    `*En progreso:* ${escapeMarkdown(String(backlog.inProgressCount))}`,
+    `*Completadas:* ${escapeMarkdown(String(backlog.doneCount))}`,
+    `*Total:* ${escapeMarkdown(String(backlog.totalTasks))}`,
+    `*Dev points pendientes:* ${escapeMarkdown(String(backlog.totalDevPoints))}`,
+  ];
+
+  if (backlog.activeSprint) {
+    const sp = backlog.activeSprint;
+    const progress = sp.totalTasks > 0
+      ? Math.round((sp.completedTasks / sp.totalTasks) * 100)
+      : 0;
+    const bar = buildProgressBar(progress);
+
+    lines.push(``);
+    lines.push(`*Sprint activo:* ${escapeMarkdown(sp.name)}`);
+    lines.push(`*Periodo:* ${escapeMarkdown(sp.startDate)} \\- ${escapeMarkdown(sp.endDate)}`);
+    lines.push(`*Progreso:* ${bar} ${escapeMarkdown(String(progress))}% \\(${escapeMarkdown(String(sp.completedTasks))}/${escapeMarkdown(String(sp.totalTasks))}\\)`);
+  } else {
+    lines.push(``);
+    lines.push(`_No hay sprint activo_`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Builds a text progress bar for Telegram.
+ * @param {number} percent - 0 to 100
+ * @returns {string} Escaped progress bar
+ */
+function buildProgressBar(percent) {
+  const filled = Math.round(percent / 10);
+  const empty = 10 - filled;
+  return escapeMarkdown('\u2588'.repeat(filled) + '\u2591'.repeat(empty));
+}
