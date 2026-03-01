@@ -170,5 +170,6 @@ function formatEvent(event: WsEventMessage['data']): DashboardEvent | null {
     timestamp: event.timestamp,
     agentName: event.agentName,
     message,
+    metadata: meta,
   };
 }
