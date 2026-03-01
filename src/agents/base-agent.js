@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { config } from '../config.js';
 import { extractJSON } from '../utils/parser.js';
 import { logger } from '../utils/logger.js';
+import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 
 const TMP_DIR = resolve(config.rootDir, '.tmp');
 
@@ -439,6 +440,7 @@ export async function runAgent({
 
     // Progress logging: parse JSON lines from Claude's --output-format json
     // to log what the agent is doing in real time.
+    // Also emits agent:output events for the dashboard live log.
     const onOutput = (chunk) => {
       for (const line of chunk.split('\n')) {
         if (!line.trim()) continue;
@@ -449,11 +451,23 @@ export async function runAgent({
             const toolUses = msg.message.content.filter(c => c.type === 'tool_use');
             for (const tu of toolUses) {
               logger.info(`[tool] ${tu.name}`, name);
+              eventBus.emitEvent(EVENT_TYPES.AGENT_OUTPUT, {
+                agentName: name,
+                metadata: {
+                  kind: 'tool',
+                  tool: tu.name,
+                  input: tu.input ? JSON.stringify(tu.input).slice(0, 200) : '',
+                },
+              });
             }
             const textBlocks = msg.message.content.filter(c => c.type === 'text' && c.text);
             for (const tb of textBlocks) {
-              const preview = tb.text.slice(0, 120).replace(/\n/g, ' ');
-              logger.info(`[text] ${preview}${tb.text.length > 120 ? '...' : ''}`, name);
+              const preview = tb.text.slice(0, 200).replace(/\n/g, ' ');
+              logger.info(`[text] ${preview.slice(0, 120)}${tb.text.length > 120 ? '...' : ''}`, name);
+              eventBus.emitEvent(EVENT_TYPES.AGENT_OUTPUT, {
+                agentName: name,
+                metadata: { kind: 'text', text: preview },
+              });
             }
           }
         } catch {
