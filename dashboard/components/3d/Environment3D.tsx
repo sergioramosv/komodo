@@ -39,7 +39,7 @@ function LDesk({ position, rotation }: { position: [number, number, number], rot
         <meshStandardMaterial color="#3e2723" />
       </Box>
       {/* L part */}
-      <Box args={[1, 0.1, 2]} position={[1.25, 0.8, -0.5]} castShadow receiveShadow>
+      <Box args={[1, 0.1, 2]} position={[1.25, .8, -0.5]} castShadow receiveShadow>
         <meshStandardMaterial color="#3e2723" />
       </Box>
       
@@ -47,35 +47,46 @@ function LDesk({ position, rotation }: { position: [number, number, number], rot
       <Box args={[0.1, 0.8, 0.8]} position={[-1.1, 0.4, 0]} castShadow receiveShadow>
          <meshStandardMaterial color="#1a1a1a" />
       </Box>
-      <Box args={[0.1, 0.8, 0.8]} position={[1.6, 0.4, -1.3]} castShadow receiveShadow>
+      <Box args={[0.1, 0.8, 1.5]} position={[1.6, 0.4, -0.5]} castShadow receiveShadow>
          <meshStandardMaterial color="#1a1a1a" />
       </Box>
 
       {/* Chair */}
-      <Box args={[0.6, 0.1, 0.6]} position={[0, 0.4, 0.8]} castShadow receiveShadow>
+      <Box args={[0.6, 0.1, 0.6]} position={[0, 0.4, -1]}  castShadow receiveShadow>
         <meshStandardMaterial color="#2c3e50" />
       </Box>
-      <Box args={[0.6, 0.6, 0.1]} position={[0, 0.7, 1.1]} castShadow receiveShadow>
+      <Box args={[0.6, 0.6, 0.1]} position={[0, 0.7, -1.3]} castShadow receiveShadow>
         <meshStandardMaterial color="#2c3e50" />
       </Box>
-      <Cylinder args={[0.05, 0.05, 0.4]} position={[0, 0.2, 0.8]} castShadow receiveShadow>
+      <Cylinder args={[0.05, 0.05, 0.4]} position={[0, 0.2, -1]} castShadow receiveShadow>
         <meshStandardMaterial color="#111" />
       </Cylinder>
 
       {/* Monitors */}
-      <Box args={[0.8, 0.5, 0.05]} position={[-0.5, 1.1, -0.2]} rotation={[0, 0.2, 0]} castShadow receiveShadow>
+      <Box args={[0.8, 0.5, 0.05]} position={[-0.5, 1.1, 0.1]} rotation={[0, -0.2, 0]} castShadow receiveShadow>
          <meshStandardMaterial color="#111" />
       </Box>
-      <Box args={[0.8, 0.5, 0.05]} position={[0.4, 1.1, -0.3]} rotation={[0, -0.2, 0]} castShadow receiveShadow>
+      <Box args={[0.8, 0.5, 0.05]} position={[0.4, 1.1, 0.1]} rotation={[0, 0.2, 0]} castShadow receiveShadow>
          <meshStandardMaterial color="#111" />
       </Box>
       {/* Screen glow */}
-      <Box args={[0.75, 0.45, 0.01]} position={[-0.5, 1.1, -0.17]} rotation={[0, 0.2, 0]}>
+      <Box args={[0.75, 0.45, 0.01]} position={[-0.5, 1.1, 0.05]} rotation={[0, -0.2, 0]}>
          <meshStandardMaterial color="#4fc3f7" emissive="#4fc3f7" emissiveIntensity={0.2} />
       </Box>
-      <Box args={[0.75, 0.45, 0.01]} position={[0.4, 1.1, -0.27]} rotation={[0, -0.2, 0]}>
+      <Box args={[0.75, 0.45, 0.01]} position={[0.4, 1.1, 0.05]} rotation={[0, 0.2, 0]}>
          <meshStandardMaterial color="#111" />
       </Box>
+
+      {/* Desk Props */}
+      {/* Keyboard */}
+      <Box args={[0.6, 0.02, 0.2]} position={[0, 0.86, -0.4]} rotation={[0, 0, 0]} castShadow><meshStandardMaterial color="#222" /></Box>
+      <Box args={[0.3, 0.02, 0.2]} position={[-0.8, 0.86, -0.2]} rotation={[0, 0.2, 0]} castShadow><meshStandardMaterial color="#ecf0f1" /></Box> {/* Notebook */}
+      <Box args={[0.08, 0.01, 0.15]} position={[-1.1, 0.86, -0.2]} rotation={[0, -0.3, 0]} castShadow><meshStandardMaterial color="#333" /></Box> {/* Mobile */}
+      {/* Old Telephone */}
+      <group position={[0.8, 0.86, -0.2]} rotation={[0, -0.2, 0]}>
+        <Box args={[0.2, 0.1, 0.15]} position={[0, 0, 0]} castShadow><meshStandardMaterial color="#e74c3c" /></Box> 
+        <Box args={[0.25, 0.05, 0.05]} position={[0, 0.08, 0]} castShadow><meshStandardMaterial color="#c0392b" /></Box>
+      </group>
     </group>
   );
 }
@@ -99,7 +110,7 @@ function Armchair({ position, rotation, color = "#ff7700" }: { position: [number
   );
 }
 
-function Sofa({ position, rotation, color = "#ff7700" }: { position: [number, number, number], rotation: [number, number, number], color?: string }) {
+function Sofa({ position, rotation, color }: { position: [number, number, number], rotation: [number, number, number], color?: string }) {
   return (
     <group position={position} rotation={rotation}>
       <Box args={[3.5, 0.4, 1]} position={[0, 0.2, 0]} castShadow receiveShadow>
@@ -112,6 +123,25 @@ function Sofa({ position, rotation, color = "#ff7700" }: { position: [number, nu
         <meshStandardMaterial color={color} />
       </Box>
       <Box args={[0.3, 0.6, 1]} position={[1.6, 0.5, 0]} castShadow receiveShadow>
+        <meshStandardMaterial color={color} />
+      </Box>
+    </group>
+  );
+}
+
+function MiniSofa({ position, rotation, color }: { position: [number, number, number], rotation: [number, number, number], color?: string }) {
+  return (
+    <group position={position} rotation={rotation}>
+      <Box args={[1.5, 0.4, 1]} position={[0, 0.2, 0]} castShadow receiveShadow>
+        <meshStandardMaterial color={color} />
+      </Box>
+      <Box args={[1.5, 0.8, 0.3]} position={[0, 0.6, -0.35]} castShadow receiveShadow>
+        <meshStandardMaterial color={color} />
+      </Box>
+      <Box args={[0.3, 0.6, 1]} position={[-0.6, 0.5, 0]} castShadow receiveShadow>
+        <meshStandardMaterial color={color} />
+      </Box>
+      <Box args={[0.3, 0.6, 1]} position={[0.6, 0.5, 0]} castShadow receiveShadow>
         <meshStandardMaterial color={color} />
       </Box>
     </group>
@@ -232,7 +262,7 @@ export function Environment3D({ agents }: Environment3DProps) {
     <group>
       {/* Floor - Light wood/grey */}
       <Plane args={[16, 14]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, 0, 0]}>
-        <meshStandardMaterial color="#e2e8f0" />
+        <meshStandardMaterial color="#c19a6b" /> {/* Madera Losas */}
       </Plane>
 
       {/* Breakroom floor (Tile) */}
@@ -241,7 +271,7 @@ export function Environment3D({ agents }: Environment3DProps) {
       </Plane>
 
       {/* Floor Labels */}
-      <Text position={[-4.5, 0.03, -4]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1.2} color="#7f8c8d" fillOpacity={0.6}>
+      <Text position={[-4.5, 0.03, -2.8]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1.2} color="#7f8c8d" fillOpacity={0.6}>
         PLANNER
       </Text>
       <Text position={[-5, 0.03, 4]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1.2} color="#7f8c8d" fillOpacity={0.6}>
@@ -290,37 +320,37 @@ export function Environment3D({ agents }: Environment3DProps) {
       {/* ==== MOBILIARIO Y DECORACIÓN POR HABITACIÓN ==== */}
       
       {/* -- ROOM 1: PLANNER (Arriba Izquierda: X=-4.5, Z=-4) -- */}
-      <AnimatedWhiteboard position={[-2, 0, -6.9]} rotation={[0, 0, 0]} isDrawing={plannerState === 'working'} />
-      <Armchair position={[-4, 0, -4]} rotation={[0, Math.PI / 4, 0]} color="#1abc9c" />
-      <FilingCabinet position={[-6.5, 0, -6]} rotation={[0, Math.PI / 2, 0]} />
-      <PottedPlant position={[-3, 0, -6]} />
+      {/* Pizarra en la pared frontal (Z=-6.8) para verla desde la puerta */}
+      <AnimatedWhiteboard position={[-3.5, 0, -6.8]} rotation={[0, 0, 0]} isDrawing={plannerState === 'working'} />
+      <LDesk position={[-5.5, 0, -3.5]} rotation={[0, Math.PI / 2, 0]} />
+      <FilingCabinet position={[-6.5, 0, -6.5]} rotation={[0, 0, 0]} />
+      <PottedPlant position={[-7.5, 0, -6.5]} />
 
       {/* -- ROOM 2: KOMODO BOSS (Arriba Derecha: X=4.5, Z=-4) -- */}
-      {/* Komodo desk */}
+      {/* Komodo desk built-in */}
       <Bookshelf position={[2, 0, -6.5]} rotation={[0, 0, 0]} />
       <KomodoBoss position={[4.5, 0, -4]} />
       <WindowProps position={[7.9, 1.5, -4]} rotation={[0, -Math.PI / 2, 0]} />
-      <WallPainting position={[1.2, 1.8, -3]} rotation={[0, Math.PI / 2, 0]} />
 
       {/* -- BREAKROOM (Centro Frente: X=0, Z=4) -- */}
-      <VendingMachine position={[-1.2, 0, 1.5]} rotation={[0, 0, 0]} color="#e74c3c" />
-      <VendingMachine position={[0, 0, 1.5]} rotation={[0, 0, 0]} color="#2980b9" />
-      <WaterCooler position={[1.2, 0, 1.5]} rotation={[0, 0, 0]} />
-      
-      {/* Sofás para descanso de los agentes */}
-      <Sofa position={[0, 0, 4]} rotation={[0, 0, 0]} color="#e67e22" />
+      {/* Sofás para descanso de los agentes pegados a la pared delantera para desbloquear puerta */}
+      <Sofa position={[0, 0, 6.2]} rotation={[0, Math.PI, 0]} color="#e67e22" />
+      {/* Maquinas a las paredes laterales */}
+      <VendingMachine position={[-1.5, 0, 4]} rotation={[0, Math.PI / 2, 0]} color="#e74c3c" />
+      <VendingMachine position={[-1.5, 0, 2.8]} rotation={[0, Math.PI / 2, 0]} color="#2980b9" />
+      <WaterCooler position={[1.5, 0, 2]} rotation={[0, -Math.PI / 2, 0]} />
       
       {/* -- ROOM 3: CODER (Abajo Izquierda: X=-5, Z=4) -- */}
       <WindowProps position={[-7.9, 1.5, 4]} rotation={[0, Math.PI / 2, 0]} />
-      <LDesk position={[-5, 0, 5]} rotation={[0, Math.PI, 0]} />
-      <Bookshelf position={[-2.5, 0, 2]} rotation={[0, -Math.PI / 2, 0]} />
-      <PottedPlant position={[-7.5, 0, 6]} />
+      <LDesk position={[-6, 0, 4.5]} rotation={[0, Math.PI, 0]} />
+      <MiniSofa position={[-5.8, 0, 1.7]} rotation={[0, 0, 0]} color="#636363ff" />
+      <PottedPlant position={[-7.2, 0, 1.7]} />
 
       {/* -- ROOM 4: REVIEWER (Abajo Derecha: X=5, Z=4) -- */}
-      <LDesk position={[5, 0, 5]} rotation={[0, Math.PI, 0]} />
-      <FilingCabinet position={[2.5, 0, 2]} rotation={[0, Math.PI / 2, 0]} />
-      <WallPainting position={[5, 1.8, 1.1]} rotation={[0, 0, 0]} />
-      <PottedPlant position={[2.5, 0, 6]} />
+      <LDesk position={[5, 0, 4.5]} rotation={[0, Math.PI, 0]} />
+      <FilingCabinet position={[7.5, 0, 1.5]} rotation={[0, -Math.PI / 2, 0]} />
+      <PottedPlant position={[7.5, 0, 6.5]} />
+      <Bookshelf position={[2.5, 0, 6.5]} rotation={[0, -Math.PI / 2, 0]} />
 
 
       {/* ==== AGENTES DINÁMICOS ==== */}
@@ -333,15 +363,15 @@ export function Environment3D({ agents }: Environment3DProps) {
         hairColor="#5C4033"
         hairStyle="bun"
         pathWaypoints={[
-          [-1.2, 0, 4],       // Descanso en sillón Breakroom (izq)
+          [-1.2, 0, 6.2],     // Descanso en sillón Breakroom (izq)
           [-1.2, 0, 2.5],     // Sale de Breakroom
           [-2.5, 0, 0],       // Pasillo frente a su puerta
-          [-2.5, 0, -2],      // Puerta de Planner
-          [-4.5, 0, -5]       // Frente a Pizarra blanca (Trabajando)
+          [-2.5, 0, -4.5],    // Puerta de Planner hacia el escritorio
+          [-5.5, 0, -4.5]     // Frente al escritorio (Trabajando) en LDesk
         ]}
-        rotationWait={[0, 0, 0]}            
-        rotationWork={[0, Math.PI, 0]}        
-        isWhiteboard={true}
+        rotationWait={[0, Math.PI, 0]}            
+        rotationWork={[0, Math.PI / 2, 0]}        
+        isWhiteboard={false}
       />
 
       {/* CODER */}
@@ -352,13 +382,13 @@ export function Environment3D({ agents }: Environment3DProps) {
         hairColor="#f1c40f"
         hairStyle="long"
         pathWaypoints={[
-          [0, 0, 4],          // Descanso en sillón Breakroom (centro)
+          [0, 0, 6.2],        // Descanso en sillón Breakroom (centro)
           [0, 0, 2.5],        // Sale hacia puerta
           [-3, 0, 0],         // Pasillo hacia puerta Coder
-          [-3, 0, 5.6],       // Entra en su habitacion Coder hacia la silla
-          [-5.2, 0, 5.6]      // Sentado en su silla
+          [-3, 0, 5.3],       // Entra en su habitacion Coder hacia la silla
+          [-6, 0, 5.3]        // Sentado en su silla
         ]}
-        rotationWait={[0, 0, 0]}
+        rotationWait={[0, Math.PI, 0]}
         rotationWork={[0, Math.PI, 0]}
       />
 
@@ -370,13 +400,13 @@ export function Environment3D({ agents }: Environment3DProps) {
         hairColor="#111"
         hairStyle="short"
         pathWaypoints={[
-          [1.2, 0, 4],        // Descanso en sillón Breakroom (der)
+          [1.2, 0, 6.2],      // Descanso en sillón Breakroom (der)
           [1.2, 0, 2.5],      // Sale hacia puerta
           [3, 0, 0],          // Pasillo hacia puerta Reviewer
-          [3, 0, 5.6],        // Entra en su habitacion Reviewer hacia la silla
-          [4.8, 0, 5.6]       // Sentado en su silla
+          [3, 0, 5.3],        // Entra en su habitacion Reviewer hacia la silla
+          [5, 0, 5.3]         // Sentado en su silla
         ]}
-        rotationWait={[0, 0, 0]}
+        rotationWait={[0, Math.PI, 0]}
         rotationWork={[0, Math.PI, 0]}
       />
 
