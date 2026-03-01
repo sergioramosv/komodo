@@ -1,7 +1,20 @@
 import { runAgent } from './base-agent.js';
 import { getReviewerSystemPrompt } from '../prompts/reviewer-system.js';
+import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
+
+/**
+ * Build the MCP server list for the Reviewer agent.
+ * Always includes github-mcp and memory-mcp; adds chrome-devtools when ENABLE_BROWSER_MCP=true.
+ */
+function getReviewerMcpServers() {
+  const servers = ['github-mcp', 'memory-mcp'];
+  if (config.enableBrowserMcp) {
+    servers.push('chrome-devtools');
+  }
+  return servers;
+}
 
 /**
  * Ejecuta el agente Reviewer para revisar una PR.
@@ -51,7 +64,7 @@ ${criteriaList || 'No especificados'}
     name: 'REVIEWER',
     systemPrompt,
     userPrompt,
-    mcpServerNames: ['github-mcp', 'memory-mcp'],
+    mcpServerNames: getReviewerMcpServers(),
     cwd,
     maxTurns: 30,
     // El Reviewer NO puede modificar código
