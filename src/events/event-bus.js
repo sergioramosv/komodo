@@ -24,6 +24,9 @@ export const EVENT_TYPES = {
   // Rate limit detection
   RATE_LIMIT_DETECTED: 'agent:rate-limit',
 
+  // Checkpoint persistence
+  SESSION_CHECKPOINTED: 'session:checkpointed',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 

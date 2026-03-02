@@ -4,9 +4,10 @@ import { logger } from './utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from './events/event-bus.js';
 import { komodoState, PHASES, EXECUTION_STATES } from './state/komodo-state.js';
 import { KomodoWsServer } from './server/ws-server.js';
+import { checkpointManager } from './state/checkpoint-manager.js';
 
 // Re-export para que consumidores externos puedan suscribirse
-export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES };
+export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES, checkpointManager };
 
 /**
  * Ejecuta N tareas del backlog de un proyecto.
@@ -66,6 +67,9 @@ export async function run(projectId, options = {}) {
     tasksCompleted: 0,
   });
   komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+
+  // Start checkpoint manager for rate limit recovery
+  checkpointManager.start();
 
   // Iniciar WebSocket server para dashboard en tiempo real
   const wsServer = new KomodoWsServer();
@@ -131,8 +135,13 @@ export async function run(projectId, options = {}) {
     }
   }
 
-  // Set state to stopped when loop ends
-  komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
+  // Stop checkpoint manager
+  checkpointManager.stop();
+
+  // Set state to stopped when loop ends (unless already paused by rate limit)
+  if (komodoState.executionState !== EXECUTION_STATES.PAUSED) {
+    komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
+  }
 
   // Detener WebSocket server
   await wsServer.stop();
