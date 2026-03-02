@@ -3,8 +3,7 @@ import { getPlannerSystemPrompt } from '../prompts/planner-system.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
-import { getAgentMaxTurns } from '../config-db.js';
-import { getDb } from '../firebase.js';
+import { getAll } from '../../skills/planning-task-mcp/src/firebase.js';
 
 /**
  * Fetches all tasks for a project from Firebase RTDB.
@@ -12,13 +11,8 @@ import { getDb } from '../firebase.js';
  * @returns {Promise<Array<{id: string, status: string, blockedBy?: string[], title: string, priority?: number}>>}
  */
 export async function fetchProjectTasks(projectId) {
-  const db = getDb();
-  const snapshot = await db.ref('tasks').orderByChild('projectId').equalTo(projectId).once('value');
-  const tasks = [];
-  snapshot.forEach(child => {
-    tasks.push({ id: child.key, ...child.val() });
-  });
-  return tasks;
+  const allTasks = await getAll('tasks');
+  return allTasks.filter(t => t.projectId === projectId);
 }
 
 /**
@@ -128,14 +122,12 @@ export async function pickNextTask(projectId) {
     userPrompt += `\n\nIMPORTANTE — Dependencias pre-filtradas: las siguientes tareas son las ÚNICAS elegibles (sus dependencias ya están resueltas). Solo selecciona de esta lista:\n${eligibleTaskIds.map(id => `- ${id}`).join('\n')}`;
   }
 
-  const maxTurns = await getAgentMaxTurns('PLANNER');
-
   const result = await runAgent({
     name: 'PLANNER',
     systemPrompt,
     userPrompt,
     mcpServerNames: ['planning-task-mcp'],
-    maxTurns,
+    maxTurns: 15,
   });
 
   if (!result.success || !result.result) {
