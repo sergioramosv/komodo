@@ -1,4 +1,5 @@
-import { runTask, runTaskDryRun } from './cycle/task-runner.js';
+import { runTask, runTaskDryRun, resumeTask } from './cycle/task-runner.js';
+import { createInterface } from 'readline';
 import { validateConfig, config } from './config.js';
 import { logger } from './utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from './events/event-bus.js';
@@ -154,4 +155,191 @@ export async function run(projectId, options = {}) {
   }
 
   return { tasksCompleted, tasksFailed, results };
+}
+
+/**
+ * Ask the user a yes/no question via stdin.
+ *
+ * @param {string} question - The question to ask
+ * @returns {Promise<boolean>} true if user answered 's' or 'y'
+ */
+function askUser(question) {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(question, (answer) => {
+      rl.close();
+      const normalized = answer.trim().toLowerCase();
+      resolve(normalized === 's' || normalized === 'y' || normalized === 'si' || normalized === 'yes');
+    });
+  });
+}
+
+/**
+ * Check for pending checkpoints and optionally resume.
+ *
+ * Called at the start of `komodo run` to detect paused sessions.
+ * If CHECKPOINT_AUTO_RESUME=true, resumes automatically.
+ * Otherwise, prompts the user.
+ *
+ * @param {Object} [options]
+ * @param {string} [options.cwd] - Directorio del repositorio
+ * @param {boolean} [options.autoResume] - Force auto-resume without prompting
+ * @returns {Promise<{ resumed: boolean, result?: Object }>}
+ */
+export async function checkForPendingCheckpoints(options = {}) {
+  const pendingCheckpoints = await checkpointManager.listPendingCheckpoints();
+
+  if (pendingCheckpoints.length === 0) {
+    return { resumed: false };
+  }
+
+  // Take the most recent checkpoint
+  const { filepath, checkpoint } = pendingCheckpoints[0];
+
+  // Validate checkpoint integrity
+  const validation = checkpointManager.validateCheckpoint(checkpoint);
+  if (!validation.valid) {
+    logger.warn(`Checkpoint descartado: ${validation.reason}`, 'KOMODO');
+    await checkpointManager.deleteCheckpoint(filepath);
+    return { resumed: false };
+  }
+
+  const autoResume = options.autoResume || process.env.CHECKPOINT_AUTO_RESUME === 'true';
+
+  if (!autoResume) {
+    logger.taskHeader('CHECKPOINT DETECTADO');
+    logger.info(`Tarea: "${checkpoint.taskTitle}" (${checkpoint.taskId})`, 'KOMODO');
+    logger.info(`Paso: ${checkpoint.flowStep}`, 'KOMODO');
+    logger.info(`Branch: ${checkpoint.branchName || '(none)'}`, 'KOMODO');
+    logger.info(`PR: ${checkpoint.prNumber || '(none)'}`, 'KOMODO');
+    logger.info(`Pausado: ${checkpoint.timestamp}`, 'KOMODO');
+
+    const shouldResume = await askUser(
+      `Se encontró una sesión pausada para la tarea "${checkpoint.taskTitle}" en el paso "${checkpoint.flowStep}". ¿Reanudar? (s/n) `
+    );
+
+    if (!shouldResume) {
+      logger.info('Checkpoint ignorado. Continuando con ejecución normal.', 'KOMODO');
+      return { resumed: false };
+    }
+  } else {
+    logger.info(`Auto-resume: reanudando tarea "${checkpoint.taskTitle}" desde paso "${checkpoint.flowStep}"`, 'KOMODO');
+  }
+
+  // Resume the task
+  const result = await _executeResume(checkpoint, filepath, options.cwd);
+  return { resumed: true, result };
+}
+
+/**
+ * Resume execution from a specific checkpoint (explicit resume command).
+ *
+ * @param {Object} [options]
+ * @param {string} [options.cwd] - Directorio del repositorio
+ * @returns {Promise<{
+ *   tasksCompleted: number,
+ *   tasksFailed: number,
+ *   results: Object[]
+ * }>}
+ */
+export async function resume(options = {}) {
+  const { cwd } = options;
+
+  // Validar configuración
+  const errors = validateConfig();
+  if (errors.length > 0) {
+    logger.error('Errores de configuración:', 'KOMODO');
+    errors.forEach(e => logger.error(`  - ${e}`, 'KOMODO'));
+    return { tasksCompleted: 0, tasksFailed: 0, results: [] };
+  }
+
+  const pendingCheckpoints = await checkpointManager.listPendingCheckpoints();
+
+  if (pendingCheckpoints.length === 0) {
+    logger.info('No hay checkpoints pendientes. Nada que reanudar.', 'KOMODO');
+    return { tasksCompleted: 0, tasksFailed: 0, results: [] };
+  }
+
+  // Take the most recent checkpoint
+  const { filepath, checkpoint } = pendingCheckpoints[0];
+
+  // Validate
+  const validation = checkpointManager.validateCheckpoint(checkpoint);
+  if (!validation.valid) {
+    logger.warn(`Checkpoint descartado: ${validation.reason}`, 'KOMODO');
+    await checkpointManager.deleteCheckpoint(filepath);
+    return { tasksCompleted: 0, tasksFailed: 0, results: [] };
+  }
+
+  logger.taskHeader('KOMODO RESUME');
+  logger.info(`Reanudando tarea: "${checkpoint.taskTitle}"`, 'KOMODO');
+  logger.info(`Paso: ${checkpoint.flowStep}`, 'KOMODO');
+
+  const result = await _executeResume(checkpoint, filepath, cwd);
+
+  return {
+    tasksCompleted: result.success ? 1 : 0,
+    tasksFailed: result.success ? 0 : 1,
+    results: [result],
+  };
+}
+
+/**
+ * Internal: execute the actual resume flow.
+ *
+ * @param {Object} checkpoint - Checkpoint data
+ * @param {string} filepath - Path to checkpoint file
+ * @param {string} [cwd] - Working directory
+ * @returns {Promise<Object>} Task result
+ * @private
+ */
+async function _executeResume(checkpoint, filepath, cwd) {
+  // Reset state for the resume
+  komodoState.updatePhase(PHASES.IDLE, {
+    currentTask: null,
+    currentPR: null,
+    reviewCycle: 0,
+  });
+  komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+
+  // Start checkpoint manager for new rate limits during resume
+  checkpointManager.start();
+
+  // Start WebSocket server
+  const wsServer = new KomodoWsServer();
+  try {
+    await wsServer.start();
+  } catch (err) {
+    logger.warn(`No se pudo iniciar WS server: ${err.message}`, 'KOMODO');
+  }
+
+  try {
+    const result = await resumeTask(checkpoint, cwd);
+
+    // On success, delete the checkpoint
+    if (result.success) {
+      await checkpointManager.deleteCheckpoint(filepath);
+      logger.success('Checkpoint eliminado tras reanudación exitosa.', 'KOMODO');
+
+      // Clean up remaining checkpoints for same task
+      const remaining = await checkpointManager.listPendingCheckpoints();
+      for (const { filepath: fp, checkpoint: cp } of remaining) {
+        if (cp.taskId === checkpoint.taskId) {
+          await checkpointManager.deleteCheckpoint(fp);
+        }
+      }
+    }
+
+    return result;
+  } finally {
+    checkpointManager.stop();
+
+    if (komodoState.executionState !== EXECUTION_STATES.PAUSED) {
+      komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
+    }
+
+    await wsServer.stop();
+
+    logger.taskHeader('RESUMEN FINAL');
+  }
 }

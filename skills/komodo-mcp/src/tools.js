@@ -1,7 +1,7 @@
 /**
  * Komodo MCP Tools
  *
- * 7 tools para orquestar agentes IA desde cualquier cliente MCP:
+ * 8 tools para orquestar agentes IA desde cualquier cliente MCP:
  *
  * Paso a paso (recomendado):
  *   1. komodo_plan     → Planner elige tarea
@@ -13,8 +13,11 @@
  * Ciclo completo:
  *   6. komodo_run      → Ejecuta N tareas completas
  *
+ * Recovery:
+ *   7. komodo_resume   → Reanuda desde checkpoint
+ *
  * Info:
- *   7. komodo_status   → Configuración actual
+ *   8. komodo_status   → Configuración actual
  */
 
 import { z } from 'zod';
@@ -24,10 +27,11 @@ import { z } from 'zod';
 const { pickNextTask } = await import('../../../src/agents/planner.js');
 const { implementTask, fixReviewIssues } = await import('../../../src/agents/coder.js');
 const { reviewPR } = await import('../../../src/agents/reviewer.js');
-const { run } = await import('../../../src/orchestrator.js');
+const { run, resume } = await import('../../../src/orchestrator.js');
 const { config, validateConfig } = await import('../../../src/config.js');
 const { runAgent } = await import('../../../src/agents/base-agent.js');
 const { eventBus, EVENT_TYPES } = await import('../../../src/events/event-bus.js');
+const { checkpointManager } = await import('../../../src/state/checkpoint-manager.js');
 
 let runGh;
 try {
@@ -510,7 +514,70 @@ export const tools = {
   },
 
   // ═══════════════════════════════════════════
-  // 7. STATUS — Configuración actual
+  // 7. RESUME — Reanudar desde checkpoint
+  // ═══════════════════════════════════════════
+
+  komodo_resume: {
+    description: [
+      'Reanuda la ejecución de una tarea pausada por rate limit.',
+      'Busca el checkpoint más reciente en .komodo/checkpoints/, valida que los recursos (branch, PR) existan,',
+      'y retoma el flujo exactamente donde se pausó (code, review, fix o merge).',
+      'Tras reanudación exitosa, elimina el checkpoint automáticamente.',
+    ].join(' '),
+
+    schema: {
+      cwd: z.string().optional().describe(
+        'Directorio del repositorio donde reanudar. Si no se pasa, usa el rootDir de Komodo.'
+      ),
+    },
+
+    handler: async (params) => {
+      // Check for pending checkpoints first
+      const pendingCheckpoints = await checkpointManager.listPendingCheckpoints();
+
+      if (pendingCheckpoints.length === 0) {
+        return {
+          success: true,
+          resumed: false,
+          message: 'No hay checkpoints pendientes. Nada que reanudar.',
+        };
+      }
+
+      const { filepath, checkpoint } = pendingCheckpoints[0];
+
+      // Validate
+      const validation = checkpointManager.validateCheckpoint(checkpoint);
+      if (!validation.valid) {
+        await checkpointManager.deleteCheckpoint(filepath);
+        return {
+          success: false,
+          resumed: false,
+          message: `Checkpoint descartado: ${validation.reason}`,
+        };
+      }
+
+      const result = await resume({ cwd: params.cwd });
+
+      return {
+        success: result.tasksCompleted > 0,
+        resumed: result.tasksCompleted > 0,
+        checkpoint: {
+          taskId: checkpoint.taskId,
+          taskTitle: checkpoint.taskTitle,
+          flowStep: checkpoint.flowStep,
+          branchName: checkpoint.branchName,
+          prNumber: checkpoint.prNumber,
+        },
+        result: result.results[0] || null,
+        message: result.tasksCompleted > 0
+          ? `Tarea "${checkpoint.taskTitle}" reanudada exitosamente desde paso "${checkpoint.flowStep}".`
+          : `No se pudo reanudar: ${result.results[0]?.error || 'error desconocido'}`,
+      };
+    },
+  },
+
+  // ═══════════════════════════════════════════
+  // 8. STATUS — Configuración actual
   // ═══════════════════════════════════════════
 
   komodo_status: {

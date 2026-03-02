@@ -1,5 +1,5 @@
 import { resolve } from 'path';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, writeFile, readdir, readFile, unlink } from 'fs/promises';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { komodoState, EXECUTION_STATES } from './komodo-state.js';
 import { config } from '../config.js';
@@ -138,6 +138,101 @@ class CheckpointManager {
     await writeFile(filepath, JSON.stringify(checkpoint, null, 2), 'utf-8');
 
     return filepath;
+  }
+
+  // ═══════════════════════════════════════════
+  // Resume support
+  // ═══════════════════════════════════════════
+
+  /**
+   * List all pending checkpoint files, sorted by timestamp (newest first).
+   *
+   * @returns {Promise<Array<{ filepath: string, checkpoint: Object }>>}
+   */
+  async listPendingCheckpoints() {
+    const checkpointDir = resolve(config.rootDir, '.komodo', 'checkpoints');
+
+    let files;
+    try {
+      files = await readdir(checkpointDir);
+    } catch {
+      return []; // Directory doesn't exist → no checkpoints
+    }
+
+    const jsonFiles = files.filter(f => f.startsWith('checkpoint-') && f.endsWith('.json'));
+    if (jsonFiles.length === 0) return [];
+
+    const results = [];
+    for (const file of jsonFiles) {
+      const filepath = resolve(checkpointDir, file);
+      try {
+        const raw = await readFile(filepath, 'utf-8');
+        const checkpoint = JSON.parse(raw);
+        results.push({ filepath, checkpoint });
+      } catch {
+        logger.warn(`Checkpoint corrupto, descartando: ${file}`, 'KOMODO');
+        await this.deleteCheckpoint(resolve(checkpointDir, file));
+      }
+    }
+
+    // Sort newest first by timestamp
+    results.sort((a, b) => new Date(b.checkpoint.timestamp) - new Date(a.checkpoint.timestamp));
+    return results;
+  }
+
+  /**
+   * Load and parse a single checkpoint file.
+   *
+   * @param {string} filepath - Absolute path to checkpoint JSON
+   * @returns {Promise<Object|null>} Parsed checkpoint or null if corrupted
+   */
+  async loadCheckpoint(filepath) {
+    try {
+      const raw = await readFile(filepath, 'utf-8');
+      return JSON.parse(raw);
+    } catch (err) {
+      logger.error(`Failed to load checkpoint: ${err.message}`, 'KOMODO');
+      return null;
+    }
+  }
+
+  /**
+   * Validate that a checkpoint's external resources (branch, PR) still exist.
+   *
+   * @param {Object} checkpoint - Parsed checkpoint data
+   * @returns {{ valid: boolean, reason?: string }}
+   */
+  validateCheckpoint(checkpoint) {
+    if (!checkpoint || !checkpoint.taskId) {
+      return { valid: false, reason: 'Checkpoint sin taskId' };
+    }
+    if (!checkpoint.flowStep) {
+      return { valid: false, reason: 'Checkpoint sin flowStep' };
+    }
+    // Steps that require a PR must have a prNumber
+    const prSteps = ['review', 'fix', 'merge'];
+    if (prSteps.includes(checkpoint.flowStep) && !checkpoint.prNumber) {
+      return { valid: false, reason: `Paso "${checkpoint.flowStep}" requiere prNumber pero no existe` };
+    }
+    // Steps that require a branch must have branchName
+    const branchSteps = ['code', 'review', 'fix', 'merge'];
+    if (branchSteps.includes(checkpoint.flowStep) && !checkpoint.branchName) {
+      return { valid: false, reason: `Paso "${checkpoint.flowStep}" requiere branchName pero no existe` };
+    }
+    return { valid: true };
+  }
+
+  /**
+   * Delete a checkpoint file after successful resume or when corrupted.
+   *
+   * @param {string} filepath - Absolute path to checkpoint file
+   */
+  async deleteCheckpoint(filepath) {
+    try {
+      await unlink(filepath);
+    } catch {
+      // File might already be deleted, that's OK
+    }
   }
 }
 

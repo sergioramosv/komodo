@@ -1,5 +1,5 @@
 import { pickNextTask } from '../agents/planner.js';
-import { implementTask } from '../agents/coder.js';
+import { implementTask, fixReviewIssues } from '../agents/coder.js';
 import { reviewLoop } from './review-loop.js';
 import { analyzeSonar } from '../sonar/analyzer.js';
 import { config } from '../config.js';
@@ -508,6 +508,325 @@ export async function runTask(projectId, cwd) {
     });
     return result;
   }
+}
+
+/**
+ * Reanuda la ejecución de una tarea desde el paso indicado por un checkpoint.
+ *
+ * Salta directamente al paso donde se pausó (code, review, fix, merge)
+ * y continúa el flujo normal desde ahí.
+ *
+ * @param {Object} checkpoint - Checkpoint data loaded from JSON
+ * @param {string} [cwd] - Directorio del repositorio
+ * @returns {Promise<Object>} Resultado de la ejecución
+ */
+export async function resumeTask(checkpoint, cwd) {
+  const startTime = Date.now();
+  const { taskId, taskTitle, flowStep, branchName, prNumber, repoUrl, reviewRound, reviewIssues } = checkpoint;
+  const repo = extractOwnerRepo(repoUrl);
+
+  // Build a minimal taskSpec from checkpoint data
+  const taskSpec = {
+    taskId,
+    title: taskTitle,
+    branchName,
+    repoUrl,
+  };
+
+  logger.taskHeader(`REANUDANDO: "${taskTitle}" desde paso "${flowStep}"`);
+  logger.info(`Task: ${taskId} | Branch: ${branchName} | PR: ${prNumber || '(none)'}`, 'KOMODO');
+
+  // Checkout to the correct branch
+  if (branchName) {
+    try {
+      const { execSync } = await import('child_process');
+      const resolvedCwd = cwd || config.rootDir;
+      execSync(`git checkout ${branchName}`, { cwd: resolvedCwd, stdio: 'pipe' });
+      logger.info(`Checkout a branch: ${branchName}`, 'KOMODO');
+    } catch (err) {
+      // Branch might not exist locally, try fetching
+      try {
+        const { execSync } = await import('child_process');
+        const resolvedCwd = cwd || config.rootDir;
+        execSync(`git fetch origin ${branchName}`, { cwd: resolvedCwd, stdio: 'pipe' });
+        execSync(`git checkout ${branchName}`, { cwd: resolvedCwd, stdio: 'pipe' });
+        logger.info(`Checkout a branch (tras fetch): ${branchName}`, 'KOMODO');
+      } catch (fetchErr) {
+        logger.error(`No se pudo hacer checkout a branch ${branchName}: ${fetchErr.message}`, 'KOMODO');
+        return makeResult({ success: false, taskSpec, startTime, error: `Branch ${branchName} no encontrada` });
+      }
+    }
+  }
+
+  // Set checkpoint flow context for potential new rate limit
+  checkpointManager.setFlowContext({
+    branchName,
+    repoUrl,
+    flowStep: null,
+  });
+
+  // Update komodo state
+  komodoState.updatePhase(PHASES.IDLE, {
+    currentTask: taskId,
+    currentPR: prNumber || null,
+    reviewCycle: reviewRound || 0,
+  });
+
+  try {
+    // ═══════════════════════════════════════════
+    // Resume from CODE step: re-run Coder
+    // ═══════════════════════════════════════════
+    if (flowStep === 'code') {
+      logger.logStep(2, 5, 'Reanudando Coder...', 'KOMODO');
+
+      komodoState.updatePhase(PHASES.CODING, { currentTask: taskId });
+      komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskId });
+
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'CODER',
+        previousState: AGENT_STATES.IDLE,
+        newState: AGENT_STATES.WORKING,
+      });
+
+      const coderResult = await implementTask(taskSpec, cwd);
+
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'CODER',
+        previousState: AGENT_STATES.WORKING,
+        newState: AGENT_STATES.IDLE,
+      });
+      komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
+
+      if (!coderResult.success) {
+        await rollbackTask(taskId);
+        return makeResult({ success: false, taskSpec, startTime, error: coderResult.error });
+      }
+
+      // Continue with analysis, review, merge from here
+      return await _continueFromAnalysis(taskSpec, coderResult.pr.prNumber, repo, startTime, cwd);
+    }
+
+    // ═══════════════════════════════════════════
+    // Resume from ANALYZE step: re-run analysis + review + merge
+    // ═══════════════════════════════════════════
+    if (flowStep === 'analyze') {
+      if (!prNumber) {
+        return makeResult({ success: false, taskSpec, startTime, error: 'No hay prNumber para análisis' });
+      }
+      return await _continueFromAnalysis(taskSpec, prNumber, repo, startTime, cwd);
+    }
+
+    // ═══════════════════════════════════════════
+    // Resume from REVIEW step: re-run review loop + merge
+    // ═══════════════════════════════════════════
+    if (flowStep === 'review') {
+      if (!prNumber) {
+        return makeResult({ success: false, taskSpec, startTime, error: 'No hay prNumber para review' });
+      }
+      return await _continueFromReview(taskSpec, prNumber, repo, startTime, cwd);
+    }
+
+    // ═══════════════════════════════════════════
+    // Resume from FIX step: re-run fix + review loop + merge
+    // ═══════════════════════════════════════════
+    if (flowStep === 'fix') {
+      if (!prNumber) {
+        return makeResult({ success: false, taskSpec, startTime, error: 'No hay prNumber para fix' });
+      }
+      return await _continueFromFix(taskSpec, prNumber, repo, reviewIssues, startTime, cwd);
+    }
+
+    // ═══════════════════════════════════════════
+    // Resume from MERGE step: re-run merge
+    // ═══════════════════════════════════════════
+    if (flowStep === 'merge') {
+      if (!prNumber) {
+        return makeResult({ success: false, taskSpec, startTime, error: 'No hay prNumber para merge' });
+      }
+      return await _continueFromMerge(taskSpec, prNumber, repo, startTime);
+    }
+
+    // ═══════════════════════════════════════════
+    // Resume from PLAN step: re-run full task (essentially a fresh run)
+    // ═══════════════════════════════════════════
+    if (flowStep === 'plan') {
+      logger.info('Checkpoint en paso "plan" — se reejecutará la tarea completa.', 'KOMODO');
+      return makeResult({ success: false, taskSpec, startTime, error: 'Checkpoint en plan — reejecuta con komodo run' });
+    }
+
+    return makeResult({ success: false, taskSpec, startTime, error: `flowStep desconocido: ${flowStep}` });
+  } catch (err) {
+    logger.error(`Error inesperado al reanudar: ${err.message}`, 'KOMODO');
+    checkpointManager.clearFlowContext();
+    return makeResult({ success: false, taskSpec, prNumber, startTime, error: err.message });
+  }
+}
+
+/**
+ * Continue execution from the analysis step onwards (analysis → review → merge).
+ * @private
+ */
+async function _continueFromAnalysis(taskSpec, prNumber, repo, startTime, cwd) {
+  logger.logStep(3, 5, 'Análisis SonarQube...', 'KOMODO');
+  komodoState.updatePhase(PHASES.ANALYZING, { currentPR: prNumber });
+
+  const sonarReport = await analyzeSonar({ branch: taskSpec.branchName, cwd });
+
+  if (sonarReport.success) {
+    logger.success(`SonarQube: Quality Gate ${sonarReport.qualityGate}`, 'KOMODO');
+  } else if (sonarReport.skipped) {
+    logger.info('SonarQube omitido, continuando con review...', 'KOMODO');
+  }
+
+  if (komodoState.isPauseRequested()) {
+    logger.warn('Execution paused by rate limit after analysis step.', 'KOMODO');
+    return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
+  }
+
+  return await _continueFromReview(taskSpec, prNumber, repo, startTime, cwd, sonarReport);
+}
+
+/**
+ * Continue execution from the review step onwards (review → merge).
+ * @private
+ */
+async function _continueFromReview(taskSpec, prNumber, repo, startTime, cwd, sonarReport) {
+  logger.logStep(4, 5, 'Review loop...', 'KOMODO');
+  komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
+  komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING });
+
+  eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+    agentName: 'REVIEWER',
+    previousState: AGENT_STATES.IDLE,
+    newState: AGENT_STATES.WORKING,
+  });
+
+  const reviewResult = await reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport });
+
+  eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+    agentName: 'REVIEWER',
+    previousState: AGENT_STATES.WAITING,
+    newState: AGENT_STATES.IDLE,
+  });
+  komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
+
+  // Record outcome (best effort)
+  try { await recordOutcome(reviewResult.approved, reviewResult.cycles); } catch { /* noop */ }
+
+  if (!reviewResult.approved) {
+    closePR(repo, prNumber, reviewResult.error || 'Review no aprobada');
+    await rollbackTask(taskSpec.taskId);
+    return makeResult({
+      success: false, taskSpec, prNumber, startTime,
+      reviewCycles: reviewResult.cycles, error: reviewResult.error,
+    });
+  }
+
+  if (komodoState.isPauseRequested()) {
+    logger.warn('Execution paused by rate limit after review step.', 'KOMODO');
+    return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
+  }
+
+  return await _continueFromMerge(taskSpec, prNumber, repo, startTime, reviewResult.cycles);
+}
+
+/**
+ * Continue execution from the fix step: apply fixes then review again.
+ * @private
+ */
+async function _continueFromFix(taskSpec, prNumber, repo, reviewIssues, startTime, cwd) {
+  logger.logStep(4, 5, 'Reanudando fix de issues...', 'KOMODO');
+
+  checkpointManager.setFlowContext({ flowStep: 'fix', reviewIssues: reviewIssues || [] });
+  komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber });
+  komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING });
+
+  eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+    agentName: 'CODER',
+    previousState: AGENT_STATES.IDLE,
+    newState: AGENT_STATES.WORKING,
+  });
+
+  // Build a minimal review feedback from checkpoint issues
+  const reviewFeedback = {
+    summary: 'Issues from previous review (resumed from checkpoint)',
+    issues: (reviewIssues || []),
+  };
+
+  const fixResult = await fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd);
+
+  eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+    agentName: 'CODER',
+    previousState: AGENT_STATES.WORKING,
+    newState: AGENT_STATES.IDLE,
+  });
+  komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE });
+
+  if (!fixResult.success) {
+    logger.error(`Coder no pudo arreglar issues: ${fixResult.error}`, 'KOMODO');
+    return makeResult({ success: false, taskSpec, prNumber, startTime, error: fixResult.error });
+  }
+
+  logger.success('Fixes aplicados. Continuando con review...', 'KOMODO');
+
+  // Continue with review loop
+  return await _continueFromReview(taskSpec, prNumber, repo, startTime, cwd);
+}
+
+/**
+ * Continue execution from the merge step.
+ * @private
+ */
+async function _continueFromMerge(taskSpec, prNumber, repo, startTime, reviewCycles = 0) {
+  logger.logStep(5, 5, 'Finalizando...', 'KOMODO');
+  komodoState.updatePhase(PHASES.MERGING, { currentPR: prNumber });
+
+  let merged = false;
+
+  if (config.autoMerge) {
+    try {
+      mergePR(repo, prNumber);
+      merged = true;
+      eventBus.emitEvent(EVENT_TYPES.PR_MERGED, {
+        metadata: { prNumber, repo, taskId: taskSpec.taskId },
+      });
+    } catch (err) {
+      logger.error(`Error al mergear PR #${prNumber}: ${err.message}`, 'KOMODO');
+    }
+
+    try { await changeTaskStatus(taskSpec.taskId, 'done'); } catch { /* noop */ }
+  } else {
+    logger.info('AUTO_MERGE=false → PR aprobada, esperando merge manual.', 'KOMODO');
+    try { await changeTaskStatus(taskSpec.taskId, 'to-validate'); } catch { /* noop */ }
+  }
+
+  const totalDuration = (Date.now() - startTime) / 1000;
+
+  logger.taskHeader('RESUMEN (reanudación)');
+  logger.info(`Tarea: "${taskSpec.title}"`, 'KOMODO');
+  logger.info(`PR: #${prNumber}`, 'KOMODO');
+  logger.info(`Merged: ${merged ? 'sí' : 'no (manual)'}`, 'KOMODO');
+  logger.info(`Duración reanudación: ${totalDuration.toFixed(1)}s`, 'KOMODO');
+
+  komodoState.updatePhase(PHASES.IDLE, {
+    currentTask: null,
+    currentPR: null,
+    reviewCycle: 0,
+  });
+
+  checkpointManager.clearFlowContext();
+
+  return {
+    success: true,
+    taskId: taskSpec.taskId,
+    taskTitle: taskSpec.title,
+    prNumber,
+    approved: true,
+    merged,
+    reviewCycles,
+    totalDuration,
+    resumed: true,
+  };
 }
 
 /**
