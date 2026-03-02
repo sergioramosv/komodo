@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { extractJSON } from '../utils/parser.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
+import { checkAndEmitRateLimit } from './rate-limit-detector.js';
 
 const TMP_DIR = resolve(config.rootDir, '.tmp');
 
@@ -266,6 +267,7 @@ export function buildMcpServers(serverNames) {
  * @param {number}   [options.idleTimeout]  - Kill if silent for this many ms (default 600s)
  * @param {number}   [options.totalTimeout] - Kill after this many ms total (overrides idleTimeout)
  * @param {Function} [options.onOutput]     - Callback for stdout chunks
+ * @param {Function} [options.onStderr]     - Callback for stderr chunks
  * @returns {Promise<string>} stdout
  */
 function spawnCli(command, args, options = {}) {
@@ -338,8 +340,10 @@ function spawnCli(command, args, options = {}) {
     });
 
     child.stderr.on('data', (data) => {
-      stderr += data.toString();
+      const text = data.toString();
+      stderr += text;
       if (options._resetIdle) options._resetIdle();
+      if (options.onStderr) options.onStderr(text);
     });
 
     child.on('close', (code) => {
@@ -486,6 +490,11 @@ export async function runAgent({
       }
     };
 
+    // Rate limit detection on stderr (transparent — no-op if no match)
+    const onStderr = (chunk) => {
+      checkAndEmitRateLimit(chunk, resolvedCli, name);
+    };
+
     // Spawn the process and pipe the prompt via stdin
     const stdout = await spawnCli(resolvedCli, args, {
       cwd: cwd || config.rootDir,
@@ -493,6 +502,7 @@ export async function runAgent({
       totalTimeout,
       stdinData,
       onOutput,
+      onStderr,
     });
 
     // Parse CLI output
@@ -518,6 +528,9 @@ export async function runAgent({
   } catch (err) {
     const duration = (Date.now() - startTime) / 1000;
     logger.error(`Error after ${duration.toFixed(1)}s: ${err.message}`, name);
+
+    // Check if the error itself contains rate limit signals
+    checkAndEmitRateLimit(err.message, resolvedCli, name);
 
     return {
       success: false,
