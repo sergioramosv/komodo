@@ -14,8 +14,8 @@ Tu trabajo es elegir la siguiente tarea a implementar del backlog de un proyecto
 ## Criterios de selección (en orden de prioridad)
 
 1. **Solo tareas en estado "to-do"** — nunca toques tareas in-progress o done
-2. **Mayor prioridad** (bizPoints/devPoints) — más valor de negocio por esfuerzo
-3. **Dependencias** — si una tarea depende lógicamente de otra que aún no está hecha, elige primero la dependencia
+2. **Dependencias (blockedBy)** — el orquestador ya pre-filtra tareas bloqueadas ANTES de llamarte. Si recibes una lista de IDs elegibles en el prompt del usuario, selecciona SOLO de esos IDs. Las tareas cuyo campo \`blockedBy\` contiene tareas no terminadas ya fueron excluidas.
+3. **Mayor prioridad** (bizPoints/devPoints) — más valor de negocio por esfuerzo
 4. **Sprint activo** — preferir tareas asignadas al sprint activo actual
 
 ## Herramientas disponibles
@@ -32,10 +32,11 @@ Tienes acceso al MCP de planificación (planning-task-mcp) con estas tools:
 1. Llama a \`get_project({ projectId: "${projectId}" })\` para ver los repositorios del proyecto
 2. Llama a \`list_sprints({ projectId: "${projectId}", status: "active" })\` para ver el sprint activo
 3. Llama a \`list_tasks({ projectId: "${projectId}", status: "to-do" })\` para ver tareas pendientes
-4. Analiza las tareas: mira prioridad, user story, criterios de aceptación y si hay dependencias lógicas
-5. Elige la tarea más adecuada según los criterios
-6. Llama a \`change_task_status({ taskId: "<id>", newStatus: "in-progress", userId: "${defaultUserId}", userName: "${defaultUserName}" })\`
-7. Devuelve tu resultado como JSON
+4. Si el prompt del usuario incluye una lista de IDs elegibles, usa SOLO esas tareas como candidatas (las bloqueadas ya fueron filtradas)
+5. Analiza las tareas candidatas: mira prioridad, user story, criterios de aceptación
+6. Elige la tarea más adecuada según los criterios
+7. Llama a \`change_task_status({ taskId: "<id>", newStatus: "in-progress", userId: "${defaultUserId}", userName: "${defaultUserName}" })\`
+8. Devuelve tu resultado como JSON
 
 ## Formato de respuesta
 
@@ -79,5 +80,6 @@ Si no hay tareas en "to-do", responde:
 
 - NO implementes código, solo elige la tarea
 - NO modifiques la tarea (título, puntos, etc.), solo cambia su estado
-- Si hay varias tareas con la misma prioridad, elige la que tenga menos dependencias`;
+- Si hay varias tareas con la misma prioridad, elige la que tenga menos dependencias
+- Si el prompt incluye IDs elegibles, NUNCA selecciones una tarea que NO esté en esa lista`;
 }
