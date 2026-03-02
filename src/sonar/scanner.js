@@ -1,24 +1,12 @@
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
-import { config } from '../config.js';
+import { promisify } from 'util';
+import { config, cliExists } from '../config.js';
 import { logger } from '../utils/logger.js';
 
+const execFileAsync = promisify(execFile);
 const AGENT = 'SYSTEM';
-
-/**
- * Verifica si sonar-scanner está instalado en el sistema.
- * @returns {boolean}
- */
-function scannerExists() {
-  try {
-    const checkCmd = process.platform === 'win32' ? 'where' : 'which';
-    execFileSync(checkCmd, ['sonar-scanner'], { stdio: 'pipe', encoding: 'utf-8' });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Verifica si SonarQube está correctamente configurado.
@@ -41,7 +29,7 @@ export function checkSonarConfig() {
     return { ready: false, reason: 'SONAR_PROJECT_KEY no configurado' };
   }
 
-  if (!scannerExists()) {
+  if (!cliExists('sonar-scanner')) {
     return { ready: false, reason: 'sonar-scanner no instalado (npm i -g sonar-scanner)' };
   }
 
@@ -49,12 +37,15 @@ export function checkSonarConfig() {
 }
 
 /**
- * Ejecuta sonar-scanner en el directorio especificado.
+ * Ejecuta sonar-scanner en el directorio especificado (async, no bloquea el event loop).
  * Degradación elegante: si SonarQube no está configurado, loguea un warning y continúa.
+ *
+ * Requiere SonarScanner CLI >= 5.0 cuando se usa sonar-project.properties con sintaxis ${env:VAR}.
+ *
  * @param {string} [cwd] - Directorio del proyecto a analizar (default: rootDir)
- * @returns {{ success: boolean, skipped: boolean, reason?: string, output?: string }}
+ * @returns {Promise<{ success: boolean, skipped: boolean, reason?: string, output?: string }>}
  */
-export function runSonarScan(cwd) {
+export async function runSonarScan(cwd) {
   const projectDir = cwd || config.rootDir;
 
   // Degradación elegante — si no está configurado, seguir sin error
@@ -86,10 +77,9 @@ export function runSonarScan(cwd) {
       );
     }
 
-    const output = execFileSync('sonar-scanner', args, {
+    const { stdout } = await execFileAsync('sonar-scanner', args, {
       cwd: projectDir,
       encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 300000, // 5 minutos
       shell: process.platform === 'win32',
       env: {
@@ -101,7 +91,7 @@ export function runSonarScan(cwd) {
     });
 
     logger.success('Análisis SonarQube completado', AGENT);
-    return { success: true, skipped: false, output };
+    return { success: true, skipped: false, output: stdout };
   } catch (err) {
     logger.error(`Error en sonar-scanner: ${err.message}`, AGENT);
     return { success: false, skipped: false, reason: err.message };

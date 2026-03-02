@@ -15,7 +15,7 @@ const ROOT_DIR = resolve(__dirname, '..');
  * @param {string} command
  * @returns {boolean}
  */
-function cliExists(command) {
+export function cliExists(command) {
   try {
     const checkCmd = process.platform === 'win32' ? 'where' : 'which';
     execFileSync(checkCmd, [command], { stdio: 'pipe', encoding: 'utf-8' });
