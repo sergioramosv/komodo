@@ -17,6 +17,7 @@ export const PHASES = {
   IDLE: 'idle',
   PLANNING: 'planning',
   CODING: 'coding',
+  ANALYZING: 'analyzing',
   REVIEWING: 'reviewing',
   MERGING: 'merging',
 };

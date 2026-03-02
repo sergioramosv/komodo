@@ -1,6 +1,7 @@
 import { pickNextTask } from '../agents/planner.js';
 import { implementTask } from '../agents/coder.js';
 import { reviewLoop } from './review-loop.js';
+import { analyzeSonar } from '../sonar/analyzer.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { runGh } from '../../skills/github-mcp/src/gh-cli.js';
@@ -201,7 +202,7 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     // PASO 1: PLANNER — Elegir tarea
     // ═══════════════════════════════════════════
-    logger.logStep(1, 4, 'Planner eligiendo tarea...', 'KOMODO');
+    logger.logStep(1, 5, 'Planner eligiendo tarea...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.PLANNING);
     komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.WORKING });
@@ -260,7 +261,7 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     // PASO 2: CODER — Implementar
     // ═══════════════════════════════════════════
-    logger.logStep(2, 4, 'Coder implementando...', 'KOMODO');
+    logger.logStep(2, 5, 'Coder implementando...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.CODING, { currentTask: taskSpec.taskId });
     komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId });
@@ -319,9 +320,27 @@ export async function runTask(projectId, cwd) {
     });
 
     // ═══════════════════════════════════════════
-    // PASO 3: REVIEW LOOP — Reviewer ↔ Coder
+    // PASO 3: SONAR ANALYSIS — Análisis de calidad
     // ═══════════════════════════════════════════
-    logger.logStep(3, 4, 'Review loop...', 'KOMODO');
+    logger.logStep(3, 5, 'Análisis SonarQube...', 'KOMODO');
+
+    komodoState.updatePhase(PHASES.ANALYZING, { currentPR: prNumber });
+
+    const sonarReport = await analyzeSonar({
+      branch: taskSpec.branchName,
+      cwd,
+    });
+
+    if (sonarReport.success) {
+      logger.success(`SonarQube: Quality Gate ${sonarReport.qualityGate}`, 'KOMODO');
+    } else if (sonarReport.skipped) {
+      logger.info('SonarQube omitido, continuando con review...', 'KOMODO');
+    }
+
+    // ═══════════════════════════════════════════
+    // PASO 4: REVIEW LOOP — Reviewer ↔ Coder
+    // ═══════════════════════════════════════════
+    logger.logStep(4, 5, 'Review loop...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
     komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING });
@@ -367,9 +386,9 @@ export async function runTask(projectId, cwd) {
     }
 
     // ═══════════════════════════════════════════
-    // PASO 4: MERGE + UPDATE TASK
+    // PASO 5: MERGE + UPDATE TASK
     // ═══════════════════════════════════════════
-    logger.logStep(4, 4, 'Finalizando...', 'KOMODO');
+    logger.logStep(5, 5, 'Finalizando...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.MERGING, { currentPR: prNumber });
 
