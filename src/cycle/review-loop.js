@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
 import { komodoState, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
+import { getMaxReviewCycles } from '../config-db.js';
 
 /**
  * Ejecuta el bucle Coder ↔ Reviewer.
@@ -18,6 +19,7 @@ import { komodoState, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
  * @param {string} options.repo - Repositorio en formato owner/repo
  * @param {Object} options.taskSpec - Especificación de la tarea
  * @param {string} [options.cwd] - Directorio del repositorio
+ * @param {Object} [options.sonarReport] - Reporte de análisis SonarQube
  * @returns {Promise<{
  *   approved: boolean,
  *   cycles: number,
@@ -25,8 +27,8 @@ import { komodoState, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
  *   error?: string
  * }>}
  */
-export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
-  const maxCycles = config.maxReviewCycles;
+export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport }) {
+  const maxCycles = await getMaxReviewCycles();
   let cycles = 0;
   let lastReview = null;
 
@@ -51,7 +53,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd }) {
     });
     eventBus.emitAgentEvent('REVIEWER', 'working', { cycle: i });
 
-    const reviewResult = await reviewPR({ prNumber, repo, taskSpec, cwd });
+    const reviewResult = await reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport });
 
     if (reviewResult.cost) {
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {

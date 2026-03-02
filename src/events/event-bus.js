@@ -16,6 +16,11 @@ export const EVENT_TYPES = {
   COST_UPDATED: 'cost:updated',
   BROWSER_CHECK: 'browser:check',
 
+  // SonarQube analysis events
+  SONAR_ANALYSIS_START: 'sonar:analysis:start',
+  SONAR_ANALYSIS_COMPLETE: 'sonar:analysis:complete',
+  SONAR_ANALYSIS_ERROR: 'sonar:analysis:error',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 

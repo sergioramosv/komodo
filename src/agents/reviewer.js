@@ -3,6 +3,7 @@ import { getReviewerSystemPrompt } from '../prompts/reviewer-system.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
+import { getAgentMaxTurns } from '../config-db.js';
 
 /**
  * Build the MCP server list for the Reviewer agent.
@@ -24,6 +25,7 @@ function getReviewerMcpServers() {
  * @param {string} options.repo - Repositorio en formato owner/repo
  * @param {Object} options.taskSpec - Especificación original de la tarea
  * @param {string} [options.cwd] - Directorio del repositorio (para leer código)
+ * @param {Object} [options.sonarReport] - Reporte de análisis SonarQube
  * @returns {Promise<{
  *   success: boolean,
  *   review: {verdict, score, issues[], positives[], summary} | null,
@@ -32,7 +34,7 @@ function getReviewerMcpServers() {
  *   error?: string
  * }>}
  */
-export async function reviewPR({ prNumber, repo, taskSpec, cwd }) {
+export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport }) {
   logger.taskHeader(`REVIEWER - Revisando PR #${prNumber}`);
 
   const systemPrompt = getReviewerSystemPrompt({
@@ -65,6 +67,16 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd }) {
    - REQUEST_CHANGES si hay issues critical/major o score < 8
 7. Devuelve el resultado como JSON con: verdict, score, issues, positives, summary`;
 
+  // Build SonarQube section if report is available and successful
+  const sonarSection = sonarReport?.success
+    ? `\n## Reporte SonarQube
+- **Quality Gate**: ${sonarReport.qualityGate}
+- **Issues**: ${sonarReport.issues.BLOCKER} blocker, ${sonarReport.issues.CRITICAL} critical, ${sonarReport.issues.MAJOR} major, ${sonarReport.issues.MINOR} minor (${sonarReport.issues.total} total)
+- **Métricas**: ${sonarReport.metrics.bugs} bugs, ${sonarReport.metrics.vulnerabilities} vulnerabilities, ${sonarReport.metrics.code_smells} code smells, ${sonarReport.metrics.coverage}% coverage, ${sonarReport.metrics.duplicated_lines_density}% duplicación
+
+Considera estos hallazgos de SonarQube en tu revisión. Si el Quality Gate es ERROR, esto debe reflejarse como issue en tu review.\n`
+    : '';
+
   const userPrompt = `Revisa la Pull Request #${prNumber} del repositorio "${repo}".
 
 ## Contexto de la tarea
@@ -73,12 +85,14 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd }) {
 
 ## Criterios de aceptación
 ${criteriaList || 'No especificados'}
-
+${sonarSection}
 ## Instrucciones
 1. Llama a get_review_brief() para ver errores frecuentes del coder
 2. Lee el diff completo con get_pr_diff({ repo: "${repo}", prNumber: ${prNumber} })
 3. Revisa cada criterio (correctitud, error handling, edge cases, naming, tests, seguridad)
 4. Si necesitas más contexto, lee archivos del repo con Read/Glob/Grep${browserCheckInstruction}`;
+
+  const maxTurns = await getAgentMaxTurns('REVIEWER');
 
   const result = await runAgent({
     name: 'REVIEWER',
@@ -86,7 +100,7 @@ ${criteriaList || 'No especificados'}
     userPrompt,
     mcpServerNames: getReviewerMcpServers(),
     cwd,
-    maxTurns: 30,
+    maxTurns,
     // El Reviewer NO puede modificar código
     disallowedTools: ['Write', 'Edit', 'NotebookEdit'],
   });
