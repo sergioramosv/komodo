@@ -36,3 +36,6 @@ Thumbs.db
 
 # SonarQube
 .scannerwork/
+
+# Komodo runtime data
+.komodo/

@@ -3,6 +3,7 @@ import { getCoderSystemPrompt, getCoderFixSystemPrompt } from '../prompts/coder-
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
+import { getAgentMaxTurns } from '../config-db.js';
 
 /**
  * Build the MCP server list for the Coder agent.
@@ -57,13 +58,15 @@ ${(taskSpec.acceptanceCriteria || []).map((c, i) => `${i + 1}. ${c}`).join('\n')
 
 Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, summary.`;
 
+  const maxTurns = await getAgentMaxTurns('CODER');
+
   const result = await runAgent({
     name: 'CODER',
     systemPrompt,
     userPrompt,
     mcpServerNames: getCoderMcpServers(),
     cwd,
-    maxTurns: 50,
+    maxTurns,
     totalTimeout: 900_000, // 15 min — total limit (no idle timer, Windows buffers stdout)
   });
 
@@ -150,13 +153,16 @@ ${issuesList || 'Sin issues específicos'}
 
 Devuelve el resultado como JSON con: fixed, issuesResolved, filesChanged, summary.`;
 
+  const coderMaxTurns = await getAgentMaxTurns('CODER');
+  const fixMaxTurns = Math.round(coderMaxTurns * 0.8); // Fix mode uses 80% of coder turns
+
   const result = await runAgent({
     name: 'CODER',
     systemPrompt,
     userPrompt,
     mcpServerNames: getCoderMcpServers(),
     cwd,
-    maxTurns: 40,
+    maxTurns: fixMaxTurns,
     totalTimeout: 900_000, // 15 min — total limit (no idle timer, Windows buffers stdout)
   });
 

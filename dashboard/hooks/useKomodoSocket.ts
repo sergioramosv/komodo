@@ -135,12 +135,22 @@ function applyEvent(
       }
       break;
     }
-    case 'task:started':
-      next.currentTask = (event.metadata as { taskId?: string }).taskId ?? next.currentTask;
-      if ((event.metadata as { taskDetails?: KomodoSnapshot['taskDetails'] }).taskDetails) {
-        next.taskDetails = (event.metadata as { taskDetails: KomodoSnapshot['taskDetails'] }).taskDetails;
+    case 'task:started': {
+      const meta = event.metadata as Record<string, unknown>;
+      next.currentTask = (meta.taskId as string) ?? next.currentTask;
+      if (meta.taskDetails) {
+        next.taskDetails = meta.taskDetails as KomodoSnapshot['taskDetails'];
+      } else if (meta.title) {
+        next.taskDetails = {
+          id: (meta.taskId as string) ?? '',
+          title: meta.title as string,
+          userStory: (meta.userStory as string) ?? null,
+          sprint: (meta.sprint as string) ?? null,
+          devPoints: (meta.devPoints as number) ?? null,
+        };
       }
       break;
+    }
     case 'task:completed':
       next.tasksCompleted = prev.tasksCompleted + 1;
       next.currentTask = null;

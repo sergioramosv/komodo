@@ -44,6 +44,11 @@ export class KomodoWsServer {
 
       this._wss = new WebSocketServer({ server: this._httpServer });
 
+      // Capturar errores del WSS para evitar crash por unhandled 'error' event
+      this._wss.on('error', (err) => {
+        logger.warn(`WSS error: ${err.message}`, 'WS');
+      });
+
       this._wss.on('connection', (ws) => {
         logger.info(`Dashboard conectado (total: ${this._wss.clients.size})`, 'WS');
 
@@ -73,8 +78,23 @@ export class KomodoWsServer {
         this._broadcast({ type: 'event', data: payload });
       });
 
-      this._httpServer.on('error', (err) => {
-        reject(err);
+      this._httpServer.on('error', async (err) => {
+        if (err.code === 'EADDRINUSE') {
+          // Verificar si ya hay un servidor Komodo WS corriendo en ese puerto
+          const isKomodo = await this._checkExistingServer();
+          if (isKomodo) {
+            logger.info(`Servidor WS de Komodo ya corriendo en puerto ${this.port}, no es necesario iniciar otro`, 'WS');
+          } else {
+            logger.warn(`Puerto ${this.port} ocupado por otro proceso, continuando sin WS server`, 'WS');
+          }
+          // Limpiar recursos parciales
+          this._wss.close();
+          this._wss = null;
+          this._httpServer = null;
+          resolve();
+        } else {
+          reject(err);
+        }
       });
 
       this._httpServer.listen(this.port, () => {
@@ -82,6 +102,24 @@ export class KomodoWsServer {
         resolve();
       });
     });
+  }
+
+  /**
+   * Verifica si ya hay un servidor Komodo WS corriendo en el puerto.
+   * Hace un GET a /api/state y comprueba que responde con un snapshot válido.
+   *
+   * @returns {Promise<boolean>}
+   */
+  async _checkExistingServer() {
+    try {
+      const response = await fetch(`http://localhost:${this.port}/api/state`);
+      if (!response.ok) return false;
+      const data = await response.json();
+      // Si tiene 'phase' es un snapshot de Komodo
+      return data && typeof data.phase === 'string';
+    } catch {
+      return false;
+    }
   }
 
   /**

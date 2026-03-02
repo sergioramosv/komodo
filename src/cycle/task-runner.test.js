@@ -75,6 +75,7 @@ vi.mock('../state/komodo-state.js', () => ({
   komodoState: {
     updatePhase: vi.fn(),
     updateAgent: vi.fn().mockReturnValue({}),
+    isPauseRequested: vi.fn().mockReturnValue(false),
   },
   PHASES: {
     IDLE: 'idle',
@@ -88,6 +89,18 @@ vi.mock('../state/komodo-state.js', () => ({
     WALKING: 'walking',
     WORKING: 'working',
     DONE: 'done',
+  },
+  EXECUTION_STATES: {
+    STOPPED: 'stopped',
+    RUNNING: 'running',
+    PAUSED: 'paused',
+  },
+}));
+
+vi.mock('../state/checkpoint-manager.js', () => ({
+  checkpointManager: {
+    setFlowContext: vi.fn(),
+    clearFlowContext: vi.fn(),
   },
 }));
 

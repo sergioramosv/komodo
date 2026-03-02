@@ -52,12 +52,19 @@ vi.mock('../state/komodo-state.js', () => ({
   komodoState: {
     updatePhase: vi.fn(),
     updateAgent: vi.fn().mockReturnValue({}),
+    isPauseRequested: vi.fn().mockReturnValue(false),
   },
   DASHBOARD_AGENT_STATES: {
     IDLE: 'idle',
     WALKING: 'walking',
     WORKING: 'working',
     DONE: 'done',
+  },
+}));
+
+vi.mock('../state/checkpoint-manager.js', () => ({
+  checkpointManager: {
+    setFlowContext: vi.fn(),
   },
 }));
 
