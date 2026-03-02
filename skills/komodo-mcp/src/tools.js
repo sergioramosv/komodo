@@ -216,6 +216,32 @@ export const tools = {
       userStoryWhy: z.string().optional().describe('User Story: Para...'),
       acceptanceCriteria: z.array(z.string()).optional().describe('Criterios de aceptación'),
       cwd: z.string().optional().describe('Directorio del repositorio'),
+      sonarReport: z.object({
+        success: z.boolean(),
+        qualityGate: z.string().nullable(),
+        issues: z.object({
+          BLOCKER: z.number(),
+          CRITICAL: z.number(),
+          MAJOR: z.number(),
+          MINOR: z.number(),
+          INFO: z.number(),
+          total: z.number(),
+        }),
+        issueDetails: z.array(z.object({
+          severity: z.string(),
+          file: z.string(),
+          line: z.number(),
+          message: z.string(),
+          rule: z.string(),
+        })).optional(),
+        metrics: z.object({
+          bugs: z.number(),
+          vulnerabilities: z.number(),
+          code_smells: z.number(),
+          duplicated_lines_density: z.number(),
+          coverage: z.number(),
+        }),
+      }).optional().describe('Reporte de análisis SonarQube (opcional)'),
     },
 
     handler: async (params) => {
@@ -241,6 +267,7 @@ export const tools = {
         repo: params.repo,
         taskSpec,
         cwd: params.cwd,
+        sonarReport: params.sonarReport,
       });
 
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {

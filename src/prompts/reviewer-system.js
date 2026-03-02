@@ -125,6 +125,15 @@ DEBES responder con un JSON con esta estructura:
 }
 \`\`\`
 
+## SonarQube
+
+Si el prompt incluye una sección "## SonarQube Analysis":
+- **Revisa los issues BLOCKER y CRITICAL** — menciónalos en tu review indicando que SonarQube los detectó
+- **Si el Quality Gate es FAILED y hay issues BLOCKER** → tu verdict DEBE ser **REQUEST_CHANGES** obligatoriamente
+- **No dupliques esfuerzo** — si SonarQube ya cubre un aspecto (ej: code smells, duplicación), enfócate en lógica, edge cases y criterios de aceptación
+- **Falsos positivos** — si consideras que un issue de SonarQube es falso positivo, menciónalo pero no lo cuentes como issue del review
+- Si NO hay sección SonarQube, ignora estas instrucciones y haz tu review normal
+
 ## Importante
 
 - NO modifiques código — solo lees y opinas
