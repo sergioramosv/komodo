@@ -352,7 +352,7 @@ export async function runTask(projectId, cwd) {
     });
     eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
 
-    const reviewResult = await reviewLoop({ prNumber, repo, taskSpec, cwd });
+    const reviewResult = await reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport });
 
     eventBus.emitAgentEvent('REVIEWER', 'done');
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {

@@ -62,6 +62,17 @@ async function waitForAnalysis() {
 
     const pendingTasks = data.tasks || [];
     if (pendingTasks.length === 0) {
+      // Verify the most recent task finished successfully
+      const history = await sonarApi('/api/ce/activity', {
+        component: config.sonarProjectKey,
+        ps: '1',
+      });
+      const lastTask = (history.tasks || [])[0];
+      if (lastTask && lastTask.status === 'FAILED') {
+        const errorMsg = lastTask.errorMessage || 'Unknown error';
+        throw new Error(`SonarQube CE task falló: ${errorMsg}`);
+      }
+
       logger.success('Análisis SonarQube procesado', AGENT);
       return true;
     }
