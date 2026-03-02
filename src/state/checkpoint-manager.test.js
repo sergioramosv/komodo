@@ -251,7 +251,7 @@ describe('CheckpointManager', () => {
       expect(savedJson.agentRole).toBe('PLANNER');
     });
 
-    it('handles save errors gracefully', async () => {
+    it('handles mkdir errors gracefully', async () => {
       mkdir.mockRejectedValueOnce(new Error('Permission denied'));
 
       const handler = startAndGetHandler();
@@ -262,6 +262,21 @@ describe('CheckpointManager', () => {
         'KOMODO',
       );
       // Should not throw — error is caught internally
+    });
+
+    it('handles writeFile errors gracefully', async () => {
+      writeFile.mockRejectedValueOnce(new Error('No space left on device'));
+
+      const handler = startAndGetHandler();
+      await handler(defaultPayload);
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to save checkpoint'),
+        'KOMODO',
+      );
+      // mkdir succeeded but writeFile failed — should not throw
+      expect(mkdir).toHaveBeenCalled();
+      expect(komodoState.setExecutionState).not.toHaveBeenCalled();
     });
 
     it('sanitizes taskId in filename', async () => {

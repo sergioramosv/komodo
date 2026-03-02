@@ -5,7 +5,6 @@ import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
 import { komodoState, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
-import { getMaxReviewCycles } from '../config-db.js';
 
 /**
  * Ejecuta el bucle Coder ↔ Reviewer.
@@ -29,7 +28,7 @@ import { getMaxReviewCycles } from '../config-db.js';
  * }>}
  */
 export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport }) {
-  const maxCycles = await getMaxReviewCycles();
+  const maxCycles = config.maxReviewCycles;
   let cycles = 0;
   let lastReview = null;
 

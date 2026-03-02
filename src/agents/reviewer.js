@@ -3,7 +3,6 @@ import { getReviewerSystemPrompt } from '../prompts/reviewer-system.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
-import { getAgentMaxTurns } from '../config-db.js';
 
 /**
  * Build the MCP server list for the Reviewer agent.
@@ -127,15 +126,13 @@ ${sonarSection}
 3. Revisa cada criterio (correctitud, error handling, edge cases, naming, tests, seguridad)
 4. Si necesitas más contexto, lee archivos del repo con Read/Glob/Grep${browserCheckInstruction}`;
 
-  const maxTurns = await getAgentMaxTurns('REVIEWER');
-
   const result = await runAgent({
     name: 'REVIEWER',
     systemPrompt,
     userPrompt,
     mcpServerNames: getReviewerMcpServers(),
     cwd,
-    maxTurns,
+    maxTurns: 30,
     // El Reviewer NO puede modificar código
     disallowedTools: ['Write', 'Edit', 'NotebookEdit'],
   });
