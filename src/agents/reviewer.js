@@ -18,6 +18,46 @@ function getReviewerMcpServers() {
 }
 
 /**
+ * Construye la sección de SonarQube Analysis para el prompt del Reviewer.
+ *
+ * @param {Object} sonarReport - Reporte de SonarQube
+ * @returns {string} Sección markdown formateada
+ */
+function buildSonarSection(sonarReport) {
+  const qgStatus = sonarReport.qualityGate === 'OK' ? 'PASSED' : 'FAILED';
+  const { issues, metrics, issueDetails = [] } = sonarReport;
+
+  let section = `
+## SonarQube Analysis
+
+### Quality Gate: ${qgStatus}
+- **Status**: ${sonarReport.qualityGate}
+- **Bugs**: ${metrics.bugs} | **Vulnerabilities**: ${metrics.vulnerabilities} | **Code Smells**: ${metrics.code_smells}
+- **Coverage**: ${metrics.coverage}% | **Duplication**: ${metrics.duplicated_lines_density}%
+- **Issues total**: ${issues.BLOCKER} blocker, ${issues.CRITICAL} critical, ${issues.MAJOR} major, ${issues.MINOR} minor (${issues.total} total)`;
+
+  if (issueDetails.length > 0) {
+    section += `
+
+### Issues BLOCKER y CRITICAL
+| Severity | File | Line | Description |
+|----------|------|------|-------------|
+${issueDetails.map(i => `| ${i.severity} | ${i.file} | ${i.line} | ${i.message} |`).join('\n')}`;
+  }
+
+  section += `
+
+### Instrucciones para el Reviewer
+- **DEBES mencionar en tu review** si hay issues de SonarQube que el Coder debe corregir.
+- Si el Quality Gate es **FAILED** y hay issues **BLOCKER**, tu verdict DEBE ser **REQUEST_CHANGES** obligatoriamente.
+- No dupliques esfuerzo en lo que SonarQube ya cubre — enfócate en lógica de negocio, edge cases y criterios de aceptación.
+- Si SonarQube reporta issues que consideras falsos positivos, menciónalo en tu review pero no los cuentes como issues.
+`;
+
+  return section;
+}
+
+/**
  * Ejecuta el agente Reviewer para revisar una PR.
  *
  * @param {Object} options
@@ -69,12 +109,7 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport }) {
 
   // Build SonarQube section if report is available and successful
   const sonarSection = sonarReport?.success
-    ? `\n## Reporte SonarQube
-- **Quality Gate**: ${sonarReport.qualityGate}
-- **Issues**: ${sonarReport.issues.BLOCKER} blocker, ${sonarReport.issues.CRITICAL} critical, ${sonarReport.issues.MAJOR} major, ${sonarReport.issues.MINOR} minor (${sonarReport.issues.total} total)
-- **Métricas**: ${sonarReport.metrics.bugs} bugs, ${sonarReport.metrics.vulnerabilities} vulnerabilities, ${sonarReport.metrics.code_smells} code smells, ${sonarReport.metrics.coverage}% coverage, ${sonarReport.metrics.duplicated_lines_density}% duplicación
-
-Considera estos hallazgos de SonarQube en tu revisión. Si el Quality Gate es ERROR, esto debe reflejarse como issue en tu review.\n`
+    ? buildSonarSection(sonarReport)
     : '';
 
   const userPrompt = `Revisa la Pull Request #${prNumber} del repositorio "${repo}".
@@ -130,7 +165,7 @@ ${sonarSection}
   }
 
   // Normalizar el verdict
-  const verdict = normalizeVerdict(data.verdict, data.score, data.issues);
+  const verdict = normalizeVerdict(data.verdict, data.score, data.issues, sonarReport);
 
   // Log del resultado
   if (verdict === 'APPROVED') {
@@ -161,11 +196,17 @@ ${sonarSection}
 /**
  * Normaliza el veredicto asegurando consistencia con las reglas:
  * - APPROVED solo si score >= 8 y 0 issues critical/major
- * - REQUEST_CHANGES en cualquier otro caso
+ * - REQUEST_CHANGES si Quality Gate falla con issues BLOCKER
+ * - REQUEST_CHANGES en cualquier otro caso que no cumpla el umbral
  */
-function normalizeVerdict(rawVerdict, score, issues = []) {
+function normalizeVerdict(rawVerdict, score, issues = [], sonarReport) {
   const hasCritical = issues.some(i => i.severity === 'critical');
   const hasMajor = issues.some(i => i.severity === 'major');
+
+  // Forzar REQUEST_CHANGES si Quality Gate falló con BLOCKERs
+  if (sonarReport?.success && sonarReport.qualityGate !== 'OK' && sonarReport.issues?.BLOCKER > 0) {
+    return 'REQUEST_CHANGES';
+  }
 
   // Forzar REQUEST_CHANGES si no cumple el umbral
   if (score < 8 || hasCritical || hasMajor) {

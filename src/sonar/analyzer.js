@@ -18,6 +18,7 @@ function emptySonarReport(reason) {
     reason,
     qualityGate: null,
     issues: { BLOCKER: 0, CRITICAL: 0, MAJOR: 0, MINOR: 0, INFO: 0, total: 0 },
+    issueDetails: [],
     metrics: { bugs: 0, vulnerabilities: 0, code_smells: 0, duplicated_lines_density: 0, coverage: 0 },
   };
 }
@@ -130,6 +131,32 @@ async function fetchIssuesBySeverity(branch) {
 }
 
 /**
+ * Obtiene los detalles de issues BLOCKER y CRITICAL (archivo, línea, mensaje).
+ *
+ * @param {string} [branch] - Nombre del branch (opcional)
+ * @returns {Promise<Array<{ severity: string, file: string, line: number, message: string, rule: string }>>}
+ */
+async function fetchBlockerCriticalDetails(branch) {
+  const params = {
+    componentKeys: config.sonarProjectKey,
+    resolved: 'false',
+    severities: 'BLOCKER,CRITICAL',
+    ps: '100',
+  };
+  if (branch) params.branch = branch;
+
+  const data = await sonarApi('/api/issues/search', params);
+
+  return (data.issues || []).map(issue => ({
+    severity: issue.severity,
+    file: (issue.component || '').replace(`${config.sonarProjectKey}:`, ''),
+    line: issue.line || 0,
+    message: issue.message || '',
+    rule: issue.rule || '',
+  }));
+}
+
+/**
  * Obtiene métricas clave del proyecto.
  *
  * @param {string} [branch] - Nombre del branch (opcional)
@@ -172,6 +199,7 @@ async function fetchMetrics(branch) {
  * @property {string} [reason] - Razón si fue omitido o falló
  * @property {string|null} qualityGate - Estado del quality gate (OK, WARN, ERROR, NONE)
  * @property {{ BLOCKER: number, CRITICAL: number, MAJOR: number, MINOR: number, INFO: number, total: number }} issues
+ * @property {Array<{ severity: string, file: string, line: number, message: string, rule: string }>} issueDetails - Detalles de issues BLOCKER y CRITICAL
  * @property {{ bugs: number, vulnerabilities: number, code_smells: number, duplicated_lines_density: number, coverage: number }} metrics
  */
 export async function analyzeSonar({ branch, cwd } = {}) {
@@ -206,10 +234,11 @@ export async function analyzeSonar({ branch, cwd } = {}) {
     await waitForAnalysis();
 
     // Step 3: Fetch results
-    const [qualityGate, issues, metrics] = await Promise.all([
+    const [qualityGate, issues, metrics, issueDetails] = await Promise.all([
       fetchQualityGateStatus(branch),
       fetchIssuesBySeverity(branch),
       fetchMetrics(branch),
+      fetchBlockerCriticalDetails(branch),
     ]);
 
     const report = {
@@ -217,6 +246,7 @@ export async function analyzeSonar({ branch, cwd } = {}) {
       skipped: false,
       qualityGate,
       issues,
+      issueDetails,
       metrics,
     };
 
