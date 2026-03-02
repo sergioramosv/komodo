@@ -88,7 +88,7 @@ async function askYesNo(rl, question, defaultYes = true) {
 // Wizard
 // ═══════════════════════════════════════════
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
 async function main() {
   const rl = createInterface({ input: stdin, output: stdout });
@@ -191,6 +191,31 @@ async function main() {
 
   const projectId = await ask(rl, 'Project ID del backlog', existing.DEFAULT_PROJECT_ID || '');
 
+  // ─── Step 8: SonarQube (opcional) ─────────
+  step(8, TOTAL_STEPS, 'SonarQube (opcional)...');
+
+  let enableSonar = false;
+  let sonarToken = '';
+  let sonarHostUrl = '';
+  let sonarProjectKey = '';
+
+  const wantsSonar = await askYesNo(rl, 'Configurar análisis estático con SonarQube?', existing.ENABLE_SONAR === 'true');
+
+  if (wantsSonar) {
+    sonarHostUrl = await ask(rl, 'SonarQube URL (ej: https://sonarcloud.io)', existing.SONAR_HOST_URL || '');
+    sonarProjectKey = await ask(rl, 'Project key', existing.SONAR_PROJECT_KEY || '');
+    sonarToken = await ask(rl, 'Token de autenticación', existing.SONAR_TOKEN || '');
+
+    if (sonarToken && sonarHostUrl && sonarProjectKey) {
+      enableSonar = true;
+      ok('SonarQube configurado');
+    } else {
+      warn('Configuración incompleta — SonarQube deshabilitado');
+    }
+  } else {
+    log(`${c.dim}  SonarQube omitido (puedes configurarlo después en .env)${c.reset}`);
+  }
+
   rl.close();
 
   // ═══════════════════════════════════════════
@@ -225,6 +250,12 @@ async function main() {
     `AUTO_MERGE=${autoMerge}`,
     `MAX_REVIEW_CYCLES=${maxCycles}`,
     `DEFAULT_PROJECT_ID=${projectId}`,
+    '',
+    '# SonarQube',
+    `ENABLE_SONAR=${enableSonar}`,
+    `SONAR_TOKEN=${sonarToken}`,
+    `SONAR_HOST_URL=${sonarHostUrl}`,
+    `SONAR_PROJECT_KEY=${sonarProjectKey}`,
   ].join('\n');
 
   writeFileSync(resolve(ROOT, '.env'), envContent);
