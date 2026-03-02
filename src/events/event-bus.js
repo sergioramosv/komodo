@@ -21,6 +21,9 @@ export const EVENT_TYPES = {
   SONAR_ANALYSIS_COMPLETE: 'sonar:analysis:complete',
   SONAR_ANALYSIS_ERROR: 'sonar:analysis:error',
 
+  // Rate limit detection
+  RATE_LIMIT_DETECTED: 'agent:rate-limit',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
