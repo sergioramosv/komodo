@@ -4,7 +4,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
 import { komodoState, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
-import { getMaxReviewCycles } from '../config-db.js';
+import { checkpointManager } from '../state/checkpoint-manager.js';
 
 /**
  * Ejecuta el bucle Coder ↔ Reviewer.
@@ -28,7 +28,7 @@ import { getMaxReviewCycles } from '../config-db.js';
  * }>}
  */
 export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport }) {
-  const maxCycles = await getMaxReviewCycles();
+  const maxCycles = config.maxReviewCycles;
   let cycles = 0;
   let lastReview = null;
 
@@ -44,6 +44,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport })
     });
 
     // === REVIEWER ===
+    checkpointManager.setFlowContext({ flowStep: 'review', reviewIssues: null });
     komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING });
 
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
@@ -127,7 +128,14 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport })
       },
     });
 
+    // Check for rate limit pause before Coder fix
+    if (komodoState.isPauseRequested()) {
+      logger.warn('Execution paused by rate limit during review loop.', 'KOMODO');
+      return { approved: false, cycles, finalReview: lastReview, error: 'Paused: rate limit detected' };
+    }
+
     // === CODER FIX ===
+    checkpointManager.setFlowContext({ flowStep: 'fix', reviewIssues: lastReview.issues || [] });
     logger.info(`Coder arreglando ${(lastReview.issues || []).length} issues...`, 'KOMODO');
 
     komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING });

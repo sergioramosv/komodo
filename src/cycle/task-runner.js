@@ -7,7 +7,8 @@ import { logger } from '../utils/logger.js';
 import { runGh } from '../../skills/github-mcp/src/gh-cli.js';
 import { runAgent } from '../agents/base-agent.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
-import { komodoState, PHASES, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
+import { komodoState, PHASES, DASHBOARD_AGENT_STATES, EXECUTION_STATES } from '../state/komodo-state.js';
+import { checkpointManager } from '../state/checkpoint-manager.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -246,6 +247,13 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    // Set checkpoint flow context for rate limit recovery
+    checkpointManager.setFlowContext({
+      branchName: taskSpec.branchName,
+      repoUrl: taskSpec.repoUrl,
+      flowStep: null, // will be set by phase
+    });
+
     komodoState.updatePhase(PHASES.PLANNING, { currentTask: taskSpec.taskId });
 
     eventBus.emitEvent(EVENT_TYPES.TASK_STARTED, {
@@ -319,6 +327,12 @@ export async function runTask(projectId, cwd) {
       },
     });
 
+    // Check for rate limit pause before next step
+    if (komodoState.isPauseRequested()) {
+      logger.warn('Execution paused by rate limit after Coder step.', 'KOMODO');
+      return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
+    }
+
     // ═══════════════════════════════════════════
     // PASO 3: SONAR ANALYSIS — Análisis de calidad
     // ═══════════════════════════════════════════
@@ -335,6 +349,12 @@ export async function runTask(projectId, cwd) {
       logger.success(`SonarQube: Quality Gate ${sonarReport.qualityGate}`, 'KOMODO');
     } else if (sonarReport.skipped) {
       logger.info('SonarQube omitido, continuando con review...', 'KOMODO');
+    }
+
+    // Check for rate limit pause before next step
+    if (komodoState.isPauseRequested()) {
+      logger.warn('Execution paused by rate limit after analysis step.', 'KOMODO');
+      return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
     }
 
     // ═══════════════════════════════════════════
@@ -383,6 +403,12 @@ export async function runTask(projectId, cwd) {
         metadata: { ...result, title: taskSpec.title },
       });
       return result;
+    }
+
+    // Check for rate limit pause before next step
+    if (komodoState.isPauseRequested()) {
+      logger.warn('Execution paused by rate limit after review step.', 'KOMODO');
+      return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
     }
 
     // ═══════════════════════════════════════════
@@ -448,6 +474,8 @@ export async function runTask(projectId, cwd) {
       reviewCycle: 0,
     });
 
+    checkpointManager.clearFlowContext();
+
     return {
       success: true,
       taskId: taskSpec.taskId,
@@ -461,6 +489,8 @@ export async function runTask(projectId, cwd) {
   } catch (err) {
     // Error inesperado — intentar cleanup
     logger.error(`Error inesperado: ${err.message}`, 'KOMODO');
+
+    checkpointManager.clearFlowContext();
 
     if (prNumber && repo) {
       closePR(repo, prNumber, `Error inesperado: ${err.message}`);
