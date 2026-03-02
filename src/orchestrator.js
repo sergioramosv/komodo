@@ -175,6 +175,28 @@ function askUser(question) {
 }
 
 /**
+ * Retrieves the latest valid checkpoint, discarding invalid ones.
+ *
+ * @returns {Promise<{ filepath: string, checkpoint: Object } | null>}
+ * @private
+ */
+async function _getLatestValidCheckpoint() {
+  const pendingCheckpoints = await checkpointManager.listPendingCheckpoints();
+  if (pendingCheckpoints.length === 0) return null;
+
+  const { filepath, checkpoint } = pendingCheckpoints[0];
+
+  const validation = checkpointManager.validateCheckpoint(checkpoint);
+  if (!validation.valid) {
+    logger.warn(`Checkpoint descartado: ${validation.reason}`, 'KOMODO');
+    await checkpointManager.deleteCheckpoint(filepath);
+    return null;
+  }
+
+  return { filepath, checkpoint };
+}
+
+/**
  * Check for pending checkpoints and optionally resume.
  *
  * Called at the start of `komodo run` to detect paused sessions.
@@ -187,22 +209,10 @@ function askUser(question) {
  * @returns {Promise<{ resumed: boolean, result?: Object }>}
  */
 export async function checkForPendingCheckpoints(options = {}) {
-  const pendingCheckpoints = await checkpointManager.listPendingCheckpoints();
+  const found = await _getLatestValidCheckpoint();
+  if (!found) return { resumed: false };
 
-  if (pendingCheckpoints.length === 0) {
-    return { resumed: false };
-  }
-
-  // Take the most recent checkpoint
-  const { filepath, checkpoint } = pendingCheckpoints[0];
-
-  // Validate checkpoint integrity
-  const validation = checkpointManager.validateCheckpoint(checkpoint);
-  if (!validation.valid) {
-    logger.warn(`Checkpoint descartado: ${validation.reason}`, 'KOMODO');
-    await checkpointManager.deleteCheckpoint(filepath);
-    return { resumed: false };
-  }
+  const { filepath, checkpoint } = found;
 
   const autoResume = options.autoResume || process.env.CHECKPOINT_AUTO_RESUME === 'true';
 
@@ -253,23 +263,13 @@ export async function resume(options = {}) {
     return { tasksCompleted: 0, tasksFailed: 0, results: [] };
   }
 
-  const pendingCheckpoints = await checkpointManager.listPendingCheckpoints();
-
-  if (pendingCheckpoints.length === 0) {
+  const found = await _getLatestValidCheckpoint();
+  if (!found) {
     logger.info('No hay checkpoints pendientes. Nada que reanudar.', 'KOMODO');
     return { tasksCompleted: 0, tasksFailed: 0, results: [] };
   }
 
-  // Take the most recent checkpoint
-  const { filepath, checkpoint } = pendingCheckpoints[0];
-
-  // Validate
-  const validation = checkpointManager.validateCheckpoint(checkpoint);
-  if (!validation.valid) {
-    logger.warn(`Checkpoint descartado: ${validation.reason}`, 'KOMODO');
-    await checkpointManager.deleteCheckpoint(filepath);
-    return { tasksCompleted: 0, tasksFailed: 0, results: [] };
-  }
+  const { filepath, checkpoint } = found;
 
   logger.taskHeader('KOMODO RESUME');
   logger.info(`Reanudando tarea: "${checkpoint.taskTitle}"`, 'KOMODO');

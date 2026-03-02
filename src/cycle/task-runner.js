@@ -7,7 +7,7 @@ import { logger } from '../utils/logger.js';
 import { runGh } from '../../skills/github-mcp/src/gh-cli.js';
 import { runAgent } from '../agents/base-agent.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
-import { komodoState, PHASES, DASHBOARD_AGENT_STATES, EXECUTION_STATES } from '../state/komodo-state.js';
+import { komodoState, PHASES, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
 
 /**
@@ -539,17 +539,17 @@ export async function resumeTask(checkpoint, cwd) {
   // Checkout to the correct branch
   if (branchName) {
     try {
-      const { execSync } = await import('child_process');
+      const { execFileSync } = await import('child_process');
       const resolvedCwd = cwd || config.rootDir;
-      execSync(`git checkout ${branchName}`, { cwd: resolvedCwd, stdio: 'pipe' });
+      execFileSync('git', ['checkout', branchName], { cwd: resolvedCwd, stdio: 'pipe' });
       logger.info(`Checkout a branch: ${branchName}`, 'KOMODO');
     } catch (err) {
       // Branch might not exist locally, try fetching
       try {
-        const { execSync } = await import('child_process');
+        const { execFileSync } = await import('child_process');
         const resolvedCwd = cwd || config.rootDir;
-        execSync(`git fetch origin ${branchName}`, { cwd: resolvedCwd, stdio: 'pipe' });
-        execSync(`git checkout ${branchName}`, { cwd: resolvedCwd, stdio: 'pipe' });
+        execFileSync('git', ['fetch', 'origin', branchName], { cwd: resolvedCwd, stdio: 'pipe' });
+        execFileSync('git', ['checkout', branchName], { cwd: resolvedCwd, stdio: 'pipe' });
         logger.info(`Checkout a branch (tras fetch): ${branchName}`, 'KOMODO');
       } catch (fetchErr) {
         logger.error(`No se pudo hacer checkout a branch ${branchName}: ${fetchErr.message}`, 'KOMODO');
@@ -582,19 +582,8 @@ export async function resumeTask(checkpoint, cwd) {
       komodoState.updatePhase(PHASES.CODING, { currentTask: taskId });
       komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskId });
 
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'CODER',
-        previousState: AGENT_STATES.IDLE,
-        newState: AGENT_STATES.WORKING,
-      });
-
       const coderResult = await implementTask(taskSpec, cwd);
 
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'CODER',
-        previousState: AGENT_STATES.WORKING,
-        newState: AGENT_STATES.IDLE,
-      });
       komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
       if (!coderResult.success) {
@@ -658,6 +647,14 @@ export async function resumeTask(checkpoint, cwd) {
   } catch (err) {
     logger.error(`Error inesperado al reanudar: ${err.message}`, 'KOMODO');
     checkpointManager.clearFlowContext();
+
+    if (prNumber && repo) {
+      closePR(repo, prNumber, `Error inesperado en reanudación: ${err.message}`);
+    }
+    if (taskSpec?.taskId) {
+      await rollbackTask(taskSpec.taskId);
+    }
+
     return makeResult({ success: false, taskSpec, prNumber, startTime, error: err.message });
   }
 }
@@ -695,19 +692,8 @@ async function _continueFromReview(taskSpec, prNumber, repo, startTime, cwd, son
   komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
   komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING });
 
-  eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-    agentName: 'REVIEWER',
-    previousState: AGENT_STATES.IDLE,
-    newState: AGENT_STATES.WORKING,
-  });
-
   const reviewResult = await reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport });
 
-  eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-    agentName: 'REVIEWER',
-    previousState: AGENT_STATES.WAITING,
-    newState: AGENT_STATES.IDLE,
-  });
   komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
   // Record outcome (best effort)
@@ -741,12 +727,6 @@ async function _continueFromFix(taskSpec, prNumber, repo, reviewIssues, startTim
   komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber });
   komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING });
 
-  eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-    agentName: 'CODER',
-    previousState: AGENT_STATES.IDLE,
-    newState: AGENT_STATES.WORKING,
-  });
-
   // Build a minimal review feedback from checkpoint issues
   const reviewFeedback = {
     summary: 'Issues from previous review (resumed from checkpoint)',
@@ -755,11 +735,6 @@ async function _continueFromFix(taskSpec, prNumber, repo, reviewIssues, startTim
 
   const fixResult = await fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd);
 
-  eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-    agentName: 'CODER',
-    previousState: AGENT_STATES.WORKING,
-    newState: AGENT_STATES.IDLE,
-  });
   komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE });
 
   if (!fixResult.success) {

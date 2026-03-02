@@ -210,12 +210,12 @@ class CheckpointManager {
       return { valid: false, reason: 'Checkpoint sin flowStep' };
     }
     // Steps that require a PR must have a prNumber
-    const prSteps = ['review', 'fix', 'merge'];
+    const prSteps = ['analyze', 'review', 'fix', 'merge'];
     if (prSteps.includes(checkpoint.flowStep) && !checkpoint.prNumber) {
       return { valid: false, reason: `Paso "${checkpoint.flowStep}" requiere prNumber pero no existe` };
     }
     // Steps that require a branch must have branchName
-    const branchSteps = ['code', 'review', 'fix', 'merge'];
+    const branchSteps = ['code', 'analyze', 'review', 'fix', 'merge'];
     if (branchSteps.includes(checkpoint.flowStep) && !checkpoint.branchName) {
       return { valid: false, reason: `Paso "${checkpoint.flowStep}" requiere branchName pero no existe` };
     }
