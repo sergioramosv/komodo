@@ -5,6 +5,9 @@ import { basename } from 'path';
 vi.mock('fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
+  readdir: vi.fn().mockResolvedValue([]),
+  readFile: vi.fn().mockResolvedValue('{}'),
+  unlink: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock event bus
@@ -57,7 +60,7 @@ vi.mock('../utils/logger.js', () => ({
   },
 }));
 
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, writeFile, readdir, readFile, unlink } from 'fs/promises';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { komodoState } from './komodo-state.js';
 import { logger } from '../utils/logger.js';
@@ -318,6 +321,164 @@ describe('CheckpointManager', () => {
       const filepath = writeFile.mock.calls[0][0];
       const filename = basename(filepath);
       expect(filename).toMatch(/^checkpoint-unknown-\d+\.json$/);
+    });
+  });
+
+  describe('validateCheckpoint', () => {
+    it('returns valid for a complete checkpoint', () => {
+      const result = checkpointManager.validateCheckpoint({
+        taskId: 'task-1',
+        flowStep: 'review',
+        prNumber: 42,
+        branchName: 'feature/test',
+      });
+      expect(result).toEqual({ valid: true });
+    });
+
+    it('rejects null checkpoint', () => {
+      const result = checkpointManager.validateCheckpoint(null);
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('taskId');
+    });
+
+    it('rejects checkpoint without taskId', () => {
+      const result = checkpointManager.validateCheckpoint({ flowStep: 'code' });
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('taskId');
+    });
+
+    it('rejects checkpoint without flowStep', () => {
+      const result = checkpointManager.validateCheckpoint({ taskId: 'task-1' });
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('flowStep');
+    });
+
+    it('rejects review step without prNumber', () => {
+      const result = checkpointManager.validateCheckpoint({
+        taskId: 'task-1',
+        flowStep: 'review',
+        branchName: 'feature/test',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('prNumber');
+    });
+
+    it('rejects fix step without prNumber', () => {
+      const result = checkpointManager.validateCheckpoint({
+        taskId: 'task-1',
+        flowStep: 'fix',
+        branchName: 'feature/test',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('prNumber');
+    });
+
+    it('rejects merge step without prNumber', () => {
+      const result = checkpointManager.validateCheckpoint({
+        taskId: 'task-1',
+        flowStep: 'merge',
+        branchName: 'feature/test',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('prNumber');
+    });
+
+    it('rejects analyze step without prNumber', () => {
+      const result = checkpointManager.validateCheckpoint({
+        taskId: 'task-1',
+        flowStep: 'analyze',
+        branchName: 'feature/test',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('prNumber');
+    });
+
+    it('rejects code step without branchName', () => {
+      const result = checkpointManager.validateCheckpoint({
+        taskId: 'task-1',
+        flowStep: 'code',
+      });
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('branchName');
+    });
+
+    it('rejects analyze step without branchName', () => {
+      const result = checkpointManager.validateCheckpoint({
+        taskId: 'task-1',
+        flowStep: 'analyze',
+        prNumber: 42,
+      });
+      expect(result.valid).toBe(false);
+      expect(result.reason).toContain('branchName');
+    });
+
+    it('accepts plan step without prNumber or branchName', () => {
+      const result = checkpointManager.validateCheckpoint({
+        taskId: 'task-1',
+        flowStep: 'plan',
+      });
+      expect(result).toEqual({ valid: true });
+    });
+  });
+
+  describe('listPendingCheckpoints', () => {
+    it('returns empty array when checkpoint directory does not exist', async () => {
+      readdir.mockRejectedValueOnce(new Error('ENOENT'));
+      const result = await checkpointManager.listPendingCheckpoints();
+      expect(result).toEqual([]);
+    });
+
+    it('returns empty array when no checkpoint files exist', async () => {
+      readdir.mockResolvedValueOnce(['other-file.txt', 'readme.md']);
+      const result = await checkpointManager.listPendingCheckpoints();
+      expect(result).toEqual([]);
+    });
+
+    it('returns parsed checkpoints sorted by timestamp (newest first)', async () => {
+      const older = { taskId: 'task-1', timestamp: '2026-03-01T10:00:00.000Z' };
+      const newer = { taskId: 'task-2', timestamp: '2026-03-02T10:00:00.000Z' };
+
+      readdir.mockResolvedValueOnce([
+        'checkpoint-task-1-1000.json',
+        'checkpoint-task-2-2000.json',
+      ]);
+      readFile
+        .mockResolvedValueOnce(JSON.stringify(older))
+        .mockResolvedValueOnce(JSON.stringify(newer));
+
+      const result = await checkpointManager.listPendingCheckpoints();
+
+      expect(result).toHaveLength(2);
+      expect(result[0].checkpoint.taskId).toBe('task-2');
+      expect(result[1].checkpoint.taskId).toBe('task-1');
+    });
+
+    it('discards corrupted checkpoint files', async () => {
+      readdir.mockResolvedValueOnce(['checkpoint-bad-1000.json']);
+      readFile.mockRejectedValueOnce(new Error('invalid json'));
+
+      const result = await checkpointManager.listPendingCheckpoints();
+
+      expect(result).toEqual([]);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining('corrupto'),
+        'KOMODO',
+      );
+      expect(unlink).toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteCheckpoint', () => {
+    it('deletes the checkpoint file', async () => {
+      await checkpointManager.deleteCheckpoint('/path/to/checkpoint.json');
+      expect(unlink).toHaveBeenCalledWith('/path/to/checkpoint.json');
+    });
+
+    it('does not throw if file already deleted', async () => {
+      unlink.mockRejectedValueOnce(new Error('ENOENT'));
+      await expect(
+        checkpointManager.deleteCheckpoint('/path/to/checkpoint.json'),
+      ).resolves.toBeUndefined();
     });
   });
 });
