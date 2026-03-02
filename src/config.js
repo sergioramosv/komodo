@@ -64,6 +64,12 @@ export const config = {
   telegramVerbosity: process.env.TELEGRAM_VERBOSITY || 'verbose', // 'verbose' | 'minimal'
   telegramClaudeTimeout: parseInt(process.env.TELEGRAM_CLAUDE_TIMEOUT || '120000', 10),
 
+  // SonarQube / SonarCloud
+  enableSonar: process.env.ENABLE_SONAR === 'true',
+  sonarToken: process.env.SONAR_TOKEN || '',
+  sonarHostUrl: process.env.SONAR_HOST_URL || '',
+  sonarProjectKey: process.env.SONAR_PROJECT_KEY || '',
+
   // Paths
   rootDir: ROOT_DIR,
   memoryDir: resolve(ROOT_DIR, 'memory'),
