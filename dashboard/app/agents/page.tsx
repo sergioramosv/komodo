@@ -41,6 +41,7 @@ const PHASE_TO_AGENT: Record<Phase, AgentName | null> = {
   idle: null,
   planning: 'PLANNER',
   coding: 'CODER',
+  analyzing: null,
   reviewing: 'REVIEWER',
   merging: null,
 };
