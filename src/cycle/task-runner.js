@@ -7,12 +7,13 @@ import { logger } from '../utils/logger.js';
 import { runGh } from '../../skills/github-mcp/src/gh-cli.js';
 import { runAgent } from '../agents/base-agent.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
-import { komodoState, PHASES, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
+import { komodoState, PHASES, DASHBOARD_AGENT_STATES, EXECUTION_STATES } from '../state/komodo-state.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
 import { classifyAndEmit } from '../triage/complexity-classifier.js';
 import { selectModel } from '../triage/model-selector.js';
 import { shouldDecompose, decomposeTask } from '../triage/task-decomposer.js';
 import { fallbackManager } from '../agents/fallback-manager.js';
+import { withWatchdog } from '../watchdog/watchdog.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -222,7 +223,10 @@ export async function runTask(projectId, cwd) {
     const plannerCli = config.cliPlanner;
     const plannerModel = selectModel(plannerCli, 'PLANNER', 'standard');
 
-    const plannerResult = await pickNextTask(projectId, { model: plannerModel });
+    const plannerResult = await withWatchdog(
+      () => pickNextTask(projectId, { model: plannerModel }),
+      { agentName: 'PLANNER', onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+    );
 
     if (plannerResult.cost) {
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
@@ -327,7 +331,16 @@ export async function runTask(projectId, cwd) {
     });
     eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
 
-    let coderResult = await implementTask(taskSpec, cwd, { model: coderModel });
+    let coderResult = await withWatchdog(
+      () => implementTask(taskSpec, cwd, { model: coderModel }),
+      {
+        agentName: 'CODER',
+        taskId: taskSpec.taskId,
+        onCheckpoint: () => {
+          komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
+        },
+      },
+    );
 
     // Fallback retry: if Coder failed and a fallback CLI is available, retry once
     if (!coderResult.success && fallbackManager.isEnabled()) {
@@ -452,7 +465,10 @@ export async function runTask(projectId, cwd) {
     });
     eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
 
-    const reviewResult = await reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, reviewerModel, coderModel });
+    const reviewResult = await withWatchdog(
+      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, reviewerModel, coderModel }),
+      { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+    );
 
     eventBus.emitAgentEvent('REVIEWER', 'done');
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
