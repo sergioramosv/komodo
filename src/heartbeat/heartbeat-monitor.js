@@ -5,6 +5,7 @@ import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { fallbackManager } from '../agents/fallback-manager.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
 import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
+import { resumeTask } from '../cycle/task-runner.js';
 
 const PING_TIMEOUT_MS = 10_000;
 const PING_PROMPT = 'Respond with exactly: OK';
@@ -174,7 +175,7 @@ class HeartbeatMonitor {
 
     logger.info(`CLI "${cli}" recovered from rate limit!`, 'HEARTBEAT');
 
-    // Auto-resume if orchestrator is paused and there are pending checkpoints
+    // Auto-resume if orchestrator is paused and there are matching checkpoints
     const autoResumeResult = await this._tryAutoResume(cli);
 
     const metadata = { cli };
@@ -189,9 +190,13 @@ class HeartbeatMonitor {
   /**
    * Attempt auto-resume if conditions are met:
    * - Orchestrator is in PAUSED state
-   * - There are pending checkpoints
+   * - There are pending checkpoints whose CLI matches the recovered one
+   *
+   * If resume succeeds, deletes the checkpoint and emits SESSION_AUTO_RESUMED.
+   * If resume fails, leaves the checkpoint for retry on the next tick.
    *
    * @param {string} cli - The CLI that just recovered
+   * @returns {Promise<{ checkpoint: string }|null>}
    * @private
    */
   async _tryAutoResume(cli) {
@@ -199,19 +204,88 @@ class HeartbeatMonitor {
       const snapshot = komodoState.getSnapshot();
       if (snapshot.executionState !== EXECUTION_STATES.PAUSED) return null;
 
+      // List checkpoints sorted newest-first
       const pending = await checkpointManager.listPendingCheckpoints();
       if (pending.length === 0) return null;
 
+      // Find the most recent checkpoint whose CLI matches the recovered one
+      const match = pending.find(({ checkpoint }) => checkpoint.cliType === cli);
+      if (!match) {
+        // No checkpoint for this CLI — still resume if any checkpoint exists
+        // (the recovered CLI might be needed for the next step)
+        return null;
+      }
+
+      const { filepath, checkpoint } = match;
+
+      // Validate checkpoint before resuming
+      const validation = checkpointManager.validateCheckpoint(checkpoint);
+      if (!validation.valid) {
+        logger.warn(`Checkpoint invalid (${validation.reason}), discarding: ${filepath}`, 'HEARTBEAT');
+        await checkpointManager.deleteCheckpoint(filepath);
+        return null;
+      }
+
+      const downtimeMs = Date.now() - new Date(checkpoint.timestamp).getTime();
+      const downtimeMinutes = Math.round(downtimeMs / 60_000);
+
       logger.info(
-        `CLI "${cli}" recovered + checkpoint active → triggering auto-resume`,
+        `CLI "${cli}" recovered + matching checkpoint found → auto-resuming task "${checkpoint.taskTitle}" from step "${checkpoint.flowStep}" (downtime: ${downtimeMinutes}min)`,
         'HEARTBEAT',
       );
 
       komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
 
-      return { checkpoint: pending[0].filepath };
+      // Start checkpoint manager for potential new rate limits during resume
+      checkpointManager.start();
+
+      const result = await resumeTask(checkpoint, config.rootDir);
+
+      if (result.success) {
+        // Delete the resumed checkpoint
+        await checkpointManager.deleteCheckpoint(filepath);
+        logger.info(`Checkpoint deleted after successful auto-resume: ${filepath}`, 'HEARTBEAT');
+
+        // Clean up remaining checkpoints for the same task
+        const remaining = await checkpointManager.listPendingCheckpoints();
+        for (const { filepath: fp, checkpoint: cp } of remaining) {
+          if (cp.taskId === checkpoint.taskId) {
+            await checkpointManager.deleteCheckpoint(fp);
+          }
+        }
+
+        eventBus.emitEvent(EVENT_TYPES.SESSION_AUTO_RESUMED, {
+          metadata: {
+            taskId: checkpoint.taskId,
+            cli,
+            downtimeMinutes,
+          },
+        });
+
+        logger.info(
+          `Auto-resume successful: task "${checkpoint.taskTitle}" completed from step "${checkpoint.flowStep}"`,
+          'HEARTBEAT',
+        );
+
+        return { checkpoint: filepath };
+      }
+
+      // Resume failed — leave checkpoint for retry on next tick
+      logger.warn(
+        `Auto-resume failed for task "${checkpoint.taskTitle}": ${result.error || 'unknown error'}. Will retry on next heartbeat tick.`,
+        'HEARTBEAT',
+      );
+
+      // Set back to PAUSED so next tick can try again
+      komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
+
+      return null;
     } catch (err) {
       logger.error(`Auto-resume check failed: ${err.message}`, 'HEARTBEAT');
+      // Ensure state is PAUSED for retry
+      try {
+        komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
+      } catch { /* best effort */ }
       return null;
     }
   }
