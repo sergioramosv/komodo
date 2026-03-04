@@ -6,6 +6,7 @@ vi.mock('../config.js', () => ({
   config: {
     heartbeatEnabled: true,
     heartbeatIntervalMinutes: 5,
+    rootDir: '/fake/root',
   },
 }));
 
@@ -14,6 +15,7 @@ vi.mock('../utils/logger.js', () => ({
     info: vi.fn(),
     warn: vi.fn(),
     error: vi.fn(),
+    success: vi.fn(),
   },
 }));
 
@@ -21,6 +23,7 @@ vi.mock('../events/event-bus.js', () => ({
   eventBus: { emitEvent: vi.fn(() => ({})) },
   EVENT_TYPES: {
     CLI_RECOVERED: 'cli:recovered',
+    SESSION_AUTO_RESUMED: 'session:auto-resumed',
   },
 }));
 
@@ -34,6 +37,9 @@ vi.mock('../agents/fallback-manager.js', () => ({
 vi.mock('../state/checkpoint-manager.js', () => ({
   checkpointManager: {
     listPendingCheckpoints: vi.fn(async () => []),
+    validateCheckpoint: vi.fn(() => ({ valid: true })),
+    deleteCheckpoint: vi.fn(async () => {}),
+    start: vi.fn(),
   },
 }));
 
@@ -47,6 +53,10 @@ vi.mock('../state/komodo-state.js', () => ({
     RUNNING: 'running',
     PAUSED: 'paused',
   },
+}));
+
+vi.mock('../cycle/task-runner.js', () => ({
+  resumeTask: vi.fn(async () => ({ success: true })),
 }));
 
 // Mock child_process.spawn
@@ -69,6 +79,7 @@ const { eventBus, EVENT_TYPES } = await import('../events/event-bus.js');
 const { fallbackManager } = await import('../agents/fallback-manager.js');
 const { checkpointManager } = await import('../state/checkpoint-manager.js');
 const { komodoState, EXECUTION_STATES } = await import('../state/komodo-state.js');
+const { resumeTask } = await import('../cycle/task-runner.js');
 const { spawn } = await import('child_process');
 const { heartbeatMonitor } = await import('./heartbeat-monitor.js');
 
@@ -106,6 +117,30 @@ function simulateSpawnError() {
   mockProc.on.mockImplementation((event, cb) => {
     if (event === 'error') cb(new Error('ENOENT'));
   });
+}
+
+/**
+ * Create a fake checkpoint entry for testing.
+ */
+function makeCheckpoint(overrides = {}) {
+  const checkpoint = {
+    taskId: 'task-123',
+    taskTitle: 'Test task',
+    flowStep: 'code',
+    branchName: 'feature/test',
+    prNumber: null,
+    repoUrl: 'https://github.com/test/repo',
+    agentRole: 'CODER',
+    cliType: 'claude',
+    timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString(), // 10 min ago
+    reviewRound: null,
+    reviewIssues: null,
+    ...overrides,
+  };
+  return {
+    filepath: `/fake/checkpoints/checkpoint-${checkpoint.taskId}-${Date.now()}.json`,
+    checkpoint,
+  };
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
@@ -284,29 +319,66 @@ describe('HeartbeatMonitor', () => {
   // ── Auto-resume integration ───────────────────────────────────
 
   describe('auto-resume integration', () => {
-    it('triggers auto-resume when CLI recovers + orchestrator paused + checkpoint exists', async () => {
+    it('triggers auto-resume when CLI recovers + orchestrator paused + matching checkpoint exists', async () => {
       fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
       simulateSpawnSuccess();
 
       komodoState.getSnapshot.mockReturnValue({ executionState: EXECUTION_STATES.PAUSED });
-      checkpointManager.listPendingCheckpoints.mockResolvedValue([
-        { filepath: '/tmp/checkpoint-1.json', checkpoint: {} },
-      ]);
+
+      const cp = makeCheckpoint({ cliType: 'claude' });
+      checkpointManager.listPendingCheckpoints.mockResolvedValue([cp]);
+      checkpointManager.validateCheckpoint.mockReturnValue({ valid: true });
+      resumeTask.mockResolvedValue({ success: true });
 
       heartbeatMonitor.start();
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
 
       expect(komodoState.setExecutionState).toHaveBeenCalledWith(EXECUTION_STATES.RUNNING);
+      expect(resumeTask).toHaveBeenCalledWith(cp.checkpoint, config.rootDir);
+    });
 
-      // Single CLI_RECOVERED event with autoResume metadata (no double emission)
-      expect(eventBus.emitEvent).toHaveBeenCalledTimes(1);
+    it('deletes checkpoint after successful auto-resume', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnSuccess();
+
+      komodoState.getSnapshot.mockReturnValue({ executionState: EXECUTION_STATES.PAUSED });
+
+      const cp = makeCheckpoint({ cliType: 'claude' });
+      checkpointManager.listPendingCheckpoints
+        .mockResolvedValueOnce([cp])  // first call: find checkpoints
+        .mockResolvedValueOnce([]);   // second call: cleanup remaining
+      checkpointManager.validateCheckpoint.mockReturnValue({ valid: true });
+      resumeTask.mockResolvedValue({ success: true });
+
+      heartbeatMonitor.start();
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      expect(checkpointManager.deleteCheckpoint).toHaveBeenCalledWith(cp.filepath);
+    });
+
+    it('emits SESSION_AUTO_RESUMED event with taskId, cli, and downtimeMinutes on success', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnSuccess();
+
+      komodoState.getSnapshot.mockReturnValue({ executionState: EXECUTION_STATES.PAUSED });
+
+      const cp = makeCheckpoint({ cliType: 'claude', taskId: 'task-abc' });
+      checkpointManager.listPendingCheckpoints
+        .mockResolvedValueOnce([cp])
+        .mockResolvedValueOnce([]);
+      checkpointManager.validateCheckpoint.mockReturnValue({ valid: true });
+      resumeTask.mockResolvedValue({ success: true });
+
+      heartbeatMonitor.start();
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
       expect(eventBus.emitEvent).toHaveBeenCalledWith(
-        EVENT_TYPES.CLI_RECOVERED,
+        EVENT_TYPES.SESSION_AUTO_RESUMED,
         expect.objectContaining({
           metadata: expect.objectContaining({
+            taskId: 'task-abc',
             cli: 'claude',
-            autoResume: true,
-            checkpoint: '/tmp/checkpoint-1.json',
+            downtimeMinutes: expect.any(Number),
           }),
         }),
       );
@@ -321,6 +393,7 @@ describe('HeartbeatMonitor', () => {
       heartbeatMonitor.start();
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
 
+      expect(resumeTask).not.toHaveBeenCalled();
       expect(komodoState.setExecutionState).not.toHaveBeenCalled();
     });
 
@@ -334,7 +407,119 @@ describe('HeartbeatMonitor', () => {
       heartbeatMonitor.start();
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
 
+      expect(resumeTask).not.toHaveBeenCalled();
       expect(komodoState.setExecutionState).not.toHaveBeenCalled();
+    });
+
+    it('does not auto-resume when no checkpoint matches the recovered CLI', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnSuccess();
+
+      komodoState.getSnapshot.mockReturnValue({ executionState: EXECUTION_STATES.PAUSED });
+
+      // Checkpoint is for codex, but claude recovered
+      const cp = makeCheckpoint({ cliType: 'codex' });
+      checkpointManager.listPendingCheckpoints.mockResolvedValue([cp]);
+
+      heartbeatMonitor.start();
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      expect(resumeTask).not.toHaveBeenCalled();
+    });
+
+    it('retries on next tick when resume fails', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnSuccess();
+
+      komodoState.getSnapshot.mockReturnValue({ executionState: EXECUTION_STATES.PAUSED });
+
+      const cp = makeCheckpoint({ cliType: 'claude' });
+      checkpointManager.listPendingCheckpoints.mockResolvedValue([cp]);
+      checkpointManager.validateCheckpoint.mockReturnValue({ valid: true });
+
+      // First attempt fails
+      resumeTask.mockResolvedValueOnce({ success: false, error: 'CLI timed out' });
+
+      heartbeatMonitor.start();
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      // Resume was attempted
+      expect(resumeTask).toHaveBeenCalledTimes(1);
+      // Checkpoint was NOT deleted (left for retry)
+      expect(checkpointManager.deleteCheckpoint).not.toHaveBeenCalled();
+      // State set back to PAUSED for next tick
+      expect(komodoState.setExecutionState).toHaveBeenCalledWith(EXECUTION_STATES.PAUSED);
+    });
+
+    it('resumes the most recent matching checkpoint when multiple exist', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnSuccess();
+
+      komodoState.getSnapshot.mockReturnValue({ executionState: EXECUTION_STATES.PAUSED });
+
+      const olderCp = makeCheckpoint({
+        cliType: 'claude',
+        taskId: 'task-old',
+        timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+      });
+      const newerCp = makeCheckpoint({
+        cliType: 'claude',
+        taskId: 'task-new',
+        timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      });
+
+      // listPendingCheckpoints returns newest first
+      checkpointManager.listPendingCheckpoints
+        .mockResolvedValueOnce([newerCp, olderCp])
+        .mockResolvedValueOnce([]);
+      checkpointManager.validateCheckpoint.mockReturnValue({ valid: true });
+      resumeTask.mockResolvedValue({ success: true });
+
+      heartbeatMonitor.start();
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      // Should resume the newer checkpoint (first match)
+      expect(resumeTask).toHaveBeenCalledWith(newerCp.checkpoint, config.rootDir);
+    });
+
+    it('discards invalid checkpoint and does not resume', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnSuccess();
+
+      komodoState.getSnapshot.mockReturnValue({ executionState: EXECUTION_STATES.PAUSED });
+
+      const cp = makeCheckpoint({ cliType: 'claude' });
+      checkpointManager.listPendingCheckpoints.mockResolvedValue([cp]);
+      checkpointManager.validateCheckpoint.mockReturnValue({ valid: false, reason: 'missing branchName' });
+
+      heartbeatMonitor.start();
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      expect(checkpointManager.deleteCheckpoint).toHaveBeenCalledWith(cp.filepath);
+      expect(resumeTask).not.toHaveBeenCalled();
+    });
+
+    it('cleans up remaining checkpoints for same task after successful resume', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnSuccess();
+
+      komodoState.getSnapshot.mockReturnValue({ executionState: EXECUTION_STATES.PAUSED });
+
+      const cp = makeCheckpoint({ cliType: 'claude', taskId: 'task-123' });
+      const remainingCp = makeCheckpoint({ cliType: 'codex', taskId: 'task-123' });
+
+      checkpointManager.listPendingCheckpoints
+        .mockResolvedValueOnce([cp])
+        .mockResolvedValueOnce([remainingCp]); // remaining after deletion
+      checkpointManager.validateCheckpoint.mockReturnValue({ valid: true });
+      resumeTask.mockResolvedValue({ success: true });
+
+      heartbeatMonitor.start();
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      // Both the resumed checkpoint and the remaining one for same task should be deleted
+      expect(checkpointManager.deleteCheckpoint).toHaveBeenCalledWith(cp.filepath);
+      expect(checkpointManager.deleteCheckpoint).toHaveBeenCalledWith(remainingCp.filepath);
     });
   });
 
