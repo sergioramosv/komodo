@@ -10,6 +10,7 @@ import { SonarScanner3D } from './SonarScanner3D';
 interface Environment3DProps {
   agents: any;
   phase?: string;
+  cliHealth?: any;
 }
 
 // Mobiliario
@@ -255,11 +256,19 @@ function WallPainting({ position, rotation }: { position: [number, number, numbe
   );
 }
 
-export function Environment3D({ agents, phase }: Environment3DProps) {
+export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) {
   const plannerState = agents?.PLANNER?.status || 'idle';
   const coderState = agents?.CODER?.status || 'idle';
   const reviewerState = agents?.REVIEWER?.status || 'idle';
   const isAnalyzing = phase === 'analyzing';
+
+  // Derive CLI health status per agent from their assigned CLI
+  const getAgentCliStatus = (agentName: string): 'available' | 'rate-limited' | 'down' => {
+    if (!cliHealth) return 'available';
+    const cli = agents?.[agentName]?.cli;
+    if (!cli) return 'available';
+    return cliHealth[cli]?.status ?? 'available';
+  };
 
   return (
     <group>
@@ -362,12 +371,13 @@ export function Environment3D({ agents, phase }: Environment3DProps) {
       {/* ==== AGENTES DINÁMICOS ==== */}
 
       {/* PLANNER */}
-      <Agent3D 
+      <Agent3D
         id="PLANNER"
         status={plannerState}
-        shirtColor="#3498db" 
+        shirtColor="#3498db"
         hairColor="#5C4033"
         hairStyle="bun"
+        cliStatus={getAgentCliStatus('PLANNER')}
         pathWaypoints={[
           [-1.2, 0, 6.2],     // Descanso en sillón Breakroom (izq)
           [-1.2, 0, 2.5],     // Sale de Breakroom
@@ -375,18 +385,19 @@ export function Environment3D({ agents, phase }: Environment3DProps) {
           [-2.5, 0, -4.5],    // Puerta de Planner hacia el escritorio
           [-3.5, 0, -5.8]     // Frente a Pizarra blanca (Trabajando) en Z=-6.8
         ]}
-        rotationWait={[0, Math.PI, 0]}            
-        rotationWork={[0, Math.PI, 0]}        
+        rotationWait={[0, Math.PI, 0]}
+        rotationWork={[0, Math.PI, 0]}
         isWhiteboard={true}
       />
 
       {/* CODER */}
-      <Agent3D 
+      <Agent3D
         id="CODER"
         status={coderState}
         shirtColor="#e74c3c"
         hairColor="#f1c40f"
         hairStyle="long"
+        cliStatus={getAgentCliStatus('CODER')}
         pathWaypoints={[
           [0, 0, 6.2],        // Descanso en sillón Breakroom (centro)
           [0, 0, 2.5],        // Sale hacia puerta
@@ -399,12 +410,13 @@ export function Environment3D({ agents, phase }: Environment3DProps) {
       />
 
       {/* REVIEWER */}
-      <Agent3D 
+      <Agent3D
         id="REVIEWER"
         status={reviewerState}
         shirtColor="#9b59b6"
         hairColor="#111"
         hairStyle="short"
+        cliStatus={getAgentCliStatus('REVIEWER')}
         pathWaypoints={[
           [1.2, 0, 6.2],      // Descanso en sillón Breakroom (der)
           [1.2, 0, 2.5],      // Sale hacia puerta

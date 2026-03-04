@@ -44,6 +44,19 @@ export interface SonarAnalysisState {
   issues: { BLOCKER: number; CRITICAL: number; MAJOR: number; MINOR: number; INFO: number; total: number } | null;
 }
 
+/* ── CLI Health ── */
+
+export type CliName = 'claude' | 'codex' | 'gemini';
+export type CliHealthStatus = 'available' | 'rate-limited' | 'down';
+
+export interface CliHealth {
+  cli: CliName;
+  status: CliHealthStatus;
+  lastHeartbeat: string | null;
+  rateLimitedAt: string | null;
+  cooldownMinutes: number | null;
+}
+
 export interface KomodoSnapshot {
   agents: Record<AgentName, AgentState>;
   phase: Phase;
