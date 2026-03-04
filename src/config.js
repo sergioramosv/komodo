@@ -68,6 +68,10 @@ export const config = {
   complexityTrivialMax: parseInt(process.env.COMPLEXITY_TRIVIAL_MAX || '3', 10),
   complexityStandardMax: parseInt(process.env.COMPLEXITY_STANDARD_MAX || '6', 10),
 
+  // Task decomposition
+  taskDecomposition: process.env.TASK_DECOMPOSITION !== 'false', // default: true
+  decompositionThresholdDevpoints: parseInt(process.env.DECOMPOSITION_THRESHOLD_DEVPOINTS || '8', 10),
+
   // Model selection: per-CLI per-role mappings (format: "trivialModel,standardModel,complexModel")
   modelMap_claude_PLANNER: process.env.MODEL_MAP_CLAUDE_PLANNER || '',
   modelMap_claude_CODER: process.env.MODEL_MAP_CLAUDE_CODER || '',
