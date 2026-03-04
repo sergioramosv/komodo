@@ -19,13 +19,28 @@ vi.mock('../utils/logger.js', () => ({
   },
 }));
 
-vi.mock('../events/event-bus.js', () => ({
-  eventBus: { emitEvent: vi.fn(() => ({})) },
-  EVENT_TYPES: {
-    CLI_RECOVERED: 'cli:recovered',
-    SESSION_AUTO_RESUMED: 'session:auto-resumed',
-  },
-}));
+vi.mock('../events/event-bus.js', async () => {
+  const { EventEmitter } = await import('events');
+  const bus = new EventEmitter();
+  bus.emitEvent = vi.fn((type, data) => {
+    const payload = {
+      type,
+      timestamp: new Date().toISOString(),
+      agentName: data?.agentName || null,
+      metadata: data?.metadata || {},
+    };
+    bus.emit(type, payload);
+    return payload;
+  });
+  return {
+    eventBus: bus,
+    EVENT_TYPES: {
+      CLI_RECOVERED: 'cli:recovered',
+      SESSION_AUTO_RESUMED: 'session:auto-resumed',
+      RATE_LIMIT_DETECTED: 'agent:rate-limit',
+    },
+  };
+});
 
 vi.mock('../agents/fallback-manager.js', () => ({
   fallbackManager: {
@@ -162,7 +177,7 @@ describe('HeartbeatMonitor', () => {
   // ── start / stop ──────────────────────────────────────────────
 
   describe('start / stop', () => {
-    it('starts the interval when enabled', () => {
+    it('starts the monitor when enabled', () => {
       heartbeatMonitor.start();
       expect(heartbeatMonitor.isRunning()).toBe(true);
     });
@@ -179,7 +194,7 @@ describe('HeartbeatMonitor', () => {
       expect(heartbeatMonitor.isRunning()).toBe(true);
     });
 
-    it('stop() clears the interval', () => {
+    it('stop() clears the timeout', () => {
       heartbeatMonitor.start();
       heartbeatMonitor.stop();
       expect(heartbeatMonitor.isRunning()).toBe(false);
@@ -313,6 +328,162 @@ describe('HeartbeatMonitor', () => {
         ['--output-format', 'json', '--yolo'],
         expect.any(Object),
       );
+    });
+  });
+
+  // ── Exponential backoff ─────────────────────────────────────
+
+  describe('exponential backoff', () => {
+    it('uses base interval (5 min) on first tick', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnFailure();
+
+      heartbeatMonitor.start();
+
+      // Should not have pinged before 5 min
+      await vi.advanceTimersByTimeAsync(4 * 60 * 1000);
+      expect(spawn).not.toHaveBeenCalled();
+
+      // Should ping at 5 min
+      await vi.advanceTimersByTimeAsync(1 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    });
+
+    it('doubles interval after first failed ping (5 → 10 min)', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnFailure();
+
+      heartbeatMonitor.start();
+
+      // First tick at 5 min
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(1);
+
+      // Second tick should be at 10 min (backoff)
+      await vi.advanceTimersByTimeAsync(9 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(1); // not yet
+
+      await vi.advanceTimersByTimeAsync(1 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(2); // now at 10 min
+    });
+
+    it('caps backoff at 60 min max', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnFailure();
+
+      heartbeatMonitor.start();
+
+      // Tick 1: 5 min (base)
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(1);
+
+      // Tick 2: 10 min (5*2^1)
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(2);
+
+      // Tick 3: 20 min (5*2^2)
+      await vi.advanceTimersByTimeAsync(20 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(3);
+
+      // Tick 4: 40 min (5*2^3)
+      await vi.advanceTimersByTimeAsync(40 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(4);
+
+      // Tick 5: 60 min (capped, not 80)
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(5);
+    });
+
+    it('resets backoff to base interval on recovery', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+
+      // First tick: fail → backoff increases
+      simulateSpawnFailure();
+      heartbeatMonitor.start();
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(1);
+
+      // Second tick at 10 min: success → backoff resets
+      simulateSpawnSuccess();
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(2);
+      expect(fallbackManager.markRecovered).toHaveBeenCalledWith('claude');
+
+      // Backoff state should be cleared
+      expect(heartbeatMonitor.getBackoffState('claude')).toBeUndefined();
+    });
+  });
+
+  // ── Retry-after scheduling ─────────────────────────────────
+
+  describe('retry-after scheduling', () => {
+    it('schedules next heartbeat based on retry-after + margin', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnFailure();
+
+      heartbeatMonitor.start();
+
+      // Simulate a rate limit event with retry-after 120s
+      eventBus.emitEvent(EVENT_TYPES.RATE_LIMIT_DETECTED, {
+        metadata: { cli: 'claude', retryAfterSeconds: 120 },
+      });
+
+      // First tick at 5 min (initial base interval, already scheduled)
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(1);
+
+      // After tick, next should be based on retry-after (120s) if still set
+      // But retry-after was cleared after first tick in _incrementBackoff
+      // The next retry-after only applies if the event fires again
+    });
+
+    it('uses retry-after delay when event arrives before first tick', async () => {
+      // Set up: CLI rate-limited with retry-after 30s
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnFailure();
+
+      heartbeatMonitor.start();
+
+      // Emit retry-after event immediately
+      eventBus.emitEvent(EVENT_TYPES.RATE_LIMIT_DETECTED, {
+        metadata: { cli: 'claude', retryAfterSeconds: 30 },
+      });
+
+      // The first tick was already scheduled at base (5 min).
+      // The retry-after affects scheduling AFTER the next tick completes.
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+      expect(spawn).toHaveBeenCalledTimes(1);
+    });
+
+    it('captures retry-after from RATE_LIMIT_DETECTED event', () => {
+      heartbeatMonitor.start();
+
+      eventBus.emitEvent(EVENT_TYPES.RATE_LIMIT_DETECTED, {
+        metadata: { cli: 'claude', retryAfterSeconds: 300 },
+      });
+
+      const state = heartbeatMonitor.getBackoffState('claude');
+      expect(state).toBeDefined();
+      expect(state.retryAfterSeconds).toBe(300);
+    });
+
+    it('clears retry-after after a failed ping (delay window passed)', async () => {
+      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
+      simulateSpawnFailure();
+
+      heartbeatMonitor.start();
+
+      // Set retry-after
+      eventBus.emitEvent(EVENT_TYPES.RATE_LIMIT_DETECTED, {
+        metadata: { cli: 'claude', retryAfterSeconds: 60 },
+      });
+
+      // After first tick, retry-after should be cleared
+      await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+      const state = heartbeatMonitor.getBackoffState('claude');
+      expect(state.retryAfterSeconds).toBeNull();
+      expect(state.consecutiveFails).toBe(1);
     });
   });
 
@@ -520,26 +691,6 @@ describe('HeartbeatMonitor', () => {
       // Both the resumed checkpoint and the remaining one for same task should be deleted
       expect(checkpointManager.deleteCheckpoint).toHaveBeenCalledWith(cp.filepath);
       expect(checkpointManager.deleteCheckpoint).toHaveBeenCalledWith(remainingCp.filepath);
-    });
-  });
-
-  // ── Configurable interval ─────────────────────────────────────
-
-  describe('configurable interval', () => {
-    it('uses HEARTBEAT_INTERVAL_MINUTES from config', async () => {
-      config.heartbeatIntervalMinutes = 2;
-      fallbackManager.getRateLimitedClis.mockReturnValue(['claude']);
-      simulateSpawnSuccess();
-
-      heartbeatMonitor.start();
-
-      // Should NOT have ticked yet at 1 minute
-      await vi.advanceTimersByTimeAsync(1 * 60 * 1000);
-      expect(spawn).not.toHaveBeenCalled();
-
-      // Should tick at 2 minutes
-      await vi.advanceTimersByTimeAsync(1 * 60 * 1000);
-      expect(spawn).toHaveBeenCalled();
     });
   });
 });

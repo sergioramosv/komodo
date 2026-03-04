@@ -10,19 +10,45 @@ import { resumeTask } from '../cycle/task-runner.js';
 const PING_TIMEOUT_MS = 10_000;
 const PING_PROMPT = 'Respond with exactly: OK';
 
+/** Backoff constants */
+const BACKOFF_BASE_MINUTES = 5;
+const BACKOFF_MAX_MINUTES = 60;
+const BACKOFF_MULTIPLIER = 2;
+
+/** Margin added to retry-after delays (seconds). */
+const RETRY_AFTER_MARGIN_S = 10;
+
 /**
  * Periodically pings rate-limited CLIs with a trivial prompt to detect
  * when they recover from rate limits. When a CLI responds successfully,
  * it is marked as recovered in FallbackManager and a CLI_RECOVERED event
  * is emitted. If a checkpoint is active and the orchestrator is paused,
  * auto-resume is triggered.
+ *
+ * Supports smart scheduling:
+ * - If a retry-after header/message is detected, the next heartbeat for
+ *   that CLI is scheduled at the specified time + margin.
+ * - If no retry-after is available, exponential backoff is used
+ *   (5 → 10 → 20 → 40 → 60 min max).
+ * - On recovery, the interval resets to the base value.
  */
 class HeartbeatMonitor {
   constructor() {
-    /** @type {ReturnType<typeof setInterval>|null} */
-    this._interval = null;
+    /** @type {ReturnType<typeof setTimeout>|null} */
+    this._timeout = null;
     /** @type {boolean} */
     this._pinging = false;
+    /** @type {boolean} */
+    this._running = false;
+
+    /**
+     * Per-CLI backoff state.
+     * @type {Map<string, { consecutiveFails: number, retryAfterSeconds: number|null }>}
+     */
+    this._cliBackoff = new Map();
+
+    /** @type {(() => void)|null} Event listener unsubscribe function */
+    this._rateLimitUnsub = null;
   }
 
   /**
@@ -35,22 +61,34 @@ class HeartbeatMonitor {
       return;
     }
 
-    if (this._interval) return;
+    if (this._running) return;
+    this._running = true;
 
-    const intervalMs = config.heartbeatIntervalMinutes * 60 * 1000;
+    logger.info(`Heartbeat monitor started (base interval: ${BACKOFF_BASE_MINUTES}min)`, 'HEARTBEAT');
 
-    logger.info(`Heartbeat monitor started (interval: ${config.heartbeatIntervalMinutes}min)`, 'HEARTBEAT');
+    // Listen for rate limit events to capture retry-after info
+    this._rateLimitUnsub = this._listenForRetryAfter();
 
-    this._interval = setInterval(() => this._tick(), intervalMs);
+    this._scheduleNextTick();
   }
 
   /**
-   * Stop the heartbeat monitor and clean up the interval.
+   * Stop the heartbeat monitor and clean up timers and listeners.
    */
   stop() {
-    if (this._interval) {
-      clearInterval(this._interval);
-      this._interval = null;
+    if (this._timeout) {
+      clearTimeout(this._timeout);
+      this._timeout = null;
+    }
+
+    if (this._rateLimitUnsub) {
+      this._rateLimitUnsub();
+      this._rateLimitUnsub = null;
+    }
+
+    if (this._running) {
+      this._running = false;
+      this._cliBackoff.clear();
       logger.info('Heartbeat monitor stopped', 'HEARTBEAT');
     }
   }
@@ -60,7 +98,105 @@ class HeartbeatMonitor {
    * @returns {boolean}
    */
   isRunning() {
-    return this._interval !== null;
+    return this._running;
+  }
+
+  /**
+   * Get the current backoff state for a CLI (for testing/debugging).
+   *
+   * @param {string} cli - CLI identifier
+   * @returns {{ consecutiveFails: number, retryAfterSeconds: number|null }|undefined}
+   */
+  getBackoffState(cli) {
+    return this._cliBackoff.get(cli);
+  }
+
+  /**
+   * Listen for RATE_LIMIT_DETECTED events to capture retry-after per CLI.
+   *
+   * @returns {() => void} Unsubscribe function
+   * @private
+   */
+  _listenForRetryAfter() {
+    const handler = (payload) => {
+      const { cli, retryAfterSeconds } = payload.metadata || {};
+      if (!cli) return;
+
+      const state = this._cliBackoff.get(cli) || { consecutiveFails: 0, retryAfterSeconds: null };
+      state.retryAfterSeconds = retryAfterSeconds || null;
+      this._cliBackoff.set(cli, state);
+
+      if (retryAfterSeconds) {
+        logger.info(
+          `Rate limit says retry after ${retryAfterSeconds}s. Next heartbeat in ${((retryAfterSeconds + RETRY_AFTER_MARGIN_S) / 60).toFixed(1)} min`,
+          'HEARTBEAT',
+        );
+      }
+    };
+
+    eventBus.on(EVENT_TYPES.RATE_LIMIT_DETECTED, handler);
+    return () => eventBus.removeListener(EVENT_TYPES.RATE_LIMIT_DETECTED, handler);
+  }
+
+  /**
+   * Calculate the next tick delay in milliseconds.
+   *
+   * Strategy:
+   * 1. If any CLI has a retry-after value, use that + margin
+   * 2. Otherwise, use exponential backoff based on max consecutive fails
+   * 3. On first start (no fails), use the base interval
+   *
+   * @returns {number} Delay in milliseconds
+   * @private
+   */
+  _getNextTickDelay() {
+    const rateLimitedClis = fallbackManager.getRateLimitedClis();
+
+    // If no CLIs are rate-limited, use base interval
+    if (rateLimitedClis.length === 0) {
+      return BACKOFF_BASE_MINUTES * 60 * 1000;
+    }
+
+    let minDelayMs = Infinity;
+
+    for (const cli of rateLimitedClis) {
+      const state = this._cliBackoff.get(cli);
+
+      if (state?.retryAfterSeconds) {
+        // Use retry-after + margin
+        const delayMs = (state.retryAfterSeconds + RETRY_AFTER_MARGIN_S) * 1000;
+        minDelayMs = Math.min(minDelayMs, delayMs);
+      } else {
+        // Exponential backoff: base * 2^fails, capped at max
+        const fails = state?.consecutiveFails || 0;
+        const backoffMinutes = Math.min(
+          BACKOFF_BASE_MINUTES * Math.pow(BACKOFF_MULTIPLIER, fails),
+          BACKOFF_MAX_MINUTES,
+        );
+        const delayMs = backoffMinutes * 60 * 1000;
+        minDelayMs = Math.min(minDelayMs, delayMs);
+      }
+    }
+
+    return minDelayMs === Infinity ? BACKOFF_BASE_MINUTES * 60 * 1000 : minDelayMs;
+  }
+
+  /**
+   * Schedule the next heartbeat tick using setTimeout for dynamic intervals.
+   * @private
+   */
+  _scheduleNextTick() {
+    if (!this._running) return;
+
+    const delayMs = this._getNextTickDelay();
+    const delayMinutes = (delayMs / 60_000).toFixed(1);
+
+    logger.info(`Next heartbeat in ${delayMinutes} min`, 'HEARTBEAT');
+
+    this._timeout = setTimeout(async () => {
+      await this._tick();
+      this._scheduleNextTick();
+    }, delayMs);
   }
 
   /**
@@ -86,15 +222,43 @@ class HeartbeatMonitor {
         const result = results[i];
 
         if (result.status === 'fulfilled' && result.value) {
-          this._onCliRecovered(cli);
+          this._resetBackoff(cli);
+          await this._onCliRecovered(cli);
         } else {
+          this._incrementBackoff(cli);
           const reason = result.status === 'rejected' ? result.reason?.message : 'no response';
-          logger.info(`CLI "${cli}" still rate-limited (${reason})`, 'HEARTBEAT');
+          const state = this._cliBackoff.get(cli);
+          const fails = state?.consecutiveFails || 0;
+          logger.info(`CLI "${cli}" still rate-limited (${reason}) [attempt ${fails}]`, 'HEARTBEAT');
         }
       }
     } finally {
       this._pinging = false;
     }
+  }
+
+  /**
+   * Increment backoff counter for a CLI after a failed ping.
+   * Clears retry-after since the delay has already passed.
+   *
+   * @param {string} cli - CLI identifier
+   * @private
+   */
+  _incrementBackoff(cli) {
+    const state = this._cliBackoff.get(cli) || { consecutiveFails: 0, retryAfterSeconds: null };
+    state.consecutiveFails++;
+    state.retryAfterSeconds = null; // Clear: the retry-after window has passed
+    this._cliBackoff.set(cli, state);
+  }
+
+  /**
+   * Reset backoff state for a CLI after recovery.
+   *
+   * @param {string} cli - CLI identifier
+   * @private
+   */
+  _resetBackoff(cli) {
+    this._cliBackoff.delete(cli);
   }
 
   /**

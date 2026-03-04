@@ -67,6 +67,59 @@ export function detectRateLimit(text, cli) {
 }
 
 /**
+ * Patterns to extract retry-after durations from rate limit messages.
+ *
+ * Matches common formats:
+ * - "retry after 22s"
+ * - "retry after 300 seconds"
+ * - "Please retry after 22s"
+ * - "Retry-After: 120"
+ * - "try again in 45 seconds"
+ * - "wait 60s before retrying"
+ * - "retry in 5 minutes"
+ * - "retry after 2m30s"
+ *
+ * @type {Array<{ regex: RegExp, toSeconds: (match: RegExpMatchArray) => number }>}
+ */
+const RETRY_AFTER_PATTERNS = [
+  // "retry after 2m30s" (compound format — must come before simpler patterns)
+  { regex: /retry\s+after\s+(\d+)m(\d+)s/i, toSeconds: (m) => Number(m[1]) * 60 + Number(m[2]) },
+  // "retry after 22s" / "retry after 300 seconds" / "retry after 300s"
+  { regex: /retry\s+after\s+(\d+)\s*s(?:econds?)?/i, toSeconds: (m) => Number(m[1]) },
+  // "Retry-After: 120" (HTTP header style)
+  { regex: /retry[- ]after[:\s]+(\d+)/i, toSeconds: (m) => Number(m[1]) },
+  // "try again in 45 seconds"
+  { regex: /try\s+again\s+in\s+(\d+)\s*s(?:econds?)?/i, toSeconds: (m) => Number(m[1]) },
+  // "wait 60s before" / "wait 60 seconds"
+  { regex: /wait\s+(\d+)\s*s(?:econds?)?/i, toSeconds: (m) => Number(m[1]) },
+  // "retry in 5 minutes" / "try again in 5 min"
+  { regex: /(?:retry|try\s+again)\s+in\s+(\d+)\s*min(?:utes?)?/i, toSeconds: (m) => Number(m[1]) * 60 },
+];
+
+/**
+ * Parse retry-after duration from a rate limit error message.
+ *
+ * Scans the text for known retry-after patterns and returns the
+ * number of seconds to wait, or null if no pattern matched.
+ *
+ * @param {string} text - Error text to parse
+ * @returns {number|null} Seconds to wait, or null if not found
+ */
+export function parseRetryAfter(text) {
+  if (!text) return null;
+
+  for (const { regex, toSeconds } of RETRY_AFTER_PATTERNS) {
+    const match = text.match(regex);
+    if (match) {
+      const seconds = toSeconds(match);
+      return seconds > 0 ? seconds : null;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Check text for rate limit signals and emit an event if detected.
  *
  * This is the main integration point — called from base-agent.js
@@ -82,6 +135,8 @@ export function checkAndEmitRateLimit(text, cli, agentName) {
   const { detected, matchedPattern } = detectRateLimit(text, cli);
 
   if (detected) {
+    const retryAfterSeconds = parseRetryAfter(text);
+
     logger.warn(`Rate limit detected (${cli}): matched "${matchedPattern}"`, agentName);
 
     // Track this CLI as rate-limited for fallback purposes
@@ -92,6 +147,7 @@ export function checkAndEmitRateLimit(text, cli, agentName) {
       metadata: {
         cli,
         matchedPattern,
+        retryAfterSeconds,
         timestamp: new Date().toISOString(),
       },
     });
