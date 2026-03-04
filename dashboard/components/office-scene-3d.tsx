@@ -7,9 +7,10 @@ import { Environment3D } from './3d/Environment3D';
 
 interface OfficeScene3DProps {
   agents: any;
+  phase?: string;
 }
 
-export function OfficeScene3D({ agents }: OfficeScene3DProps) {
+export function OfficeScene3D({ agents, phase }: OfficeScene3DProps) {
   return (
     <div className="w-full h-full relative bg-zinc-950 overflow-hidden">
       <Canvas shadows>
@@ -46,7 +47,7 @@ export function OfficeScene3D({ agents }: OfficeScene3DProps) {
 
         {/* Entorno Dinámico */}
         <Suspense fallback={null}>
-          <Environment3D agents={agents} />
+          <Environment3D agents={agents} phase={phase} />
         </Suspense>
       </Canvas>
     </div>

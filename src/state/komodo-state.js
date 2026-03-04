@@ -94,6 +94,12 @@ export class KomodoState {
 
     /** @type {string} */
     this.executionState = EXECUTION_STATES.STOPPED;
+
+    /**
+     * SonarQube analysis state.
+     * @type {{ status: 'idle'|'running'|'done'|'error'|'skipped', qualityGate: string|null, issues: Object|null }}
+     */
+    this.sonarAnalysis = { status: 'idle', qualityGate: null, issues: null };
   }
 
   /**
@@ -117,6 +123,7 @@ export class KomodoState {
       tasksCompleted: this.tasksCompleted,
       totalTasks: this.totalTasks,
       executionState: this.executionState,
+      sonarAnalysis: { ...this.sonarAnalysis },
     };
   }
 

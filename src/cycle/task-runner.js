@@ -382,18 +382,31 @@ export async function runTask(projectId, cwd) {
     // PASO 3: SONAR ANALYSIS — Análisis de calidad
     // ═══════════════════════════════════════════
     logger.logStep(3, 5, 'Análisis SonarQube...', 'KOMODO');
+    logger.startSpinner('Ejecutando análisis SonarQube...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.ANALYZING, { currentPR: prNumber });
+    komodoState.sonarAnalysis = { status: 'running', qualityGate: null, issues: null };
 
     const sonarReport = await analyzeSonar({
       branch: taskSpec.branchName,
       cwd,
     });
 
+    logger.stopSpinner();
+
     if (sonarReport.success) {
+      komodoState.sonarAnalysis = {
+        status: 'done',
+        qualityGate: sonarReport.qualityGate,
+        issues: sonarReport.issues,
+      };
       logger.success(`SonarQube: Quality Gate ${sonarReport.qualityGate}`, 'KOMODO');
+      logger.sonarSummary(sonarReport);
     } else if (sonarReport.skipped) {
+      komodoState.sonarAnalysis = { status: 'skipped', qualityGate: null, issues: null };
       logger.info('SonarQube omitido, continuando con review...', 'KOMODO');
+    } else {
+      komodoState.sonarAnalysis = { status: 'error', qualityGate: null, issues: null };
     }
 
     // Check for rate limit pause before next step
@@ -710,14 +723,27 @@ export async function resumeTask(checkpoint, cwd) {
  */
 async function _continueFromAnalysis(taskSpec, prNumber, repo, startTime, cwd) {
   logger.logStep(3, 5, 'Análisis SonarQube...', 'KOMODO');
+  logger.startSpinner('Ejecutando análisis SonarQube...', 'KOMODO');
   komodoState.updatePhase(PHASES.ANALYZING, { currentPR: prNumber });
+  komodoState.sonarAnalysis = { status: 'running', qualityGate: null, issues: null };
 
   const sonarReport = await analyzeSonar({ branch: taskSpec.branchName, cwd });
 
+  logger.stopSpinner();
+
   if (sonarReport.success) {
+    komodoState.sonarAnalysis = {
+      status: 'done',
+      qualityGate: sonarReport.qualityGate,
+      issues: sonarReport.issues,
+    };
     logger.success(`SonarQube: Quality Gate ${sonarReport.qualityGate}`, 'KOMODO');
+    logger.sonarSummary(sonarReport);
   } else if (sonarReport.skipped) {
+    komodoState.sonarAnalysis = { status: 'skipped', qualityGate: null, issues: null };
     logger.info('SonarQube omitido, continuando con review...', 'KOMODO');
+  } else {
+    komodoState.sonarAnalysis = { status: 'error', qualityGate: null, issues: null };
   }
 
   if (komodoState.isPauseRequested()) {
