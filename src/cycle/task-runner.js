@@ -337,19 +337,14 @@ export async function runTask(projectId, cwd) {
         if (fallbackCli) {
           logger.info(`Coder failed due to rate limit on "${originalCli}". Retrying with fallback CLI "${fallbackCli}"...`, 'KOMODO');
 
-          eventBus.emitEvent(EVENT_TYPES.AGENT_FALLBACK, {
-            agentName: 'CODER',
-            metadata: { originalCli, fallbackCli, agentRole: 'CODER' },
-          });
-
-          // The fallback CLI is already tracked in fallback-manager,
-          // so runAgent will automatically resolve to it via resolveEffectiveCli.
+          // AGENT_FALLBACK event is emitted by resolveEffectiveCli in base-agent.js
+          // when runAgent detects the rate-limited CLI and resolves to fallback.
           const fallbackModel = selectModel(fallbackCli, 'CODER', complexityLevel, taskModelOverride);
           coderResult = await implementTask(taskSpec, cwd, { model: fallbackModel });
 
           // If fallback also fails, mark it as rate-limited too
           if (!coderResult.success && fallbackManager.isRateLimited(fallbackCli)) {
-            logger.warn(`Fallback CLI "${fallbackCli}" also hit rate limit. Activating checkpoint.`, 'KOMODO');
+            logger.warn(`Fallback CLI "${fallbackCli}" also hit rate limit. Checkpoint will be triggered via event flow.`, 'KOMODO');
           }
         }
       }
