@@ -11,6 +11,7 @@ import { komodoState, PHASES, DASHBOARD_AGENT_STATES } from '../state/komodo-sta
 import { checkpointManager } from '../state/checkpoint-manager.js';
 import { classifyAndEmit } from '../triage/complexity-classifier.js';
 import { selectModel } from '../triage/model-selector.js';
+import { shouldDecompose, decomposeTask } from '../triage/task-decomposer.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -251,6 +252,34 @@ export async function runTask(projectId, cwd) {
     taskSpec = plannerResult.task;
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
+
+    // ── Decomposition triage: break large tasks into subtasks ──
+    const decompositionCheck = shouldDecompose(taskSpec);
+    if (decompositionCheck.shouldDecompose) {
+      logger.info(`Task needs decomposition: ${decompositionCheck.reasons.join(', ')}`, 'KOMODO');
+
+      const decompResult = await decomposeTask(taskSpec, projectId);
+      if (decompResult.success) {
+        // Rollback the parent task status (it was set to in-progress by Planner)
+        // The decomposeTask agent already marks it as "done" with decomposed=true.
+        // Now re-run Planner to pick the first eligible subtask.
+        logger.info('Re-running Planner to select first subtask...', 'KOMODO');
+
+        komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.WORKING });
+        const subtaskResult = await pickNextTask(projectId, { model: plannerModel });
+        komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
+
+        if (!subtaskResult.success || !subtaskResult.task) {
+          return makeResult({ success: false, startTime, error: subtaskResult.error || 'No subtask available after decomposition' });
+        }
+
+        taskSpec = subtaskResult.task;
+        repo = extractOwnerRepo(taskSpec.repoUrl);
+        logger.info(`Subtask selected: "${taskSpec.title}" | Branch: ${taskSpec.branchName}`, 'KOMODO');
+      } else {
+        logger.warn(`Decomposition failed (${decompResult.error}), proceeding with original task`, 'KOMODO');
+      }
+    }
 
     // ── Triage: classify complexity + select models ──
     const classification = classifyAndEmit(taskSpec);
