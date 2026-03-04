@@ -73,7 +73,7 @@ ${issueDetails.map(i => `| ${i.severity} | ${i.file} | ${i.line} | ${i.message} 
  *   error?: string
  * }>}
  */
-export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, model }) {
+export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, model, codingGuidelines }) {
   logger.taskHeader(`REVIEWER - Revisando PR #${prNumber}`);
 
   const systemPrompt = getReviewerSystemPrompt({
@@ -111,6 +111,10 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, mod
     ? buildSonarSection(sonarReport)
     : '';
 
+  const guidelinesSection = codingGuidelines
+    ? `\n## Coding Guidelines del proyecto\n${codingGuidelines}\n`
+    : '';
+
   const userPrompt = `Revisa la Pull Request #${prNumber} del repositorio "${repo}".
 
 ## Contexto de la tarea
@@ -119,7 +123,7 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, mod
 
 ## Criterios de aceptación
 ${criteriaList || 'No especificados'}
-${sonarSection}
+${sonarSection}${guidelinesSection}
 ## Instrucciones
 1. Llama a get_review_brief() para ver errores frecuentes del coder
 2. Lee el diff completo con get_pr_diff({ repo: "${repo}", prNumber: ${prNumber} })

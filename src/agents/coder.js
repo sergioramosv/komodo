@@ -32,10 +32,14 @@ function getCoderMcpServers() {
  * @param {string} [options.model] - Model to use (from model-selector)
  * @returns {Promise<{success: boolean, pr: Object|null, cost: number|null, duration: number, error?: string}>}
  */
-export async function implementTask(taskSpec, cwd, { model } = {}) {
+export async function implementTask(taskSpec, cwd, { model, codingGuidelines } = {}) {
   logger.taskHeader(`CODER - Implementando: ${taskSpec.title}`);
 
   const systemPrompt = getCoderSystemPrompt({ enableBrowserMcp: config.enableBrowserMcp });
+
+  const guidelinesSection = codingGuidelines
+    ? `\n## Coding Guidelines del proyecto\n${codingGuidelines}\n`
+    : '';
 
   const userPrompt = `Implementa la siguiente tarea:
 
@@ -50,7 +54,7 @@ export async function implementTask(taskSpec, cwd, { model } = {}) {
 
 ## Criterios de aceptación
 ${(taskSpec.acceptanceCriteria || []).map((c, i) => `${i + 1}. ${c}`).join('\n')}
-
+${guidelinesSection}
 ## Instrucciones
 1. Crea la branch "${taskSpec.branchName}" desde main usando create_branch con repo "${extractOwnerRepo(taskSpec.repoUrl)}"
 2. Implementa el código necesario
@@ -124,7 +128,7 @@ Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, 
  * @param {string} [options.model] - Model to use (from model-selector)
  * @returns {Promise<{success: boolean, fix: Object|null, cost: number|null, duration: number, error?: string}>}
  */
-export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, { model } = {}) {
+export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, { model, codingGuidelines } = {}) {
   logger.taskHeader(`CODER - Arreglando issues de PR #${prNumber}`);
 
   const systemPrompt = getCoderFixSystemPrompt({ enableBrowserMcp: config.enableBrowserMcp });
@@ -132,6 +136,10 @@ export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, {
   const issuesList = (reviewFeedback.issues || [])
     .map((issue, i) => `${i + 1}. ${typeof issue === 'string' ? issue : issue.description || JSON.stringify(issue)}`)
     .join('\n');
+
+  const guidelinesSection = codingGuidelines
+    ? `\n## Coding Guidelines del proyecto\n${codingGuidelines}\n`
+    : '';
 
   const userPrompt = `El Reviewer ha encontrado estos problemas en la PR #${prNumber}:
 
@@ -145,7 +153,7 @@ ${issuesList || 'Sin issues específicos'}
 - **Título**: ${taskSpec.title}
 - **Branch**: ${taskSpec.branchName}
 - **Repo**: ${extractOwnerRepo(taskSpec.repoUrl)}
-
+${guidelinesSection}
 ## Instrucciones
 1. Lee el código actual en la branch
 2. Arregla CADA issue listado arriba
