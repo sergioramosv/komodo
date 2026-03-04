@@ -196,6 +196,41 @@ export function formatError(metadata) {
   return lines.join('\n');
 }
 
+/**
+ * Notificación: CLI recuperado de rate limit.
+ */
+export function formatCliRecovered(metadata) {
+  const cli = escapeMarkdown(metadata.cli || '?');
+  const minutes = escapeMarkdown(String(metadata.downtimeMinutes || 0));
+
+  const lines = [
+    `\u{1F7E2} *CLI recuperado*`,
+    ``,
+    `*CLI:* \`${cli}\``,
+    `*Cooldown:* ${minutes} min`,
+  ];
+
+  if (metadata.taskTitle) {
+    lines.push(`*Reanudando:* ${escapeMarkdown(metadata.taskTitle)}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Notificación: Todos los CLIs en rate limit.
+ */
+export function formatAllClisRateLimited(metadata) {
+  const clis = (metadata.clis || []).map(c => escapeMarkdown(c)).join(', ');
+
+  return [
+    `\u{1F534} *Todos los CLIs en cooldown*`,
+    ``,
+    `*CLIs:* ${clis || '?'}`,
+    `_Komodo en espera\\. Se reanudará automáticamente al recuperarse un CLI\\._`,
+  ].join('\n');
+}
+
 // --- Query command formatters ---
 
 /**

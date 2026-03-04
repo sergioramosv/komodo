@@ -10,6 +10,8 @@ import {
   formatPRMerged,
   formatTaskCompleted,
   formatError,
+  formatCliRecovered,
+  formatAllClisRateLimited,
 } from './formatter.js';
 
 const AGENT = 'TELEGRAM';
@@ -24,6 +26,8 @@ const MINIMAL_EVENTS = new Set([
   EVENT_TYPES.TASK_STARTED,
   EVENT_TYPES.TASK_COMPLETED,
   EVENT_TYPES.PR_MERGED,
+  EVENT_TYPES.CLI_RECOVERED,
+  EVENT_TYPES.ALL_CLIS_RATE_LIMITED,
   // Errors are handled separately via TASK_COMPLETED with success=false
 ]);
 
@@ -129,6 +133,22 @@ export function startNotifier() {
   };
   eventBus.on(EVENT_TYPES.TASK_COMPLETED, onTaskCompleted);
   unsubscribers.push(() => eventBus.off(EVENT_TYPES.TASK_COMPLETED, onTaskCompleted));
+
+  // --- CLI_RECOVERED (CLI se recuperó del rate limit) ---
+  const onCliRecovered = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.CLI_RECOVERED)) return;
+    sendNotification(formatCliRecovered(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.CLI_RECOVERED, onCliRecovered);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.CLI_RECOVERED, onCliRecovered));
+
+  // --- ALL_CLIS_RATE_LIMITED (todos los CLIs en cooldown) ---
+  const onAllClisRateLimited = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.ALL_CLIS_RATE_LIMITED)) return;
+    sendNotification(formatAllClisRateLimited(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.ALL_CLIS_RATE_LIMITED, onAllClisRateLimited);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.ALL_CLIS_RATE_LIMITED, onAllClisRateLimited));
 }
 
 /**
