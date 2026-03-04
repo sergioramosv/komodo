@@ -12,6 +12,7 @@ import { checkpointManager } from '../state/checkpoint-manager.js';
 import { classifyAndEmit } from '../triage/complexity-classifier.js';
 import { selectModel } from '../triage/model-selector.js';
 import { shouldDecompose, decomposeTask } from '../triage/task-decomposer.js';
+import { fallbackManager } from '../agents/fallback-manager.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -326,7 +327,33 @@ export async function runTask(projectId, cwd) {
     });
     eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
 
-    const coderResult = await implementTask(taskSpec, cwd, { model: coderModel });
+    let coderResult = await implementTask(taskSpec, cwd, { model: coderModel });
+
+    // Fallback retry: if Coder failed and a fallback CLI is available, retry once
+    if (!coderResult.success && fallbackManager.isEnabled()) {
+      const originalCli = config.cliCoder;
+      if (fallbackManager.isRateLimited(originalCli)) {
+        const fallbackCli = fallbackManager.getAvailableFallbackCli(originalCli);
+        if (fallbackCli) {
+          logger.info(`Coder failed due to rate limit on "${originalCli}". Retrying with fallback CLI "${fallbackCli}"...`, 'KOMODO');
+
+          eventBus.emitEvent(EVENT_TYPES.AGENT_FALLBACK, {
+            agentName: 'CODER',
+            metadata: { originalCli, fallbackCli, agentRole: 'CODER' },
+          });
+
+          // The fallback CLI is already tracked in fallback-manager,
+          // so runAgent will automatically resolve to it via resolveEffectiveCli.
+          const fallbackModel = selectModel(fallbackCli, 'CODER', complexityLevel, taskModelOverride);
+          coderResult = await implementTask(taskSpec, cwd, { model: fallbackModel });
+
+          // If fallback also fails, mark it as rate-limited too
+          if (!coderResult.success && fallbackManager.isRateLimited(fallbackCli)) {
+            logger.warn(`Fallback CLI "${fallbackCli}" also hit rate limit. Activating checkpoint.`, 'KOMODO');
+          }
+        }
+      }
+    }
 
     if (coderResult.cost) {
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {

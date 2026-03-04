@@ -7,8 +7,10 @@ import { komodoState, PHASES, EXECUTION_STATES } from './state/komodo-state.js';
 import { KomodoWsServer } from './server/ws-server.js';
 import { checkpointManager } from './state/checkpoint-manager.js';
 
+import { fallbackManager } from './agents/fallback-manager.js';
+
 // Re-export para que consumidores externos puedan suscribirse
-export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES, checkpointManager };
+export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES, checkpointManager, fallbackManager };
 
 /**
  * Ejecuta N tareas del backlog de un proyecto.

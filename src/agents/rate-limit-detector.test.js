@@ -18,6 +18,12 @@ vi.mock('../utils/logger.js', () => ({
   },
 }));
 
+vi.mock('./fallback-manager.js', () => ({
+  fallbackManager: {
+    markRateLimited: vi.fn(),
+  },
+}));
+
 // Import mocks after vi.mock declarations
 const { eventBus, EVENT_TYPES } = await import('../events/event-bus.js');
 const { logger } = await import('../utils/logger.js');

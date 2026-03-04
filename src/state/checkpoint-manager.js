@@ -4,6 +4,7 @@ import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { komodoState, EXECUTION_STATES } from './komodo-state.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { fallbackManager } from '../agents/fallback-manager.js';
 
 /**
  * Maps orchestrator phases to flow step names used in checkpoints.
@@ -85,6 +86,22 @@ class CheckpointManager {
    */
   async _onRateLimitDetected(payload) {
     try {
+      const cli = payload.metadata?.cli;
+
+      // If fallback is enabled and an alternative CLI is available,
+      // skip checkpoint/pause — the next agent call will use the fallback CLI.
+      if (fallbackManager.isEnabled() && cli) {
+        const fallbackCli = fallbackManager.getAvailableFallbackCli(cli);
+        if (fallbackCli) {
+          logger.info(
+            `Rate limit on "${cli}" — fallback available ("${fallbackCli}"). Skipping checkpoint.`,
+            'KOMODO',
+          );
+          return;
+        }
+      }
+
+      // No fallback available (or disabled) — checkpoint and pause
       const checkpointPath = await this._saveCheckpoint(payload);
 
       eventBus.emitEvent(EVENT_TYPES.SESSION_CHECKPOINTED, {

@@ -7,6 +7,7 @@ import { extractJSON } from '../utils/parser.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { checkAndEmitRateLimit } from './rate-limit-detector.js';
+import { fallbackManager } from './fallback-manager.js';
 
 const TMP_DIR = resolve(config.rootDir, '.tmp');
 
@@ -406,7 +407,13 @@ export async function runAgent({
     CODER: config.cliCoder,
     REVIEWER: config.cliReviewer,
   };
-  const resolvedCli = cli || cliMap[name] || 'claude';
+  const configuredCli = cli || cliMap[name] || 'claude';
+
+  // Check if the configured CLI is rate-limited and a fallback is available
+  const { cli: resolvedCli, isFallback } = fallbackManager.resolveEffectiveCli(configuredCli, name);
+  if (isFallback) {
+    logger.info(`Using fallback CLI "${resolvedCli}" instead of "${configuredCli}"`, name);
+  }
 
   const adapter = CLI_ADAPTERS[resolvedCli];
   if (!adapter) {

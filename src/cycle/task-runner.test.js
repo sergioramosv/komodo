@@ -111,6 +111,17 @@ vi.mock('../state/checkpoint-manager.js', () => ({
   },
 }));
 
+vi.mock('../agents/fallback-manager.js', () => ({
+  fallbackManager: {
+    isEnabled: vi.fn().mockReturnValue(false),
+    isRateLimited: vi.fn().mockReturnValue(false),
+    getAvailableFallbackCli: vi.fn().mockReturnValue(null),
+    resolveEffectiveCli: vi.fn((cli) => ({ cli, isFallback: false })),
+    markRateLimited: vi.fn(),
+    clear: vi.fn(),
+  },
+}));
+
 import { runTask } from './task-runner.js';
 import { pickNextTask } from '../agents/planner.js';
 import { implementTask } from '../agents/coder.js';
