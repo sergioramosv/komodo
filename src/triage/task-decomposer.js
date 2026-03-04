@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { runAgent } from '../agents/base-agent.js';
+import { extractJSON } from '../utils/parser.js';
 
 const DECOMPOSITION_AC_THRESHOLD = 6;
 const DECOMPOSITION_STORY_CHAR_THRESHOLD = 500;
@@ -85,24 +86,39 @@ Luego:
 3. Después de crear todas las subtareas, usa update_task en la tarea padre "${task.taskId}" para marcarla con decomposed=true y status="done"
 4. Responde con el JSON indicado en el system prompt`;
 
-  const result = await runAgent({
-    name: 'PLANNER',
-    systemPrompt,
-    userPrompt,
-    mcpServerNames: ['planning-task-mcp'],
-    maxTurns: 25,
-  });
+  let result;
+  try {
+    result = await runAgent({
+      name: 'PLANNER',
+      systemPrompt,
+      userPrompt,
+      mcpServerNames: ['planning-task-mcp'],
+      maxTurns: 25,
+    });
+  } catch (err) {
+    logger.error(`Decomposition agent error: ${err.message}`, 'KOMODO');
+    return { success: false, error: err.message };
+  }
 
   if (!result.success || !result.result) {
     logger.error(`Decomposition failed: ${result.error || 'No result'}`, 'KOMODO');
     return { success: false, error: result.error || 'Agent did not return a result' };
   }
 
-  const data = result.result;
+  let data = result.result;
 
-  if (!data.subtaskIds || !Array.isArray(data.subtaskIds) || data.subtaskIds.length < MIN_SUBTASKS) {
-    logger.warn('Agent returned insufficient subtasks', 'KOMODO');
-    return { success: false, error: 'Decomposition produced insufficient subtasks' };
+  // If agent returned a string, try to extract JSON from it
+  if (typeof data === 'string') {
+    data = extractJSON(data);
+    if (!data) {
+      logger.warn('Agent returned non-JSON string response', 'KOMODO');
+      return { success: false, error: 'Agent response is not valid JSON' };
+    }
+  }
+
+  if (typeof data !== 'object' || data === null || !Array.isArray(data.subtaskIds) || data.subtaskIds.length < MIN_SUBTASKS) {
+    logger.warn('Agent returned insufficient or invalid subtasks', 'KOMODO');
+    return { success: false, error: 'Decomposition produced insufficient or invalid subtasks' };
   }
 
   logger.success(`Task decomposed into ${data.subtaskIds.length} subtasks: ${data.subtaskIds.join(', ')}`, 'KOMODO');
