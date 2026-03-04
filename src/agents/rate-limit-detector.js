@@ -1,5 +1,6 @@
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { logger } from '../utils/logger.js';
+import { fallbackManager } from './fallback-manager.js';
 
 /**
  * Rate limit patterns per CLI.
@@ -82,6 +83,9 @@ export function checkAndEmitRateLimit(text, cli, agentName) {
 
   if (detected) {
     logger.warn(`Rate limit detected (${cli}): matched "${matchedPattern}"`, agentName);
+
+    // Track this CLI as rate-limited for fallback purposes
+    fallbackManager.markRateLimited(cli);
 
     eventBus.emitEvent(EVENT_TYPES.RATE_LIMIT_DETECTED, {
       agentName,

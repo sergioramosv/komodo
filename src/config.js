@@ -88,6 +88,14 @@ export const config = {
   forceModel_CODER: process.env.FORCE_MODEL_CODER || '',
   forceModel_REVIEWER: process.env.FORCE_MODEL_REVIEWER || '',
 
+  // Rate limit fallback
+  rateLimitFallback: process.env.RATE_LIMIT_FALLBACK !== 'false', // default: true
+  fallbackCliOrder: (process.env.FALLBACK_CLI_ORDER || 'claude,codex,gemini')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean),
+  rateLimitCooldownMinutes: parseInt(process.env.RATE_LIMIT_COOLDOWN_MINUTES || '15', 10),
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',

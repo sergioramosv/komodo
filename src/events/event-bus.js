@@ -24,6 +24,9 @@ export const EVENT_TYPES = {
   // Rate limit detection
   RATE_LIMIT_DETECTED: 'agent:rate-limit',
 
+  // Agent fallback on rate limit
+  AGENT_FALLBACK: 'agent:fallback',
+
   // Checkpoint persistence
   SESSION_CHECKPOINTED: 'session:checkpointed',
 
