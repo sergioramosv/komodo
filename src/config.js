@@ -104,6 +104,9 @@ export const config = {
   daemonPollInterval: parseInt(process.env.DAEMON_POLL_INTERVAL || '60', 10),
   daemonMaxTasksPerSession: parseInt(process.env.DAEMON_MAX_TASKS_PER_SESSION || '0', 10),
 
+  // Watchdog: kill agents that produce no output for too long
+  agentTimeoutMinutes: parseInt(process.env.AGENT_TIMEOUT_MINUTES || '15', 10),
+
   // Scheduler: execution windows (format: "02:00-06:00,14:00-18:00")
   // Empty or unset = 24/7 execution
   schedule: process.env.SCHEDULE || '',
