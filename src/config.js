@@ -96,6 +96,10 @@ export const config = {
     .filter(Boolean),
   rateLimitCooldownMinutes: parseInt(process.env.RATE_LIMIT_COOLDOWN_MINUTES || '15', 10),
 
+  // Heartbeat monitor (ping rate-limited CLIs to detect recovery)
+  heartbeatEnabled: process.env.HEARTBEAT_ENABLED !== 'false', // default: true
+  heartbeatIntervalMinutes: parseInt(process.env.HEARTBEAT_INTERVAL_MINUTES || '5', 10),
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',

@@ -30,6 +30,9 @@ export const EVENT_TYPES = {
   // Checkpoint persistence
   SESSION_CHECKPOINTED: 'session:checkpointed',
 
+  // Heartbeat monitor
+  CLI_RECOVERED: 'cli:recovered',
+
   // Triage / complexity classification
   TASK_CLASSIFIED: 'task:classified',
   TASK_DECOMPOSED: 'task:decomposed',
