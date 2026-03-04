@@ -28,9 +28,11 @@ function getCoderMcpServers() {
  * @param {string} taskSpec.branchName
  * @param {string} taskSpec.repoUrl
  * @param {string} [cwd] - Directorio del repositorio donde trabajar
+ * @param {Object} [options] - Additional options
+ * @param {string} [options.model] - Model to use (from model-selector)
  * @returns {Promise<{success: boolean, pr: Object|null, cost: number|null, duration: number, error?: string}>}
  */
-export async function implementTask(taskSpec, cwd) {
+export async function implementTask(taskSpec, cwd, { model } = {}) {
   logger.taskHeader(`CODER - Implementando: ${taskSpec.title}`);
 
   const systemPrompt = getCoderSystemPrompt({ enableBrowserMcp: config.enableBrowserMcp });
@@ -65,6 +67,7 @@ Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, 
     cwd,
     maxTurns: 50,
     totalTimeout: 900_000, // 15 min — total limit (no idle timer, Windows buffers stdout)
+    model,
   });
 
   if (!result.success || !result.result) {
@@ -117,9 +120,11 @@ Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, 
  * @param {string[]} reviewFeedback.issues - Lista de issues a arreglar
  * @param {string} reviewFeedback.summary - Resumen del Reviewer
  * @param {string} [cwd] - Directorio del repositorio
+ * @param {Object} [options] - Additional options
+ * @param {string} [options.model] - Model to use (from model-selector)
  * @returns {Promise<{success: boolean, fix: Object|null, cost: number|null, duration: number, error?: string}>}
  */
-export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd) {
+export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, { model } = {}) {
   logger.taskHeader(`CODER - Arreglando issues de PR #${prNumber}`);
 
   const systemPrompt = getCoderFixSystemPrompt({ enableBrowserMcp: config.enableBrowserMcp });
@@ -158,6 +163,7 @@ Devuelve el resultado como JSON con: fixed, issuesResolved, filesChanged, summar
     cwd,
     maxTurns: 40,
     totalTimeout: 900_000, // 15 min — total limit (no idle timer, Windows buffers stdout)
+    model,
   });
 
   if (!result.success || !result.result) {

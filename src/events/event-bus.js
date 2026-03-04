@@ -29,6 +29,7 @@ export const EVENT_TYPES = {
 
   // Triage / complexity classification
   TASK_CLASSIFIED: 'task:classified',
+  MODEL_SELECTED: 'triage:model-selected',
 
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
