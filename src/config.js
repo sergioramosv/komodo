@@ -68,6 +68,22 @@ export const config = {
   complexityTrivialMax: parseInt(process.env.COMPLEXITY_TRIVIAL_MAX || '3', 10),
   complexityStandardMax: parseInt(process.env.COMPLEXITY_STANDARD_MAX || '6', 10),
 
+  // Model selection: per-CLI per-role mappings (format: "trivialModel,standardModel,complexModel")
+  modelMap_claude_PLANNER: process.env.MODEL_MAP_CLAUDE_PLANNER || '',
+  modelMap_claude_CODER: process.env.MODEL_MAP_CLAUDE_CODER || '',
+  modelMap_claude_REVIEWER: process.env.MODEL_MAP_CLAUDE_REVIEWER || '',
+  modelMap_codex_PLANNER: process.env.MODEL_MAP_CODEX_PLANNER || '',
+  modelMap_codex_CODER: process.env.MODEL_MAP_CODEX_CODER || '',
+  modelMap_codex_REVIEWER: process.env.MODEL_MAP_CODEX_REVIEWER || '',
+  modelMap_gemini_PLANNER: process.env.MODEL_MAP_GEMINI_PLANNER || '',
+  modelMap_gemini_CODER: process.env.MODEL_MAP_GEMINI_CODER || '',
+  modelMap_gemini_REVIEWER: process.env.MODEL_MAP_GEMINI_REVIEWER || '',
+
+  // Force model override per role (overrides complexity-based selection)
+  forceModel_PLANNER: process.env.FORCE_MODEL_PLANNER || '',
+  forceModel_CODER: process.env.FORCE_MODEL_CODER || '',
+  forceModel_REVIEWER: process.env.FORCE_MODEL_REVIEWER || '',
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',

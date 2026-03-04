@@ -73,7 +73,7 @@ ${issueDetails.map(i => `| ${i.severity} | ${i.file} | ${i.line} | ${i.message} 
  *   error?: string
  * }>}
  */
-export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport }) {
+export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, model }) {
   logger.taskHeader(`REVIEWER - Revisando PR #${prNumber}`);
 
   const systemPrompt = getReviewerSystemPrompt({
@@ -135,6 +135,7 @@ ${sonarSection}
     mcpServerNames: getReviewerMcpServers(),
     cwd,
     maxTurns,
+    model,
     // El Reviewer NO puede modificar código
     disallowedTools: ['Write', 'Edit', 'NotebookEdit'],
   });
