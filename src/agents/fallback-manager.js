@@ -147,6 +147,19 @@ class FallbackManager {
   }
 
   /**
+   * Mark a CLI as recovered (no longer rate-limited).
+   *
+   * @param {string} cli - CLI identifier (claude, codex, gemini)
+   * @returns {boolean} True if the CLI was actually rate-limited and got cleared
+   */
+  markRecovered(cli) {
+    if (!this._rateLimitedClis.has(cli)) return false;
+    this._rateLimitedClis.delete(cli);
+    logger.info(`CLI "${cli}" marked as recovered (rate limit cleared)`, 'KOMODO');
+    return true;
+  }
+
+  /**
    * Clear all rate limit records. Used on orchestrator reset.
    */
   clear() {
