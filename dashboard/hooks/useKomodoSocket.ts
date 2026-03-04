@@ -177,6 +177,21 @@ function applyEvent(
       }
       break;
     }
+    case 'sonar:analysis:start':
+      next.sonarAnalysis = { status: 'running', qualityGate: null, issues: null };
+      break;
+    case 'sonar:analysis:complete': {
+      const report = (event.metadata as Record<string, unknown>).report as Record<string, unknown> | undefined;
+      next.sonarAnalysis = {
+        status: 'done',
+        qualityGate: (report?.qualityGate as string) ?? null,
+        issues: (report?.issues as NonNullable<KomodoSnapshot['sonarAnalysis']>['issues']) ?? null,
+      };
+      break;
+    }
+    case 'sonar:analysis:error':
+      next.sonarAnalysis = { status: 'error', qualityGate: null, issues: null };
+      break;
   }
 
   return next;
@@ -227,6 +242,17 @@ function formatEvent(event: WsEventMessage['data']): DashboardEvent | null {
       }
       break;
     }
+    case 'sonar:analysis:start':
+      message = 'SonarQube analysis started';
+      break;
+    case 'sonar:analysis:complete': {
+      const report = (meta.report as Record<string, unknown>) ?? {};
+      message = `SonarQube analysis complete — Quality Gate: ${report.qualityGate ?? 'N/A'}`;
+      break;
+    }
+    case 'sonar:analysis:error':
+      message = `SonarQube analysis failed: ${meta.reason ?? 'unknown error'}`;
+      break;
     default:
       message = event.type;
   }

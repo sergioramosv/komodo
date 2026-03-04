@@ -5,6 +5,7 @@ const AGENT_COLORS = {
   PLANNER: chalk.blueBright,
   CODER: chalk.greenBright,
   REVIEWER: chalk.yellowBright,
+  SONAR: chalk.cyanBright,
   SYSTEM: chalk.gray,
 };
 
@@ -76,4 +77,70 @@ export function taskHeader(taskTitle) {
   console.log(`${line}\n`);
 }
 
-export const logger = { info, success, warn, error, logStep, taskHeader };
+// ── Spinner for long-running operations ──
+
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+let spinnerInterval = null;
+let spinnerFrame = 0;
+
+/**
+ * Starts a CLI spinner with a message.
+ * @param {string} message
+ * @param {string} [agent='SYSTEM']
+ */
+export function startSpinner(message, agent = 'SYSTEM') {
+  stopSpinner();
+  spinnerFrame = 0;
+  spinnerInterval = setInterval(() => {
+    const frame = chalk.cyan(SPINNER_FRAMES[spinnerFrame % SPINNER_FRAMES.length]);
+    process.stdout.write(`\r${timestamp()} ${agentTag(agent)} ${frame} ${chalk.cyan(message)}`);
+    spinnerFrame++;
+  }, 80);
+}
+
+/**
+ * Stops the active spinner.
+ */
+export function stopSpinner() {
+  if (spinnerInterval) {
+    clearInterval(spinnerInterval);
+    spinnerInterval = null;
+    process.stdout.write('\r\x1b[K'); // clear line
+  }
+}
+
+/**
+ * Prints a summary of SonarQube analysis results.
+ * @param {Object} report - SonarReport from analyzer
+ */
+export function sonarSummary(report) {
+  const agent = 'SONAR';
+  const line = chalk.gray('─'.repeat(40));
+  console.log(`${timestamp()} ${agentTag(agent)} ${line}`);
+  console.log(`${timestamp()} ${agentTag(agent)} ${chalk.whiteBright.bold('SonarQube Analysis Results')}`);
+
+  // Quality Gate
+  const gateColor = report.qualityGate === 'OK' ? chalk.green : report.qualityGate === 'ERROR' ? chalk.red : chalk.yellow;
+  console.log(`${timestamp()} ${agentTag(agent)}   Quality Gate: ${gateColor(report.qualityGate || 'N/A')}`);
+
+  // Issues
+  if (report.issues) {
+    const { BLOCKER, CRITICAL, MAJOR, MINOR, total } = report.issues;
+    const parts = [];
+    if (BLOCKER > 0) parts.push(chalk.red(`${BLOCKER} blocker`));
+    if (CRITICAL > 0) parts.push(chalk.red(`${CRITICAL} critical`));
+    if (MAJOR > 0) parts.push(chalk.yellow(`${MAJOR} major`));
+    if (MINOR > 0) parts.push(chalk.gray(`${MINOR} minor`));
+    console.log(`${timestamp()} ${agentTag(agent)}   Issues: ${parts.length > 0 ? parts.join(', ') : chalk.green('none')} (${total} total)`);
+  }
+
+  // Metrics
+  if (report.metrics) {
+    const { bugs, vulnerabilities, code_smells, coverage } = report.metrics;
+    console.log(`${timestamp()} ${agentTag(agent)}   Bugs: ${bugs} | Vulns: ${vulnerabilities} | Smells: ${code_smells} | Coverage: ${coverage}%`);
+  }
+
+  console.log(`${timestamp()} ${agentTag(agent)} ${line}`);
+}
+
+export const logger = { info, success, warn, error, logStep, taskHeader, startSpinner, stopSpinner, sonarSummary };
