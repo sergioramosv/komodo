@@ -9,6 +9,8 @@ import {
   formatPRMerged,
   formatTaskCompleted,
   formatError,
+  formatCliRecovered,
+  formatAllClisRateLimited,
   formatStatus,
   formatTaskList,
   formatBacklog,
@@ -266,6 +268,59 @@ describe('formatError', () => {
     expect(result).toContain('*Tarea:* ?');
     expect(result).toContain('Error desconocido');
     expect(result).not.toContain('*PR:*');
+  });
+});
+
+// --- Recovery notification formatters ---
+
+describe('formatCliRecovered', () => {
+  it('formats with full metadata including task title', () => {
+    const result = formatCliRecovered({
+      cli: 'claude',
+      downtimeMinutes: 15,
+      taskTitle: 'Add login feature',
+    });
+    expect(result).toContain('*CLI recuperado*');
+    expect(result).toContain('`claude`');
+    expect(result).toContain('15 min');
+    expect(result).toContain('*Reanudando:* Add login feature');
+  });
+
+  it('formats without task title', () => {
+    const result = formatCliRecovered({
+      cli: 'codex',
+      downtimeMinutes: 5,
+    });
+    expect(result).toContain('`codex`');
+    expect(result).toContain('5 min');
+    expect(result).not.toContain('*Reanudando:*');
+  });
+
+  it('handles missing metadata', () => {
+    const result = formatCliRecovered({});
+    expect(result).toContain('`?`');
+    expect(result).toContain('0 min');
+  });
+});
+
+describe('formatAllClisRateLimited', () => {
+  it('formats with list of CLIs', () => {
+    const result = formatAllClisRateLimited({
+      clis: ['claude', 'codex', 'gemini'],
+    });
+    expect(result).toContain('*Todos los CLIs en cooldown*');
+    expect(result).toContain('claude, codex, gemini');
+    expect(result).toContain('Komodo en espera');
+  });
+
+  it('handles empty CLIs array', () => {
+    const result = formatAllClisRateLimited({ clis: [] });
+    expect(result).toContain('?');
+  });
+
+  it('handles missing metadata', () => {
+    const result = formatAllClisRateLimited({});
+    expect(result).toContain('*Todos los CLIs en cooldown*');
   });
 });
 

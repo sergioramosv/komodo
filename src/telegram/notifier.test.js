@@ -29,6 +29,8 @@ vi.mock('../events/event-bus.js', () => ({
     PR_MERGED: 'pr:merged',
     REVIEW_CYCLE_END: 'review:cycle:end',
     AGENT_CODER_DONE: 'agent:coder:done',
+    CLI_RECOVERED: 'cli:recovered',
+    ALL_CLIS_RATE_LIMITED: 'cli:all-rate-limited',
   },
 }));
 
@@ -52,6 +54,14 @@ describe('shouldNotify', () => {
 
     it('allows PR_MERGED', () => {
       expect(shouldNotify(EVENT_TYPES.PR_MERGED)).toBe(true);
+    });
+
+    it('allows CLI_RECOVERED', () => {
+      expect(shouldNotify(EVENT_TYPES.CLI_RECOVERED)).toBe(true);
+    });
+
+    it('allows ALL_CLIS_RATE_LIMITED', () => {
+      expect(shouldNotify(EVENT_TYPES.ALL_CLIS_RATE_LIMITED)).toBe(true);
     });
 
     it('blocks PR_CREATED', () => {
@@ -222,5 +232,47 @@ describe('startNotifier integration', () => {
     handler({ metadata: { fixing: false, cycle: 1 } });
 
     expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it('sends message on CLI_RECOVERED event', () => {
+    const handler = getHandler(EVENT_TYPES.CLI_RECOVERED);
+    handler({ metadata: { cli: 'claude', downtimeMinutes: 10, taskTitle: 'Add login' } });
+
+    expect(mockSendMessage).toHaveBeenCalledTimes(1);
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      '123456',
+      expect.stringContaining('CLI recuperado'),
+      { parse_mode: 'MarkdownV2' },
+    );
+  });
+
+  it('sends message on CLI_RECOVERED without task title', () => {
+    const handler = getHandler(EVENT_TYPES.CLI_RECOVERED);
+    handler({ metadata: { cli: 'codex', downtimeMinutes: 5 } });
+
+    expect(mockSendMessage).toHaveBeenCalledTimes(1);
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      '123456',
+      expect.stringContaining('codex'),
+      { parse_mode: 'MarkdownV2' },
+    );
+  });
+
+  it('sends message on ALL_CLIS_RATE_LIMITED event', () => {
+    const handler = getHandler(EVENT_TYPES.ALL_CLIS_RATE_LIMITED);
+    handler({ metadata: { clis: ['claude', 'codex'] } });
+
+    expect(mockSendMessage).toHaveBeenCalledTimes(1);
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      '123456',
+      expect.stringContaining('Todos los CLIs en cooldown'),
+      { parse_mode: 'MarkdownV2' },
+    );
+  });
+
+  it('registers listeners for CLI_RECOVERED and ALL_CLIS_RATE_LIMITED', () => {
+    const registeredEvents = eventBus.on.mock.calls.map(c => c[0]);
+    expect(registeredEvents).toContain(EVENT_TYPES.CLI_RECOVERED);
+    expect(registeredEvents).toContain(EVENT_TYPES.ALL_CLIS_RATE_LIMITED);
   });
 });

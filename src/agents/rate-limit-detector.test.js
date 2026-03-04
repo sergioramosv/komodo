@@ -1,14 +1,24 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { detectRateLimit, checkAndEmitRateLimit, parseRetryAfter } from './rate-limit-detector.js';
 
 // Mock event-bus before importing the module under test
 vi.mock('../events/event-bus.js', () => {
   const emitEvent = vi.fn(() => ({}));
   return {
     eventBus: { emitEvent },
-    EVENT_TYPES: { RATE_LIMIT_DETECTED: 'agent:rate-limit' },
+    EVENT_TYPES: {
+      RATE_LIMIT_DETECTED: 'agent:rate-limit',
+      ALL_CLIS_RATE_LIMITED: 'cli:all-rate-limited',
+    },
   };
 });
+
+vi.mock('../config.js', () => ({
+  config: {
+    cliPlanner: 'claude',
+    cliCoder: 'claude',
+    cliReviewer: 'claude',
+  },
+}));
 
 vi.mock('../utils/logger.js', () => ({
   logger: {
@@ -21,12 +31,17 @@ vi.mock('../utils/logger.js', () => ({
 vi.mock('./fallback-manager.js', () => ({
   fallbackManager: {
     markRateLimited: vi.fn(),
+    isRateLimited: vi.fn(() => false),
   },
 }));
 
 // Import mocks after vi.mock declarations
 const { eventBus, EVENT_TYPES } = await import('../events/event-bus.js');
 const { logger } = await import('../utils/logger.js');
+const { config } = await import('../config.js');
+const { fallbackManager } = await import('./fallback-manager.js');
+
+import { detectRateLimit, checkAndEmitRateLimit, parseRetryAfter, checkAllClisRateLimited } from './rate-limit-detector.js';
 
 // ── Real-world CLI rate limit outputs ─────────────────────────
 
@@ -296,5 +311,66 @@ describe('checkAndEmitRateLimit', () => {
         }),
       }),
     );
+  });
+});
+
+describe('checkAllClisRateLimited', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    config.cliPlanner = 'claude';
+    config.cliCoder = 'claude';
+    config.cliReviewer = 'claude';
+  });
+
+  it('emits ALL_CLIS_RATE_LIMITED when all configured CLIs are rate-limited', () => {
+    fallbackManager.isRateLimited.mockReturnValue(true);
+
+    checkAllClisRateLimited();
+
+    expect(eventBus.emitEvent).toHaveBeenCalledWith(
+      EVENT_TYPES.ALL_CLIS_RATE_LIMITED,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          clis: ['claude'],
+        }),
+      }),
+    );
+  });
+
+  it('emits with all unique CLIs when using different CLIs per role', () => {
+    config.cliPlanner = 'claude';
+    config.cliCoder = 'codex';
+    config.cliReviewer = 'gemini';
+    fallbackManager.isRateLimited.mockReturnValue(true);
+
+    checkAllClisRateLimited();
+
+    expect(eventBus.emitEvent).toHaveBeenCalledWith(
+      EVENT_TYPES.ALL_CLIS_RATE_LIMITED,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          clis: expect.arrayContaining(['claude', 'codex', 'gemini']),
+        }),
+      }),
+    );
+  });
+
+  it('does NOT emit when some CLIs are still available', () => {
+    config.cliPlanner = 'claude';
+    config.cliCoder = 'codex';
+    config.cliReviewer = 'gemini';
+    fallbackManager.isRateLimited.mockImplementation(cli => cli === 'claude');
+
+    checkAllClisRateLimited();
+
+    expect(eventBus.emitEvent).not.toHaveBeenCalled();
+  });
+
+  it('does NOT emit when no CLIs are rate-limited', () => {
+    fallbackManager.isRateLimited.mockReturnValue(false);
+
+    checkAllClisRateLimited();
+
+    expect(eventBus.emitEvent).not.toHaveBeenCalled();
   });
 });

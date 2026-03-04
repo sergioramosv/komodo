@@ -63,6 +63,16 @@ class FallbackManager {
   }
 
   /**
+   * Get the timestamp when a CLI was marked as rate-limited.
+   *
+   * @param {string} cli - CLI identifier
+   * @returns {number|null} Timestamp in milliseconds, or null if not rate-limited
+   */
+  getRateLimitedTimestamp(cli) {
+    return this._rateLimitedClis.get(cli) || null;
+  }
+
+  /**
    * Get all CLIs currently in rate limit cooldown.
    * @returns {string[]}
    */
