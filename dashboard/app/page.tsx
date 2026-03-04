@@ -8,7 +8,7 @@ import dynamic from 'next/dynamic';
 import { ExecutionControls } from '@/components/execution-controls';
 
 const OfficeScene3D = dynamic(() => import('@/components/office-scene-3d').then(mod => mod.OfficeScene3D), { ssr: false });
-import type { Phase, AgentStatus, DashboardEvent } from '@/lib/types';
+import type { Phase, AgentStatus, DashboardEvent, SonarAnalysisState } from '@/lib/types';
 
 /* ── Phase config ── */
 
@@ -16,7 +16,7 @@ const PHASE_CONFIG: Record<Phase, { icon: string; label: string; color: string }
   idle: { icon: '○', label: 'Idle', color: 'text-neutral-500' },
   planning: { icon: '✎', label: 'Planning', color: 'text-violet-400' },
   coding: { icon: '⌨', label: 'Coding', color: 'text-blue-400' },
-  analyzing: { icon: '◉', label: 'Analyzing', color: 'text-cyan-400' },
+  analyzing: { icon: '◉', label: 'SonarQube', color: 'text-cyan-400' },
   reviewing: { icon: '⊘', label: 'Reviewing', color: 'text-amber-400' },
   merging: { icon: '⇢', label: 'Merging', color: 'text-green-400' },
 };
@@ -52,6 +52,9 @@ const EVENT_COLORS: Record<string, string> = {
   'review:cycle:end': 'text-orange-400',
   'execution:state-change': 'text-emerald-400',
   'browser:check': 'text-pink-400',
+  'sonar:analysis:start': 'text-cyan-400',
+  'sonar:analysis:complete': 'text-cyan-400',
+  'sonar:analysis:error': 'text-red-400',
 };
 
 /* ── Page ── */
@@ -126,36 +129,42 @@ export default function DashboardPage() {
                   <span className="text-neutral-500">Idle — waiting for next task</span>
                 </div>
               ) : (
-                <div className="flex flex-wrap gap-2">
-                  {PHASE_ORDER.map((phase, i) => {
-                    const cfg = PHASE_CONFIG[phase];
-                    const isActive = snapshot.phase === phase;
-                    const isPast = PHASE_ORDER.indexOf(snapshot.phase as Phase) > i;
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {PHASE_ORDER.map((phase, i) => {
+                      const cfg = PHASE_CONFIG[phase];
+                      const isActive = snapshot.phase === phase;
+                      const isPast = PHASE_ORDER.indexOf(snapshot.phase as Phase) > i;
 
-                    return (
-                      <div key={phase} className="flex items-center">
-                        {i > 0 && (
+                      return (
+                        <div key={phase} className="flex items-center">
+                          {i > 0 && (
+                            <div
+                              className={`mx-1 h-px w-2 sm:w-4 ${
+                                isPast ? 'bg-green-500' : 'bg-neutral-700'
+                              }`}
+                            />
+                          )}
                           <div
-                            className={`mx-1 h-px w-2 sm:w-4 ${
-                              isPast ? 'bg-green-500' : 'bg-neutral-700'
+                            className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm font-medium transition-all ${
+                              isActive
+                                ? `${cfg.color} bg-neutral-800 ring-1 ring-neutral-700`
+                                : isPast
+                                  ? 'text-green-500 bg-green-500/10'
+                                  : 'text-neutral-600'
                             }`}
-                          />
-                        )}
-                        <div
-                          className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm font-medium transition-all ${
-                            isActive
-                              ? `${cfg.color} bg-neutral-800 ring-1 ring-neutral-700`
-                              : isPast
-                                ? 'text-green-500 bg-green-500/10'
-                                : 'text-neutral-600'
-                          }`}
-                        >
-                          <span className="text-base">{isActive ? cfg.icon : isPast ? '✓' : cfg.icon}</span>
-                          {cfg.label}
+                          >
+                            <span className="text-base">{isActive ? cfg.icon : isPast ? '✓' : cfg.icon}</span>
+                            {cfg.label}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                  {/* SonarQube Analysis inline status */}
+                  {snapshot.sonarAnalysis && snapshot.sonarAnalysis.status !== 'idle' && (
+                    <SonarStatus sonar={snapshot.sonarAnalysis} />
+                  )}
                 </div>
               )}
             </section>
@@ -245,9 +254,38 @@ export default function DashboardPage() {
             </div>
             
             {/* Office Scene — real-time agent visualization */}
-             <OfficeScene3D agents={agentStates.agents} />
+             <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} />
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ── SonarQube Status Component ── */
+
+function SonarStatus({ sonar }: { sonar: SonarAnalysisState }) {
+  const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
+    running: { label: 'Analyzing...', color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
+    done: { label: `Quality Gate: ${sonar.qualityGate ?? 'N/A'}`, color: sonar.qualityGate === 'OK' ? 'text-green-400' : 'text-amber-400', bg: sonar.qualityGate === 'OK' ? 'bg-green-500/10' : 'bg-amber-500/10' },
+    error: { label: 'Analysis Failed', color: 'text-red-400', bg: 'bg-red-500/10' },
+    skipped: { label: 'Skipped', color: 'text-neutral-400', bg: 'bg-neutral-800' },
+  };
+
+  const cfg = statusConfig[sonar.status];
+  if (!cfg) return null;
+
+  return (
+    <div className={`flex items-center gap-2 rounded px-3 py-1.5 text-xs font-medium ${cfg.color} ${cfg.bg}`}>
+      <span>◉</span>
+      <span>SonarQube: {cfg.label}</span>
+      {sonar.status === 'running' && <span className="animate-pulse">●</span>}
+      {sonar.issues && sonar.issues.total > 0 && (
+        <span className="ml-auto text-neutral-500">
+          {sonar.issues.BLOCKER > 0 && `${sonar.issues.BLOCKER} blocker `}
+          {sonar.issues.CRITICAL > 0 && `${sonar.issues.CRITICAL} critical `}
+          {sonar.issues.total} total
+        </span>
       )}
     </div>
   );

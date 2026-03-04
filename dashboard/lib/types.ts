@@ -38,6 +38,12 @@ export interface TaskDetails {
   devPoints: number | null;
 }
 
+export interface SonarAnalysisState {
+  status: 'idle' | 'running' | 'done' | 'error' | 'skipped';
+  qualityGate: string | null;
+  issues: { BLOCKER: number; CRITICAL: number; MAJOR: number; MINOR: number; INFO: number; total: number } | null;
+}
+
 export interface KomodoSnapshot {
   agents: Record<AgentName, AgentState>;
   phase: Phase;
@@ -49,6 +55,7 @@ export interface KomodoSnapshot {
   tasksCompleted: number;
   totalTasks?: number;
   executionState?: ExecutionState;
+  sonarAnalysis?: SonarAnalysisState;
 }
 
 export interface DashboardEvent {

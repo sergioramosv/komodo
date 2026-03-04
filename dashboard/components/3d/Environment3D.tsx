@@ -5,9 +5,11 @@ import { Box, Cylinder, Plane, Sphere, Text } from '@react-three/drei';
 import { AnimatedWhiteboard } from './AnimatedWhiteboard';
 import { KomodoBoss } from './KomodoBoss';
 import { Agent3D } from './Agent3D';
+import { SonarScanner3D } from './SonarScanner3D';
 
 interface Environment3DProps {
   agents: any;
+  phase?: string;
 }
 
 // Mobiliario
@@ -253,10 +255,11 @@ function WallPainting({ position, rotation }: { position: [number, number, numbe
   );
 }
 
-export function Environment3D({ agents }: Environment3DProps) {
+export function Environment3D({ agents, phase }: Environment3DProps) {
   const plannerState = agents?.PLANNER?.status || 'idle';
   const coderState = agents?.CODER?.status || 'idle';
   const reviewerState = agents?.REVIEWER?.status || 'idle';
+  const isAnalyzing = phase === 'analyzing';
 
   return (
     <group>
@@ -352,6 +355,9 @@ export function Environment3D({ agents }: Environment3DProps) {
       <PottedPlant position={[7.5, 0, 6.5]} />
       <Bookshelf position={[2.5, 0, 6]} rotation={[0, -Math.PI / 2, 0]} />
 
+
+      {/* -- SONARQUBE SCANNER (Hallway between Coder and Reviewer) -- */}
+      <SonarScanner3D position={[0, 0, 0]} isAnalyzing={isAnalyzing} />
 
       {/* ==== AGENTES DINÁMICOS ==== */}
 
