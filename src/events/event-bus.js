@@ -46,6 +46,10 @@ export const EVENT_TYPES = {
   DAEMON_TASK_DETECTED: 'daemon:task-detected',
   DAEMON_STOPPED: 'daemon:stopped',
 
+  // Scheduler events
+  SCHEDULER_WAITING: 'scheduler:waiting',
+  SCHEDULER_RESUMED: 'scheduler:resumed',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
