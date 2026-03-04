@@ -180,4 +180,104 @@ describe('daemon watch()', () => {
     // At most one task may execute before the stop is detected
     expect(result.tasksCompleted + result.tasksFailed).toBeLessThanOrEqual(1);
   });
+
+  it('respects maxTasks limit and stops after reaching it', async () => {
+    mockConfig.daemonMaxTasksPerSession = 2;
+    setupBacklog([{ id: 't1', status: 'to-do', title: 'Task' }]);
+
+    let callNum = 0;
+    mockRunTask.mockImplementation(async () => {
+      callNum++;
+      return { taskId: `t${callNum}`, taskTitle: `Task ${callNum}`, success: true };
+    });
+
+    const watchPromise = watch('proj-1');
+    await vi.advanceTimersByTimeAsync(5000);
+    const result = await watchPromise;
+
+    expect(result.tasksCompleted).toBe(2);
+    expect(mockRunTask).toHaveBeenCalledTimes(2);
+  });
+
+  it('filters blocked tasks — all blocked means empty backlog', async () => {
+    const allTasks = [
+      { id: 't1', status: 'to-do', title: 'Blocked', blockedBy: ['t2'] },
+      { id: 't2', status: 'in-progress', title: 'Blocker' },
+    ];
+
+    let fetchCount = 0;
+    mockFetchProjectTasks.mockImplementation(async () => {
+      fetchCount++;
+      if (fetchCount >= 2) {
+        mockKomodoState.executionState = 'stopped';
+      }
+      return allTasks;
+    });
+    mockFilterBlockedTasks.mockReturnValue({ eligible: [], blocked: [allTasks[0]] });
+
+    const watchPromise = watch('proj-1');
+    await vi.advanceTimersByTimeAsync(5000);
+    const result = await watchPromise;
+
+    expect(result.tasksCompleted).toBe(0);
+    expect(mockRunTask).not.toHaveBeenCalled();
+    expect(mockFilterBlockedTasks).toHaveBeenCalled();
+  });
+
+  it('sleep is interrupted early by stop signal', async () => {
+    // Empty backlog → enters _pollUntilTaskOrStop → _sleep
+    // On second fetch (inside poll loop), set stop signal
+    let fetchCount = 0;
+    mockFetchProjectTasks.mockImplementation(async () => {
+      fetchCount++;
+      return [];
+    });
+    mockFilterBlockedTasks.mockReturnValue({ eligible: [], blocked: [] });
+
+    const watchPromise = watch('proj-1');
+
+    // First tick: daemon enters idle, starts _sleep
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // Now set stop — _sleep should detect it on next interval check
+    mockKomodoState.executionState = 'stopped';
+    await vi.advanceTimersByTimeAsync(1500);
+
+    const result = await watchPromise;
+
+    expect(result.tasksCompleted).toBe(0);
+    expect(result.tasksFailed).toBe(0);
+  });
+
+  it('returns early with zero counts on config validation errors', async () => {
+    mockValidateConfig.mockReturnValue(['missing API key']);
+
+    const result = await watch('proj-1');
+
+    expect(result).toEqual({ tasksCompleted: 0, tasksFailed: 0, results: [] });
+    expect(mockRunTask).not.toHaveBeenCalled();
+  });
+
+  it('counts failed tasks separately from completed tasks', async () => {
+    mockConfig.daemonMaxTasksPerSession = 2;
+    setupBacklog([{ id: 't1', status: 'to-do' }]);
+
+    let callNum = 0;
+    mockRunTask.mockImplementation(async () => {
+      callNum++;
+      if (callNum === 1) {
+        return { taskId: `t${callNum}`, taskTitle: `Task ${callNum}`, success: false, error: 'build failed' };
+      }
+      return { taskId: `t${callNum}`, taskTitle: `Task ${callNum}`, success: true };
+    });
+
+    const watchPromise = watch('proj-1');
+    await vi.advanceTimersByTimeAsync(5000);
+    const result = await watchPromise;
+
+    // maxTasks counts only completed: fail, pass, pass → completed=2, failed=1
+    expect(result.tasksCompleted).toBe(2);
+    expect(result.tasksFailed).toBe(1);
+    expect(result.results).toHaveLength(3);
+  });
 });
