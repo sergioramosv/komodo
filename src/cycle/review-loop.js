@@ -27,7 +27,7 @@ import { checkpointManager } from '../state/checkpoint-manager.js';
  *   error?: string
  * }>}
  */
-export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport }) {
+export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, reviewerModel, coderModel }) {
   const maxCycles = config.maxReviewCycles;
   let cycles = 0;
   let lastReview = null;
@@ -54,7 +54,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport })
     });
     eventBus.emitAgentEvent('REVIEWER', 'working', { cycle: i });
 
-    const reviewResult = await reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport });
+    const reviewResult = await reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, model: reviewerModel });
 
     if (reviewResult.cost) {
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
@@ -147,7 +147,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport })
     });
     eventBus.emitAgentEvent('CODER', 'working', { cycle: i, fixing: true });
 
-    const fixResult = await fixReviewIssues(taskSpec, prNumber, lastReview, cwd);
+    const fixResult = await fixReviewIssues(taskSpec, prNumber, lastReview, cwd, { model: coderModel });
 
     if (fixResult.cost) {
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {

@@ -71,7 +71,7 @@ export function filterBlockedTasks(todoTasks, allTasks) {
  *   error?: string
  * }>}
  */
-export async function pickNextTask(projectId) {
+export async function pickNextTask(projectId, { model } = {}) {
   logger.taskHeader('PLANNER - Seleccionando siguiente tarea');
 
   // ── Step 1: Pre-filter blocked tasks BEFORE agent ranking ──
@@ -128,6 +128,7 @@ export async function pickNextTask(projectId) {
     userPrompt,
     mcpServerNames: ['planning-task-mcp'],
     maxTurns: 15,
+    model,
   });
 
   if (!result.success || !result.result) {

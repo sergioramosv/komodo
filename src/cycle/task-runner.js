@@ -9,6 +9,8 @@ import { runAgent } from '../agents/base-agent.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
 import { komodoState, PHASES, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
+import { classifyAndEmit } from '../triage/complexity-classifier.js';
+import { selectModel } from '../triage/model-selector.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -215,7 +217,10 @@ export async function runTask(projectId, cwd) {
     });
     eventBus.emitAgentEvent('PLANNER', 'working');
 
-    const plannerResult = await pickNextTask(projectId);
+    const plannerCli = config.cliPlanner;
+    const plannerModel = selectModel(plannerCli, 'PLANNER', 'standard');
+
+    const plannerResult = await pickNextTask(projectId, { model: plannerModel });
 
     if (plannerResult.cost) {
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
@@ -246,6 +251,17 @@ export async function runTask(projectId, cwd) {
     taskSpec = plannerResult.task;
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
+
+    // ── Triage: classify complexity + select models ──
+    const classification = classifyAndEmit(taskSpec);
+    const complexityLevel = classification.level;
+    const taskModelOverride = taskSpec.modelOverride || undefined;
+
+    const coderCli = config.cliCoder;
+    const reviewerCli = config.cliReviewer;
+
+    const coderModel = selectModel(coderCli, 'CODER', complexityLevel, taskModelOverride);
+    const reviewerModel = selectModel(reviewerCli, 'REVIEWER', complexityLevel, taskModelOverride);
 
     // Set checkpoint flow context for rate limit recovery
     checkpointManager.setFlowContext({
@@ -281,7 +297,7 @@ export async function runTask(projectId, cwd) {
     });
     eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
 
-    const coderResult = await implementTask(taskSpec, cwd);
+    const coderResult = await implementTask(taskSpec, cwd, { model: coderModel });
 
     if (coderResult.cost) {
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
@@ -372,7 +388,7 @@ export async function runTask(projectId, cwd) {
     });
     eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
 
-    const reviewResult = await reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport });
+    const reviewResult = await reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, reviewerModel, coderModel });
 
     eventBus.emitAgentEvent('REVIEWER', 'done');
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
