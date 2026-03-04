@@ -39,6 +39,9 @@ vi.mock('../utils/logger.js', () => ({
     success: vi.fn(),
     logStep: vi.fn(),
     taskHeader: vi.fn(),
+    startSpinner: vi.fn(),
+    stopSpinner: vi.fn(),
+    sonarSummary: vi.fn(),
   },
 }));
 
@@ -69,6 +72,7 @@ vi.mock('../events/event-bus.js', () => ({
     AGENT_REVIEWER_WORKING: 'agent:reviewer:working',
     AGENT_REVIEWER_DONE: 'agent:reviewer:done',
     AGENT_REVIEWER_IDLE: 'agent:reviewer:idle',
+    AGENT_FALLBACK: 'agent:fallback',
   },
   AGENT_STATES: {
     IDLE: 'idle',
@@ -82,6 +86,7 @@ vi.mock('../state/komodo-state.js', () => ({
     updatePhase: vi.fn(),
     updateAgent: vi.fn().mockReturnValue({}),
     isPauseRequested: vi.fn().mockReturnValue(false),
+    sonarAnalysis: null,
   },
   PHASES: {
     IDLE: 'idle',
@@ -111,12 +116,42 @@ vi.mock('../state/checkpoint-manager.js', () => ({
   },
 }));
 
+vi.mock('../sonar/analyzer.js', () => ({
+  analyzeSonar: vi.fn().mockResolvedValue({ success: false, skipped: true }),
+}));
+
+vi.mock('../triage/complexity-classifier.js', () => ({
+  classifyAndEmit: vi.fn().mockReturnValue({ level: 'standard' }),
+}));
+
+vi.mock('../triage/model-selector.js', () => ({
+  selectModel: vi.fn().mockReturnValue(undefined),
+}));
+
+vi.mock('../triage/task-decomposer.js', () => ({
+  shouldDecompose: vi.fn().mockReturnValue({ shouldDecompose: false, reasons: [] }),
+  decomposeTask: vi.fn(),
+}));
+
+vi.mock('../agents/fallback-manager.js', () => ({
+  fallbackManager: {
+    isEnabled: vi.fn().mockReturnValue(false),
+    isRateLimited: vi.fn().mockReturnValue(false),
+    getAvailableFallbackCli: vi.fn().mockReturnValue(null),
+    resolveEffectiveCli: vi.fn((cli) => ({ cli, isFallback: false })),
+    markRateLimited: vi.fn(),
+    clear: vi.fn(),
+  },
+}));
+
 import { runTask } from './task-runner.js';
 import { pickNextTask } from '../agents/planner.js';
 import { implementTask } from '../agents/coder.js';
 import { reviewLoop } from './review-loop.js';
-import { eventBus } from '../events/event-bus.js';
+import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { komodoState } from '../state/komodo-state.js';
+import { fallbackManager } from '../agents/fallback-manager.js';
+import { config } from '../config.js';
 
 describe('task-runner events', () => {
   beforeEach(() => {
@@ -245,5 +280,77 @@ describe('task-runner events', () => {
 
     // No listeners — should not throw
     await expect(runTask('proj-1')).resolves.toBeDefined();
+  });
+});
+
+describe('task-runner fallback retry', () => {
+  const taskSpec = {
+    taskId: 'task-fb',
+    title: 'Fallback test',
+    branchName: 'feature/fallback',
+    repoUrl: 'https://github.com/owner/repo',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: planner returns a valid task
+    pickNextTask.mockResolvedValue({ success: true, task: taskSpec });
+  });
+
+  it('retries with fallback CLI when coder fails and CLI is rate-limited', async () => {
+    // First call fails, second (fallback) succeeds
+    implementTask
+      .mockResolvedValueOnce({ success: false, error: 'rate limited' })
+      .mockResolvedValueOnce({ success: true, pr: { prNumber: 99 } });
+
+    fallbackManager.isEnabled.mockReturnValue(true);
+    fallbackManager.isRateLimited.mockReturnValue(true);
+    fallbackManager.getAvailableFallbackCli.mockReturnValue('codex');
+
+    reviewLoop.mockResolvedValue({ approved: true, cycles: 1, finalReview: { verdict: 'APPROVED' } });
+
+    const result = await runTask('proj-1');
+
+    // Coder was called twice (original + fallback)
+    expect(implementTask).toHaveBeenCalledTimes(2);
+    expect(result.success).toBe(true);
+    expect(result.prNumber).toBe(99);
+  });
+
+  it('fails when fallback CLI also hits rate limit', async () => {
+    // Both calls fail
+    implementTask
+      .mockResolvedValueOnce({ success: false, error: 'rate limited' })
+      .mockResolvedValueOnce({ success: false, error: 'fallback also rate limited' });
+
+    fallbackManager.isEnabled.mockReturnValue(true);
+    // isRateLimited returns true for both original and fallback
+    fallbackManager.isRateLimited.mockReturnValue(true);
+    fallbackManager.getAvailableFallbackCli.mockReturnValue('codex');
+
+    const result = await runTask('proj-1');
+
+    expect(implementTask).toHaveBeenCalledTimes(2);
+    expect(result.success).toBe(false);
+  });
+
+  it('does not emit AGENT_FALLBACK directly (resolveEffectiveCli handles it)', async () => {
+    implementTask
+      .mockResolvedValueOnce({ success: false, error: 'rate limited' })
+      .mockResolvedValueOnce({ success: true, pr: { prNumber: 50 } });
+
+    fallbackManager.isEnabled.mockReturnValue(true);
+    fallbackManager.isRateLimited.mockReturnValue(true);
+    fallbackManager.getAvailableFallbackCli.mockReturnValue('codex');
+
+    reviewLoop.mockResolvedValue({ approved: true, cycles: 1, finalReview: { verdict: 'APPROVED' } });
+
+    await runTask('proj-1');
+
+    // task-runner should NOT emit AGENT_FALLBACK directly — that's resolveEffectiveCli's job
+    const fallbackCalls = eventBus.emitEvent.mock.calls.filter(
+      ([type]) => type === EVENT_TYPES.AGENT_FALLBACK
+    );
+    expect(fallbackCalls).toHaveLength(0);
   });
 });
