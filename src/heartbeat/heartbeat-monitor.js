@@ -335,6 +335,9 @@ class HeartbeatMonitor {
    * @private
    */
   async _onCliRecovered(cli) {
+    // Calculate downtime before clearing the rate-limit record
+    const downtimeMinutes = this._getDowntimeMinutes(cli);
+
     fallbackManager.markRecovered(cli);
 
     logger.info(`CLI "${cli}" recovered from rate limit!`, 'HEARTBEAT');
@@ -342,13 +345,32 @@ class HeartbeatMonitor {
     // Auto-resume if orchestrator is paused and there are matching checkpoints
     const autoResumeResult = await this._tryAutoResume(cli);
 
-    const metadata = { cli };
+    // Build metadata with context for notifications
+    const snapshot = komodoState.getSnapshot();
+
+    const metadata = { cli, downtimeMinutes };
     if (autoResumeResult) {
       metadata.autoResume = true;
       metadata.checkpoint = autoResumeResult.checkpoint;
+      if (autoResumeResult.taskTitle) metadata.taskTitle = autoResumeResult.taskTitle;
+    } else if (snapshot.currentTask) {
+      metadata.taskTitle = snapshot.currentTask;
     }
 
     eventBus.emitEvent(EVENT_TYPES.CLI_RECOVERED, { metadata });
+  }
+
+  /**
+   * Calculate downtime in minutes for a CLI based on when it was rate-limited.
+   *
+   * @param {string} cli - CLI identifier
+   * @returns {number} Downtime in minutes (0 if unknown)
+   * @private
+   */
+  _getDowntimeMinutes(cli) {
+    const rateLimitedAt = fallbackManager.getRateLimitedTimestamp?.(cli);
+    if (!rateLimitedAt) return 0;
+    return Math.round((Date.now() - rateLimitedAt) / 60_000);
   }
 
   /**
@@ -360,7 +382,7 @@ class HeartbeatMonitor {
    * If resume fails, leaves the checkpoint for retry on the next tick.
    *
    * @param {string} cli - The CLI that just recovered
-   * @returns {Promise<{ checkpoint: string }|null>}
+   * @returns {Promise<{ checkpoint: string, taskTitle: string }|null>}
    * @private
    */
   async _tryAutoResume(cli) {
@@ -431,7 +453,7 @@ class HeartbeatMonitor {
           'HEARTBEAT',
         );
 
-        return { checkpoint: filepath };
+        return { checkpoint: filepath, taskTitle: checkpoint.taskTitle };
       }
 
       // Resume failed — leave checkpoint for retry on next tick

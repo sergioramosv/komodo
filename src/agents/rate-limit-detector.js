@@ -1,4 +1,5 @@
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
+import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { fallbackManager } from './fallback-manager.js';
 
@@ -151,7 +152,37 @@ export function checkAndEmitRateLimit(text, cli, agentName) {
         timestamp: new Date().toISOString(),
       },
     });
+
+    // Check if ALL configured CLIs are now rate-limited
+    checkAllClisRateLimited();
   }
 
   return detected;
+}
+
+/**
+ * Check if all configured CLIs are rate-limited and emit an event if so.
+ *
+ * Uses the unique set of CLIs configured for planner, coder, and reviewer
+ * to determine if every available CLI is currently in cooldown.
+ */
+export function checkAllClisRateLimited() {
+  const configuredClis = new Set([
+    config.cliPlanner,
+    config.cliCoder,
+    config.cliReviewer,
+  ]);
+
+  const allLimited = [...configuredClis].every(cli => fallbackManager.isRateLimited(cli));
+
+  if (allLimited && configuredClis.size > 0) {
+    logger.warn('All configured CLIs are rate-limited — Komodo on standby', 'KOMODO');
+
+    eventBus.emitEvent(EVENT_TYPES.ALL_CLIS_RATE_LIMITED, {
+      metadata: {
+        clis: [...configuredClis],
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
 }

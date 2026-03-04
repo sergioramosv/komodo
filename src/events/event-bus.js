@@ -32,6 +32,7 @@ export const EVENT_TYPES = {
 
   // Heartbeat monitor
   CLI_RECOVERED: 'cli:recovered',
+  ALL_CLIS_RATE_LIMITED: 'cli:all-rate-limited',
   SESSION_AUTO_RESUMED: 'session:auto-resumed',
 
   // Triage / complexity classification
