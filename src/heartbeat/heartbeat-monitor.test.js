@@ -297,6 +297,19 @@ describe('HeartbeatMonitor', () => {
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
 
       expect(komodoState.setExecutionState).toHaveBeenCalledWith(EXECUTION_STATES.RUNNING);
+
+      // Single CLI_RECOVERED event with autoResume metadata (no double emission)
+      expect(eventBus.emitEvent).toHaveBeenCalledTimes(1);
+      expect(eventBus.emitEvent).toHaveBeenCalledWith(
+        EVENT_TYPES.CLI_RECOVERED,
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            cli: 'claude',
+            autoResume: true,
+            checkpoint: '/tmp/checkpoint-1.json',
+          }),
+        }),
+      );
     });
 
     it('does not auto-resume when orchestrator is not paused', async () => {

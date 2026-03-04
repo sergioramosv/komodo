@@ -169,17 +169,21 @@ class HeartbeatMonitor {
    * @param {string} cli - CLI identifier that recovered
    * @private
    */
-  _onCliRecovered(cli) {
+  async _onCliRecovered(cli) {
     fallbackManager.markRecovered(cli);
-
-    eventBus.emitEvent(EVENT_TYPES.CLI_RECOVERED, {
-      metadata: { cli },
-    });
 
     logger.info(`CLI "${cli}" recovered from rate limit!`, 'HEARTBEAT');
 
     // Auto-resume if orchestrator is paused and there are pending checkpoints
-    this._tryAutoResume(cli);
+    const autoResumeResult = await this._tryAutoResume(cli);
+
+    const metadata = { cli };
+    if (autoResumeResult) {
+      metadata.autoResume = true;
+      metadata.checkpoint = autoResumeResult.checkpoint;
+    }
+
+    eventBus.emitEvent(EVENT_TYPES.CLI_RECOVERED, { metadata });
   }
 
   /**
@@ -193,10 +197,10 @@ class HeartbeatMonitor {
   async _tryAutoResume(cli) {
     try {
       const snapshot = komodoState.getSnapshot();
-      if (snapshot.executionState !== EXECUTION_STATES.PAUSED) return;
+      if (snapshot.executionState !== EXECUTION_STATES.PAUSED) return null;
 
       const pending = await checkpointManager.listPendingCheckpoints();
-      if (pending.length === 0) return;
+      if (pending.length === 0) return null;
 
       logger.info(
         `CLI "${cli}" recovered + checkpoint active → triggering auto-resume`,
@@ -205,11 +209,10 @@ class HeartbeatMonitor {
 
       komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
 
-      eventBus.emitEvent(EVENT_TYPES.CLI_RECOVERED, {
-        metadata: { cli, autoResume: true, checkpoint: pending[0].filepath },
-      });
+      return { checkpoint: pending[0].filepath };
     } catch (err) {
       logger.error(`Auto-resume check failed: ${err.message}`, 'HEARTBEAT');
+      return null;
     }
   }
 }
