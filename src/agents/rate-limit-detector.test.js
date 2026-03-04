@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { detectRateLimit, checkAndEmitRateLimit } from './rate-limit-detector.js';
+import { detectRateLimit, checkAndEmitRateLimit, parseRetryAfter } from './rate-limit-detector.js';
 
 // Mock event-bus before importing the module under test
 vi.mock('../events/event-bus.js', () => {
@@ -145,6 +145,71 @@ describe('detectRateLimit', () => {
   });
 });
 
+describe('parseRetryAfter', () => {
+  it('parses "retry after 22s"', () => {
+    expect(parseRetryAfter('Please retry after 22s.')).toBe(22);
+  });
+
+  it('parses "retry after 300 seconds"', () => {
+    expect(parseRetryAfter('Error: retry after 300 seconds')).toBe(300);
+  });
+
+  it('parses "retry after 300s"', () => {
+    expect(parseRetryAfter('rate_limit_exceeded: retry after 300s')).toBe(300);
+  });
+
+  it('parses "Retry-After: 120"', () => {
+    expect(parseRetryAfter('Retry-After: 120')).toBe(120);
+  });
+
+  it('parses "retry-after: 60"', () => {
+    expect(parseRetryAfter('retry-after: 60')).toBe(60);
+  });
+
+  it('parses "try again in 45 seconds"', () => {
+    expect(parseRetryAfter('Please try again in 45 seconds.')).toBe(45);
+  });
+
+  it('parses "wait 60s before retrying"', () => {
+    expect(parseRetryAfter('Please wait 60s before retrying.')).toBe(60);
+  });
+
+  it('parses "wait 30 seconds"', () => {
+    expect(parseRetryAfter('Please wait 30 seconds.')).toBe(30);
+  });
+
+  it('parses "retry in 5 minutes"', () => {
+    expect(parseRetryAfter('Please retry in 5 minutes.')).toBe(300);
+  });
+
+  it('parses "try again in 2 min"', () => {
+    expect(parseRetryAfter('Please try again in 2 min')).toBe(120);
+  });
+
+  it('parses compound "retry after 2m30s"', () => {
+    expect(parseRetryAfter('retry after 2m30s')).toBe(150);
+  });
+
+  it('parses real Codex rate limit message', () => {
+    const msg = 'Error: 429 rate_limit_exceeded: You\'ve exceeded your rate limit. Current usage: 90000 tokens per min. Please retry after 22s.';
+    expect(parseRetryAfter(msg)).toBe(22);
+  });
+
+  it('returns null when no retry-after found', () => {
+    expect(parseRetryAfter('Error: 429 Too many requests')).toBeNull();
+  });
+
+  it('returns null for empty/null input', () => {
+    expect(parseRetryAfter('')).toBeNull();
+    expect(parseRetryAfter(null)).toBeNull();
+    expect(parseRetryAfter(undefined)).toBeNull();
+  });
+
+  it('returns null when seconds is 0', () => {
+    expect(parseRetryAfter('retry after 0s')).toBeNull();
+  });
+});
+
 describe('checkAndEmitRateLimit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -201,6 +266,34 @@ describe('checkAndEmitRateLimit', () => {
       expect.objectContaining({
         agentName: 'REVIEWER',
         metadata: expect.objectContaining({ cli: 'gemini' }),
+      }),
+    );
+  });
+
+  it('includes retryAfterSeconds in metadata when retry-after found', () => {
+    checkAndEmitRateLimit(CODEX_RATE_LIMIT_STDERR, 'codex', 'CODER');
+
+    expect(eventBus.emitEvent).toHaveBeenCalledWith(
+      EVENT_TYPES.RATE_LIMIT_DETECTED,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          cli: 'codex',
+          retryAfterSeconds: 22,
+        }),
+      }),
+    );
+  });
+
+  it('includes null retryAfterSeconds when no retry-after in message', () => {
+    checkAndEmitRateLimit(CLAUDE_RATE_LIMIT_STDERR, 'claude', 'CODER');
+
+    expect(eventBus.emitEvent).toHaveBeenCalledWith(
+      EVENT_TYPES.RATE_LIMIT_DETECTED,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          cli: 'claude',
+          retryAfterSeconds: null,
+        }),
       }),
     );
   });
