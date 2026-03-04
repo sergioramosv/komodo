@@ -9,6 +9,9 @@ import { checkpointManager } from './state/checkpoint-manager.js';
 
 import { fallbackManager } from './agents/fallback-manager.js';
 
+// Daemon / watch mode
+export { watch } from './daemon/daemon.js';
+
 // Re-export para que consumidores externos puedan suscribirse
 export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES, checkpointManager, fallbackManager };
 

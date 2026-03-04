@@ -231,6 +231,67 @@ export function formatAllClisRateLimited(metadata) {
   ].join('\n');
 }
 
+// --- Daemon event formatters ---
+
+/**
+ * Notificación: Daemon started.
+ */
+export function formatDaemonStarted(metadata) {
+  const pollInterval = escapeMarkdown(String(metadata.pollInterval || 60));
+  const maxTasks = metadata.maxTasks === 0 ? 'ilimitadas' : escapeMarkdown(String(metadata.maxTasks));
+
+  return [
+    `\u{1F916} *Daemon iniciado*`,
+    ``,
+    `*Poll interval:* ${pollInterval}s`,
+    `*Max tareas:* ${maxTasks}`,
+  ].join('\n');
+}
+
+/**
+ * Notificación: Daemon idle.
+ */
+export function formatDaemonIdle(metadata) {
+  const nextPoll = escapeMarkdown(String(metadata.nextPollIn || 60));
+  const completed = escapeMarkdown(String(metadata.tasksCompleted || 0));
+
+  return [
+    `\u{1F4A4} *Daemon idle*`,
+    ``,
+    `*Tareas completadas:* ${completed}`,
+    `*Siguiente poll:* ${nextPoll}s`,
+  ].join('\n');
+}
+
+/**
+ * Notificación: Daemon detected a new task.
+ */
+export function formatDaemonTaskDetected(metadata) {
+  const completed = escapeMarkdown(String(metadata.tasksCompleted || 0));
+
+  return [
+    `\u{1F514} *Tarea detectada en backlog*`,
+    ``,
+    `*Tareas completadas antes:* ${completed}`,
+    `_Ejecutando tarea\\.\\.\\._`,
+  ].join('\n');
+}
+
+/**
+ * Notificación: Daemon stopped.
+ */
+export function formatDaemonStopped(metadata) {
+  const completed = escapeMarkdown(String(metadata.tasksCompleted || 0));
+  const failed = escapeMarkdown(String(metadata.tasksFailed || 0));
+
+  return [
+    `\u{1F6D1} *Daemon detenido*`,
+    ``,
+    `*Tareas completadas:* ${completed}`,
+    `*Tareas fallidas:* ${failed}`,
+  ].join('\n');
+}
+
 // --- Query command formatters ---
 
 /**

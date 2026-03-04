@@ -12,6 +12,10 @@ import {
   formatError,
   formatCliRecovered,
   formatAllClisRateLimited,
+  formatDaemonStarted,
+  formatDaemonIdle,
+  formatDaemonTaskDetected,
+  formatDaemonStopped,
 } from './formatter.js';
 
 const AGENT = 'TELEGRAM';
@@ -28,6 +32,8 @@ const MINIMAL_EVENTS = new Set([
   EVENT_TYPES.PR_MERGED,
   EVENT_TYPES.CLI_RECOVERED,
   EVENT_TYPES.ALL_CLIS_RATE_LIMITED,
+  EVENT_TYPES.DAEMON_STARTED,
+  EVENT_TYPES.DAEMON_STOPPED,
   // Errors are handled separately via TASK_COMPLETED with success=false
 ]);
 
@@ -37,6 +43,8 @@ const MINIMAL_EVENTS = new Set([
 const VERBOSE_EVENTS = new Set([
   EVENT_TYPES.PR_CREATED,
   EVENT_TYPES.REVIEW_CYCLE_END,
+  EVENT_TYPES.DAEMON_IDLE,
+  EVENT_TYPES.DAEMON_TASK_DETECTED,
 ]);
 
 /**
@@ -149,6 +157,38 @@ export function startNotifier() {
   };
   eventBus.on(EVENT_TYPES.ALL_CLIS_RATE_LIMITED, onAllClisRateLimited);
   unsubscribers.push(() => eventBus.off(EVENT_TYPES.ALL_CLIS_RATE_LIMITED, onAllClisRateLimited));
+
+  // --- DAEMON_STARTED ---
+  const onDaemonStarted = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.DAEMON_STARTED)) return;
+    sendNotification(formatDaemonStarted(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.DAEMON_STARTED, onDaemonStarted);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.DAEMON_STARTED, onDaemonStarted));
+
+  // --- DAEMON_IDLE ---
+  const onDaemonIdle = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.DAEMON_IDLE)) return;
+    sendNotification(formatDaemonIdle(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.DAEMON_IDLE, onDaemonIdle);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.DAEMON_IDLE, onDaemonIdle));
+
+  // --- DAEMON_TASK_DETECTED ---
+  const onDaemonTaskDetected = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.DAEMON_TASK_DETECTED)) return;
+    sendNotification(formatDaemonTaskDetected(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.DAEMON_TASK_DETECTED, onDaemonTaskDetected);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.DAEMON_TASK_DETECTED, onDaemonTaskDetected));
+
+  // --- DAEMON_STOPPED ---
+  const onDaemonStopped = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.DAEMON_STOPPED)) return;
+    sendNotification(formatDaemonStopped(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.DAEMON_STOPPED, onDaemonStopped);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.DAEMON_STOPPED, onDaemonStopped));
 }
 
 /**
