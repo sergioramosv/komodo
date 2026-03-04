@@ -31,6 +31,7 @@ export const EXECUTION_STATES = {
   PAUSED: 'paused',
   DAEMON_IDLE: 'daemon:idle',
   DAEMON_RUNNING: 'daemon:running',
+  SCHEDULER_WAITING: 'scheduler:waiting',
 };
 
 /**
