@@ -7,6 +7,7 @@ import { komodoState, PHASES, EXECUTION_STATES } from '../state/komodo-state.js'
 import { KomodoWsServer } from '../server/ws-server.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
 import { checkForPendingCheckpoints } from '../orchestrator.js';
+import { checkSchedule, formatMinutes } from '../scheduler/scheduler.js';
 
 const AGENT = 'DAEMON';
 
@@ -37,6 +38,11 @@ export async function watch(projectId, options = {}) {
   logger.info(`Proyecto: ${projectId}`, AGENT);
   logger.info(`Poll interval: ${pollInterval}s`, AGENT);
   logger.info(`Max tasks per session: ${maxTasks === 0 ? 'unlimited' : maxTasks}`, AGENT);
+  if (config.schedule) {
+    logger.info(`Schedule: ${config.schedule}${config.scheduleTimezone ? ` (${config.scheduleTimezone})` : ''}`, AGENT);
+  } else {
+    logger.info('Schedule: 24/7 (no restrictions)', AGENT);
+  }
 
   // Reset global state
   komodoState.updatePhase(PHASES.IDLE, {
@@ -84,6 +90,30 @@ export async function watch(projectId, options = {}) {
     if (komodoState.executionState === EXECUTION_STATES.STOPPED) {
       logger.info('Stop requested. Shutting down daemon.', AGENT);
       break;
+    }
+
+    // Check schedule window
+    const scheduleCheck = checkSchedule();
+    if (!scheduleCheck.allowed) {
+      komodoState.setExecutionState(EXECUTION_STATES.SCHEDULER_WAITING);
+      const next = scheduleCheck.nextWindow;
+      eventBus.emitEvent(EVENT_TYPES.SCHEDULER_WAITING, {
+        metadata: {
+          nextWindowStart: next?.nextWindowStart || null,
+          minutesUntil: next?.minutesUntil || null,
+        },
+      });
+
+      // Wait until next window opens (check every 30s)
+      const shouldContinue = await _waitForScheduleWindow(30);
+      if (!shouldContinue) break;
+
+      komodoState.setExecutionState(EXECUTION_STATES.DAEMON_RUNNING);
+      eventBus.emitEvent(EVENT_TYPES.SCHEDULER_RESUMED, {
+        metadata: { tasksCompleted },
+      });
+      logger.info('Schedule window opened. Resuming execution.', AGENT);
+      continue;
     }
 
     // Check max tasks limit
@@ -209,6 +239,28 @@ async function _pollUntilTaskOrStop(projectId, intervalSeconds) {
     }
 
     logger.info(`Backlog vacío. Siguiente poll en ${intervalSeconds}s...`, AGENT);
+  }
+}
+
+/**
+ * Waits until the current time enters a schedule window or the daemon is stopped.
+ * Checks every `intervalSeconds` seconds.
+ *
+ * @param {number} intervalSeconds - How often to check (default: 30)
+ * @returns {Promise<boolean>} true if a window opened, false if stopped
+ */
+async function _waitForScheduleWindow(intervalSeconds = 30) {
+  while (true) {
+    await _sleep(intervalSeconds * 1000);
+
+    if (komodoState.executionState === EXECUTION_STATES.STOPPED) {
+      return false;
+    }
+
+    const { allowed } = checkSchedule();
+    if (allowed) {
+      return true;
+    }
   }
 }
 

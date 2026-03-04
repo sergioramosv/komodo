@@ -104,6 +104,11 @@ export const config = {
   daemonPollInterval: parseInt(process.env.DAEMON_POLL_INTERVAL || '60', 10),
   daemonMaxTasksPerSession: parseInt(process.env.DAEMON_MAX_TASKS_PER_SESSION || '0', 10),
 
+  // Scheduler: execution windows (format: "02:00-06:00,14:00-18:00")
+  // Empty or unset = 24/7 execution
+  schedule: process.env.SCHEDULE || '',
+  scheduleTimezone: process.env.SCHEDULE_TIMEZONE || '',
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
