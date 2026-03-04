@@ -100,6 +100,10 @@ export const config = {
   heartbeatEnabled: process.env.HEARTBEAT_ENABLED !== 'false', // default: true
   heartbeatIntervalMinutes: parseInt(process.env.HEARTBEAT_INTERVAL_MINUTES || '5', 10),
 
+  // Daemon / watch mode
+  daemonPollInterval: parseInt(process.env.DAEMON_POLL_INTERVAL || '60', 10),
+  daemonMaxTasksPerSession: parseInt(process.env.DAEMON_MAX_TASKS_PER_SESSION || '0', 10),
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',

@@ -29,6 +29,8 @@ export const EXECUTION_STATES = {
   STOPPED: 'stopped',
   RUNNING: 'running',
   PAUSED: 'paused',
+  DAEMON_IDLE: 'daemon:idle',
+  DAEMON_RUNNING: 'daemon:running',
 };
 
 /**

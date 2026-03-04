@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { run, resume, checkForPendingCheckpoints } from './orchestrator.js';
+import { run, resume, checkForPendingCheckpoints, watch } from './orchestrator.js';
 import { config } from './config.js';
 import { logger } from './utils/logger.js';
 
@@ -81,6 +81,31 @@ program
         process.exit(0);
       }
 
+      process.exit(result.tasksFailed > 0 ? 1 : 0);
+    } catch (err) {
+      logger.error(`Error fatal: ${err.message}`, 'KOMODO');
+      process.exit(1);
+    }
+  });
+
+// ============================================
+// komodo watch
+// ============================================
+program
+  .command('watch')
+  .description('Modo daemon: escucha el backlog y ejecuta tareas automáticamente')
+  .option('-p, --project <id>', 'ID del proyecto (default: DEFAULT_PROJECT_ID en .env)')
+  .option('--cwd <path>', 'Directorio del repositorio')
+  .action(async (opts) => {
+    const projectId = opts.project || config.defaultProjectId;
+
+    if (!projectId) {
+      logger.error('Project ID requerido. Usa -p <id> o configura DEFAULT_PROJECT_ID en .env', 'KOMODO');
+      process.exit(1);
+    }
+
+    try {
+      const result = await watch(projectId, { cwd: opts.cwd });
       process.exit(result.tasksFailed > 0 ? 1 : 0);
     } catch (err) {
       logger.error(`Error fatal: ${err.message}`, 'KOMODO');
