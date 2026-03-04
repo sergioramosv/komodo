@@ -15,13 +15,21 @@ interface Agent3DProps {
   rotationWork: [number, number, number]; // Rotation when working (euler radians)
   rotationWait: [number, number, number]; // Rotation when waiting
   isWhiteboard?: boolean; // True for Planner (doesn't sit, no computer)
+  cliStatus?: 'available' | 'rate-limited' | 'down';
 }
+
+const CLI_STATUS_COLORS: Record<string, string> = {
+  available: '#22c55e',
+  'rate-limited': '#eab308',
+  down: '#ef4444',
+};
 
 const LERP_SPEED = 3.5;
 
-export function Agent3D({ id, status, hairColor, shirtColor, hairStyle, pathWaypoints, rotationWork, rotationWait, isWhiteboard }: Agent3DProps) {
+export function Agent3D({ id, status, hairColor, shirtColor, hairStyle, pathWaypoints, rotationWork, rotationWait, isWhiteboard, cliStatus = 'available' }: Agent3DProps) {
   const groupRef = useRef<THREE.Group>(null);
-  
+  const indicatorRef = useRef<THREE.Mesh>(null);
+
   const leftArmRef = useRef<THREE.Group>(null);
   const rightArmRef = useRef<THREE.Group>(null);
   const leftLegRef = useRef<THREE.Group>(null);
@@ -107,9 +115,23 @@ export function Agent3D({ id, status, hairColor, shirtColor, hairStyle, pathWayp
         rightArmRef.current.rotation.z = 0;
       }
     }
+
+    // Animate CLI status indicator
+    if (indicatorRef.current) {
+      // Gentle bob up and down
+      indicatorRef.current.position.y = 2.4 + Math.sin(time * 2) * 0.05;
+      // Pulse scale for rate-limited
+      if (cliStatus === 'rate-limited') {
+        const pulse = 1 + Math.sin(time * 4) * 0.3;
+        indicatorRef.current.scale.setScalar(pulse);
+      } else {
+        indicatorRef.current.scale.setScalar(1);
+      }
+    }
   });
 
   const isAtDesk = status === 'working' && !isWhiteboard && isAtDestination;
+  const indicatorColor = CLI_STATUS_COLORS[cliStatus] ?? CLI_STATUS_COLORS.available;
 
   return (
     <group ref={groupRef} position={pathWaypoints[0]}>
@@ -187,6 +209,12 @@ export function Agent3D({ id, status, hairColor, shirtColor, hairStyle, pathWayp
       {isAtDesk && (
         <pointLight position={[0, 1.5, 1]} intensity={3} distance={2} color="#aaf" />
       )}
+
+      {/* CLI Status Indicator */}
+      <Sphere ref={indicatorRef} args={[0.1, 16, 16]} position={[0, 2.4, 0]}>
+        <meshStandardMaterial color={indicatorColor} emissive={indicatorColor} emissiveIntensity={0.8} />
+      </Sphere>
+      <pointLight position={[0, 2.4, 0]} intensity={1.5} distance={1} color={indicatorColor} />
     </group>
   );
 }
