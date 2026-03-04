@@ -50,6 +50,11 @@ export const EVENT_TYPES = {
   SCHEDULER_WAITING: 'scheduler:waiting',
   SCHEDULER_RESUMED: 'scheduler:resumed',
 
+  // Watchdog events
+  WATCHDOG_KILL: 'watchdog:kill',
+  WATCHDOG_RETRY: 'watchdog:retry',
+  WATCHDOG_EXHAUSTED: 'watchdog:exhausted',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
