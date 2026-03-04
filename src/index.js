@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { run, resume, checkForPendingCheckpoints, watch } from './orchestrator.js';
 import { config } from './config.js';
 import { logger } from './utils/logger.js';
+import { doctor } from './doctor/doctor.js';
 
 const program = new Command();
 
@@ -35,6 +36,11 @@ program
 
     if (!opts.continuous && !opts.dryRun && (isNaN(tasks) || tasks < 1)) {
       logger.error('--tasks debe ser un número >= 1', 'KOMODO');
+      process.exit(1);
+    }
+
+    // Self-diagnostic antes de arrancar
+    if (!doctor()) {
       process.exit(1);
     }
 
@@ -104,6 +110,11 @@ program
       process.exit(1);
     }
 
+    // Self-diagnostic antes de arrancar
+    if (!doctor()) {
+      process.exit(1);
+    }
+
     try {
       const result = await watch(projectId, { cwd: opts.cwd });
       process.exit(result.tasksFailed > 0 ? 1 : 0);
@@ -122,6 +133,17 @@ program
   .action(async () => {
     const { runSetup } = await import('./setup.js');
     await runSetup();
+  });
+
+// ============================================
+// komodo doctor
+// ============================================
+program
+  .command('doctor')
+  .description('Diagnóstico completo: verifica CLIs, Firebase, GitHub, tokens y servicios')
+  .action(() => {
+    const ok = doctor();
+    process.exit(ok ? 0 : 1);
   });
 
 program.parse();
