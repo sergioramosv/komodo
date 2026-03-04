@@ -40,6 +40,12 @@ export const EVENT_TYPES = {
   TASK_DECOMPOSED: 'task:decomposed',
   MODEL_SELECTED: 'triage:model-selected',
 
+  // Daemon / watch mode
+  DAEMON_STARTED: 'daemon:started',
+  DAEMON_IDLE: 'daemon:idle',
+  DAEMON_TASK_DETECTED: 'daemon:task-detected',
+  DAEMON_STOPPED: 'daemon:stopped',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
