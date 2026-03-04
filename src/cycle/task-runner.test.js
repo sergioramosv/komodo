@@ -25,6 +25,9 @@ vi.mock('../config.js', () => ({
   config: {
     maxReviewCycles: 3,
     autoMerge: true,
+    cliPlanner: 'claude',
+    cliCoder: 'claude',
+    cliReviewer: 'claude',
   },
 }));
 
@@ -54,6 +57,9 @@ vi.mock('../events/event-bus.js', () => ({
     PR_CREATED: 'pr:created',
     PR_MERGED: 'pr:merged',
     COST_UPDATED: 'cost:updated',
+    MODEL_SELECTED: 'model:selected',
+    COMPLEXITY_CLASSIFIED: 'complexity:classified',
+    TASK_CLASSIFIED: 'task:classified',
     AGENT_PLANNER_WORKING: 'agent:planner:working',
     AGENT_PLANNER_DONE: 'agent:planner:done',
     AGENT_PLANNER_IDLE: 'agent:planner:idle',

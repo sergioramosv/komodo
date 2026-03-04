@@ -217,7 +217,10 @@ export async function runTask(projectId, cwd) {
     });
     eventBus.emitAgentEvent('PLANNER', 'working');
 
-    const plannerResult = await pickNextTask(projectId);
+    const plannerCli = config.cliPlanner;
+    const plannerModel = selectModel(plannerCli, 'PLANNER', 'standard');
+
+    const plannerResult = await pickNextTask(projectId, { model: plannerModel });
 
     if (plannerResult.cost) {
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
