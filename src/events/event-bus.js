@@ -27,6 +27,9 @@ export const EVENT_TYPES = {
   // Checkpoint persistence
   SESSION_CHECKPOINTED: 'session:checkpointed',
 
+  // Triage / complexity classification
+  TASK_CLASSIFIED: 'task:classified',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 

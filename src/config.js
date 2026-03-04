@@ -64,6 +64,10 @@ export const config = {
   telegramVerbosity: process.env.TELEGRAM_VERBOSITY || 'verbose', // 'verbose' | 'minimal'
   telegramClaudeTimeout: parseInt(process.env.TELEGRAM_CLAUDE_TIMEOUT || '120000', 10),
 
+  // Triage / Complexity classification
+  complexityTrivialMax: parseInt(process.env.COMPLEXITY_TRIVIAL_MAX || '3', 10),
+  complexityStandardMax: parseInt(process.env.COMPLEXITY_STANDARD_MAX || '6', 10),
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
