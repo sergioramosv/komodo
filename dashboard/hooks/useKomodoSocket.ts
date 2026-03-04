@@ -1,18 +1,25 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { KomodoSnapshot, WsMessage, WsEventMessage, DashboardEvent, AgentLog } from '@/lib/types';
+import type { KomodoSnapshot, WsMessage, WsEventMessage, DashboardEvent, AgentLog, CliHealth, CliName } from '@/lib/types';
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
 const RECONNECT_DELAY = 3000;
 const MAX_EVENTS = 20;
 const MAX_AGENT_LOGS = 200;
 
+const DEFAULT_CLI_HEALTH: Record<CliName, CliHealth> = {
+  claude: { cli: 'claude', status: 'available', lastHeartbeat: null, rateLimitedAt: null, cooldownMinutes: null },
+  codex: { cli: 'codex', status: 'available', lastHeartbeat: null, rateLimitedAt: null, cooldownMinutes: null },
+  gemini: { cli: 'gemini', status: 'available', lastHeartbeat: null, rateLimitedAt: null, cooldownMinutes: null },
+};
+
 interface UseKomodoSocketReturn {
   snapshot: KomodoSnapshot | null;
   connected: boolean;
   events: DashboardEvent[];
   agentLogs: Record<string, AgentLog[]>;
+  cliHealth: Record<CliName, CliHealth>;
   sendCommand: (command: 'pause' | 'stop') => void;
 }
 
@@ -24,6 +31,7 @@ export function useKomodoSocket(): UseKomodoSocketReturn {
   const [connected, setConnected] = useState(false);
   const [events, setEvents] = useState<DashboardEvent[]>([]);
   const [agentLogs, setAgentLogs] = useState<Record<string, AgentLog[]>>({});
+  const [cliHealth, setCliHealth] = useState<Record<CliName, CliHealth>>({ ...DEFAULT_CLI_HEALTH });
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -66,6 +74,50 @@ export function useKomodoSocket(): UseKomodoSocketReturn {
             });
             // Don't add agent:output to the main event timeline
             return;
+          }
+
+          // Update CLI health from heartbeat/rate-limit events
+          if (eventData.type === 'agent:rate-limit') {
+            const meta = eventData.metadata as Record<string, unknown>;
+            const cli = meta.cli as CliName | undefined;
+            if (cli) {
+              setCliHealth((prev) => ({
+                ...prev,
+                [cli]: {
+                  ...prev[cli],
+                  status: 'rate-limited' as const,
+                  rateLimitedAt: eventData.timestamp,
+                  cooldownMinutes: (meta.cooldownMinutes as number) ?? 15,
+                },
+              }));
+            }
+          } else if (eventData.type === 'cli:heartbeat') {
+            const meta = eventData.metadata as Record<string, unknown>;
+            const cli = meta.cli as CliName | undefined;
+            if (cli) {
+              setCliHealth((prev) => ({
+                ...prev,
+                [cli]: {
+                  ...prev[cli],
+                  lastHeartbeat: eventData.timestamp,
+                },
+              }));
+            }
+          } else if (eventData.type === 'cli:recovered') {
+            const meta = eventData.metadata as Record<string, unknown>;
+            const cli = meta.cli as CliName | undefined;
+            if (cli) {
+              setCliHealth((prev) => ({
+                ...prev,
+                [cli]: {
+                  ...prev[cli],
+                  status: 'available' as const,
+                  lastHeartbeat: eventData.timestamp,
+                  rateLimitedAt: null,
+                  cooldownMinutes: null,
+                },
+              }));
+            }
           }
 
           // Apply incremental updates based on event type
@@ -115,7 +167,7 @@ export function useKomodoSocket(): UseKomodoSocketReturn {
     };
   }, [connect]);
 
-  return { snapshot, connected, events, agentLogs, sendCommand };
+  return { snapshot, connected, events, agentLogs, cliHealth, sendCommand };
 }
 
 function applyEvent(
@@ -252,6 +304,17 @@ function formatEvent(event: WsEventMessage['data']): DashboardEvent | null {
     }
     case 'sonar:analysis:error':
       message = `SonarQube analysis failed: ${meta.reason ?? 'unknown error'}`;
+      break;
+    case 'agent:rate-limit':
+      message = `CLI ${meta.cli ?? '?'} hit rate limit${meta.pattern ? `: ${meta.pattern}` : ''}`;
+      break;
+    case 'cli:recovered':
+      message = `CLI ${meta.cli ?? '?'} recovered${meta.autoResume ? ' (auto-resuming)' : ''}`;
+      break;
+    case 'cli:heartbeat':
+      return null; // Silent update, don't show in event timeline
+    case 'session:auto-resumed':
+      message = `Session auto-resumed on ${meta.cli ?? '?'} after ${meta.downtimeMinutes ?? '?'}min downtime`;
       break;
     default:
       message = event.type;

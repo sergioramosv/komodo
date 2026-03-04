@@ -6,6 +6,7 @@ import { useOfficeFeedback } from '@/hooks/useOfficeFeedback';
 import { ConnectionStatus } from '@/components/connection-status';
 import dynamic from 'next/dynamic';
 import { ExecutionControls } from '@/components/execution-controls';
+import { CliHealthStatus } from '@/components/cli-health-status';
 
 const OfficeScene3D = dynamic(() => import('@/components/office-scene-3d').then(mod => mod.OfficeScene3D), { ssr: false });
 import type { Phase, AgentStatus, DashboardEvent, SonarAnalysisState } from '@/lib/types';
@@ -55,12 +56,15 @@ const EVENT_COLORS: Record<string, string> = {
   'sonar:analysis:start': 'text-cyan-400',
   'sonar:analysis:complete': 'text-cyan-400',
   'sonar:analysis:error': 'text-red-400',
+  'agent:rate-limit': 'text-yellow-400',
+  'cli:recovered': 'text-green-400',
+  'session:auto-resumed': 'text-emerald-400',
 };
 
 /* ── Page ── */
 
 export default function DashboardPage() {
-  const { snapshot, connected, events, sendCommand } = useKomodoSocket();
+  const { snapshot, connected, events, cliHealth, sendCommand } = useKomodoSocket();
   const agentStates = useAgentStates(snapshot, connected);
   const feedback = useOfficeFeedback(events, snapshot);
 
@@ -119,6 +123,9 @@ export default function DashboardPage() {
               onPause={() => sendCommand('pause')}
               onStop={() => sendCommand('stop')}
             />
+
+            {/* CLI Health Status */}
+            <CliHealthStatus cliHealth={cliHealth} />
 
             {/* Phase Indicator */}
             <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
@@ -254,7 +261,7 @@ export default function DashboardPage() {
             </div>
             
             {/* Office Scene — real-time agent visualization */}
-             <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} />
+             <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
           </div>
         </div>
       )}
