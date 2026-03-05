@@ -17,6 +17,21 @@ import { withWatchdog } from '../watchdog/watchdog.js';
 import { createTechDebtTasks } from '../tech-debt/tech-debt-tracker.js';
 import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
+import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
+
+/**
+ * Fetches the codingGuidelines field from a project.
+ * Returns empty string if not found or on error.
+ */
+async function fetchCodingGuidelines(projectId) {
+  try {
+    const project = await getById('projects', projectId);
+    return (project && project.codingGuidelines) || '';
+  } catch (err) {
+    logger.warn(`Could not fetch codingGuidelines: ${err.message}`, 'KOMODO');
+    return '';
+  }
+}
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -300,6 +315,12 @@ export async function runTask(projectId, cwd) {
     const coderModel = selectModel(coderCli, 'CODER', complexityLevel, taskModelOverride);
     const reviewerModel = selectModel(reviewerCli, 'REVIEWER', complexityLevel, taskModelOverride);
 
+    // Fetch project coding guidelines for injection into agent prompts
+    const codingGuidelines = await fetchCodingGuidelines(projectId);
+    if (codingGuidelines) {
+      logger.info(`Coding guidelines loaded (${codingGuidelines.length} chars)`, 'KOMODO');
+    }
+
     // Set checkpoint flow context for rate limit recovery
     checkpointManager.setFlowContext({
       branchName: taskSpec.branchName,
@@ -335,7 +356,7 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
 
     let coderResult = await withWatchdog(
-      () => implementTask(taskSpec, cwd, { model: coderModel }),
+      () => implementTask(taskSpec, cwd, { model: coderModel, codingGuidelines }),
       {
         agentName: 'CODER',
         taskId: taskSpec.taskId,
@@ -356,7 +377,7 @@ export async function runTask(projectId, cwd) {
           // AGENT_FALLBACK event is emitted by resolveEffectiveCli in base-agent.js
           // when runAgent detects the rate-limited CLI and resolves to fallback.
           const fallbackModel = selectModel(fallbackCli, 'CODER', complexityLevel, taskModelOverride);
-          coderResult = await implementTask(taskSpec, cwd, { model: fallbackModel });
+          coderResult = await implementTask(taskSpec, cwd, { model: fallbackModel, codingGuidelines });
 
           // If fallback also fails, mark it as rate-limited too
           if (!coderResult.success && fallbackManager.isRateLimited(fallbackCli)) {
@@ -469,7 +490,7 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
 
     const reviewResult = await withWatchdog(
-      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, reviewerModel, coderModel }),
+      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, reviewerModel, coderModel, codingGuidelines }),
       { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
     );
 
