@@ -17,6 +17,7 @@ export const PHASES = {
   IDLE: 'idle',
   PLANNING: 'planning',
   CODING: 'coding',
+  TESTING: 'testing',
   ANALYZING: 'analyzing',
   REVIEWING: 'reviewing',
   MERGING: 'merging',
@@ -68,6 +69,7 @@ export class KomodoState {
     this.agents = {
       PLANNER: createAgentState('PLANNER'),
       CODER: createAgentState('CODER'),
+      QA: createAgentState('QA'),
       REVIEWER: createAgentState('REVIEWER'),
     };
 
@@ -121,6 +123,7 @@ export class KomodoState {
       agents: {
         PLANNER: { ...this.agents.PLANNER },
         CODER: { ...this.agents.CODER },
+        QA: { ...this.agents.QA },
         REVIEWER: { ...this.agents.REVIEWER },
       },
       phase: this.phase,

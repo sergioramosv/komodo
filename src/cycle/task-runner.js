@@ -1,5 +1,6 @@
 import { pickNextTask } from '../agents/planner.js';
 import { implementTask, fixReviewIssues } from '../agents/coder.js';
+import { runQAAgent } from '../agents/qa.js';
 import { reviewLoop } from './review-loop.js';
 import { analyzeSonar } from '../sonar/analyzer.js';
 import { executePrePRTests } from '../testing/pre-pr-tests.js';
@@ -441,6 +442,84 @@ export async function runTask(projectId, cwd) {
     }
 
     // ═══════════════════════════════════════════
+    // PASO 2.5: QA AGENT — Generar y ejecutar tests
+    // ═══════════════════════════════════════════
+    let qaReport = null;
+
+    if (config.qaAgent) {
+      logger.logStep(3, 7, 'QA generando tests...', 'KOMODO');
+
+      komodoState.updatePhase(PHASES.TESTING, { currentPR: prNumber });
+      komodoState.updateAgent('QA', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId });
+
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'QA',
+        previousState: AGENT_STATES.IDLE,
+        newState: AGENT_STATES.WORKING,
+      });
+      eventBus.emitAgentEvent('QA', 'working', { prNumber });
+
+      const qaModel = selectModel(config.cliQA, 'QA', complexityLevel, taskModelOverride);
+
+      const qaResult = await withWatchdog(
+        () => runQAAgent({
+          taskSpec,
+          filesChanged: coderResult.pr.filesChanged || [],
+          branchName: taskSpec.branchName,
+          repo,
+          prNumber,
+          cwd,
+          model: qaModel,
+        }),
+        { agentName: 'QA', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+      );
+
+      if (qaResult.cost) {
+        eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+          agentName: 'QA',
+          metadata: { cost: qaResult.cost },
+        });
+      }
+
+      eventBus.emitAgentEvent('QA', 'done');
+      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'QA',
+        previousState: AGENT_STATES.WORKING,
+        newState: AGENT_STATES.IDLE,
+      });
+      eventBus.emitAgentEvent('QA', 'idle');
+      komodoState.updateAgent('QA', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
+
+      if (qaResult.success) {
+        qaReport = qaResult.qa;
+        logger.info(`QA: ${qaReport.summary}`, 'KOMODO');
+
+        // If QA tests found issues in Coder code, add a PR comment
+        const coderFaults = (qaReport.failedTests || []).filter(t => t.failsCoderCode);
+        if (coderFaults.length > 0) {
+          try {
+            const faultList = coderFaults.map(f => `- **${f.name}**: ${f.error}`).join('\n');
+            runGh([
+              'pr', 'comment', String(prNumber),
+              '--repo', repo,
+              '--body', `⚠️ **[QA Agent - Tests failing Coder code]**\n\n${coderFaults.length} test(s) reveal issues in the implementation:\n\n${faultList}`,
+            ]);
+          } catch (err) {
+            logger.warn(`Could not add QA comment to PR: ${err.message}`, 'KOMODO');
+          }
+        }
+      } else {
+        logger.warn(`QA agent failed: ${qaResult.error}`, 'KOMODO');
+      }
+
+      // Check for rate limit pause
+      if (komodoState.isPauseRequested()) {
+        logger.warn('Execution paused by rate limit after QA step.', 'KOMODO');
+        return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
+      }
+    }
+
+    // ═══════════════════════════════════════════
     // PASO 3: PRE-PR TESTS — Ejecutar tests antes de review
     // ═══════════════════════════════════════════
     logger.logStep(3, 6, 'Pre-PR tests...', 'KOMODO');
@@ -562,7 +641,7 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
 
     const reviewResult = await withWatchdog(
-      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, reviewerModel, coderModel, codingGuidelines }),
+      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines }),
       { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
     );
 
