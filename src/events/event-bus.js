@@ -55,6 +55,10 @@ export const EVENT_TYPES = {
   WATCHDOG_RETRY: 'watchdog:retry',
   WATCHDOG_EXHAUSTED: 'watchdog:exhausted',
 
+  // Graceful shutdown events
+  SHUTDOWN_STARTED: 'shutdown:started',
+  SHUTDOWN_COMPLETE: 'shutdown:complete',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
