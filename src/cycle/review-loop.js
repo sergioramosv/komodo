@@ -5,6 +5,7 @@ import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
 import { komodoState, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
+import { recordReviewIssues, recordAvoidedPatterns } from './review-feedback-recorder.js';
 
 /**
  * Ejecuta el bucle Coder ↔ Reviewer.
@@ -87,6 +88,13 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, r
     if (lastReview.verdict === 'APPROVED') {
       logger.success(`PR #${prNumber} aprobada en ciclo ${i}`, 'KOMODO');
 
+      // Record avoided patterns (Coder successfully avoided frequent mistakes)
+      try {
+        await recordAvoidedPatterns(lastReview.issues || []);
+      } catch (err) {
+        logger.warn(`Could not record avoided patterns: ${err.message}`, 'KOMODO');
+      }
+
       eventBus.emitEvent(EVENT_TYPES.REVIEW_CYCLE_END, {
         agentName: 'REVIEWER',
         metadata: {
@@ -132,6 +140,13 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, r
     if (komodoState.isPauseRequested()) {
       logger.warn('Execution paused by rate limit during review loop.', 'KOMODO');
       return { approved: false, cycles, finalReview: lastReview, error: 'Paused: rate limit detected' };
+    }
+
+    // Record each review issue as a pattern in memory (for future feedback)
+    try {
+      await recordReviewIssues(lastReview.issues || [], taskSpec?.taskId, prNumber);
+    } catch (err) {
+      logger.warn(`Could not record review issues: ${err.message}`, 'KOMODO');
     }
 
     // === CODER FIX ===
