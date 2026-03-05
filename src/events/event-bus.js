@@ -100,6 +100,15 @@ export const EVENT_TYPES = {
   // Smart ordering / context affinity events
   CONTEXT_AFFINITY_APPLIED: 'smart-ordering:affinity-applied',
 
+  // Parallel execution events
+  PARALLEL_RUN_START: 'parallel:run:start',
+  PARALLEL_RUN_COMPLETE: 'parallel:run:complete',
+  PARALLEL_PIPELINE_START: 'parallel:pipeline:start',
+  PARALLEL_PIPELINE_COMPLETE: 'parallel:pipeline:complete',
+  PARALLEL_PIPELINE_ERROR: 'parallel:pipeline:error',
+  PARALLEL_RATE_LIMIT_PAUSE: 'parallel:rate-limit:pause',
+  PARALLEL_RATE_LIMIT_RESUME: 'parallel:rate-limit:resume',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
