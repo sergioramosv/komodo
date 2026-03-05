@@ -16,6 +16,8 @@ import {
   formatDaemonIdle,
   formatDaemonTaskDetected,
   formatDaemonStopped,
+  formatCiPassed,
+  formatCiFailed,
 } from './formatter.js';
 
 const AGENT = 'TELEGRAM';
@@ -34,6 +36,7 @@ const MINIMAL_EVENTS = new Set([
   EVENT_TYPES.ALL_CLIS_RATE_LIMITED,
   EVENT_TYPES.DAEMON_STARTED,
   EVENT_TYPES.DAEMON_STOPPED,
+  EVENT_TYPES.CI_FAILED,
   // Errors are handled separately via TASK_COMPLETED with success=false
 ]);
 
@@ -45,6 +48,7 @@ const VERBOSE_EVENTS = new Set([
   EVENT_TYPES.REVIEW_CYCLE_END,
   EVENT_TYPES.DAEMON_IDLE,
   EVENT_TYPES.DAEMON_TASK_DETECTED,
+  EVENT_TYPES.CI_PASSED,
 ]);
 
 /**
@@ -189,6 +193,22 @@ export function startNotifier() {
   };
   eventBus.on(EVENT_TYPES.DAEMON_STOPPED, onDaemonStopped);
   unsubscribers.push(() => eventBus.off(EVENT_TYPES.DAEMON_STOPPED, onDaemonStopped));
+
+  // --- CI_PASSED ---
+  const onCiPassed = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.CI_PASSED)) return;
+    sendNotification(formatCiPassed(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.CI_PASSED, onCiPassed);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.CI_PASSED, onCiPassed));
+
+  // --- CI_FAILED ---
+  const onCiFailed = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.CI_FAILED)) return;
+    sendNotification(formatCiFailed(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.CI_FAILED, onCiFailed);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.CI_FAILED, onCiFailed));
 }
 
 /**

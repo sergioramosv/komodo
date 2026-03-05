@@ -152,6 +152,10 @@ export const config = {
   prePrTests: process.env.PRE_PR_TESTS !== 'false', // default: true
   prePrTestCmd: process.env.PRE_PR_TEST_CMD || 'auto',
 
+  // CI Monitor (watch GitHub Actions after merge)
+  ciMonitor: process.env.CI_MONITOR === 'true', // default: false
+  ciMonitorTimeoutMinutes: parseInt(process.env.CI_MONITOR_TIMEOUT_MINUTES || '15', 10),
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
