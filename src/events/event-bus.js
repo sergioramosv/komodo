@@ -109,6 +109,12 @@ export const EVENT_TYPES = {
   PARALLEL_RATE_LIMIT_PAUSE: 'parallel:rate-limit:pause',
   PARALLEL_RATE_LIMIT_RESUME: 'parallel:rate-limit:resume',
 
+  // Smart batching events
+  BATCH_PREPARED: 'batch:prepared',
+  BATCH_TASK_COMPLETE: 'batch:task:complete',
+  BATCH_COMPLETE: 'batch:complete',
+  BATCH_TASK_SEPARATED: 'batch:task:separated',
+
   // Worker pool events
   WORKER_STARTED: 'worker:started',
   WORKER_COMPLETED: 'worker:completed',
