@@ -128,6 +128,9 @@ export const config = {
   autoImproveMaxProposals: parseInt(process.env.AUTO_IMPROVE_MAX_PROPOSALS || '5', 10),
   autoImproveCategories: process.env.AUTO_IMPROVE_CATEGORIES || '',
 
+  // Estimation Tracker (compare estimated vs actual devPoints)
+  estimationTracking: process.env.ESTIMATION_TRACKING !== 'false', // default: true
+
   // Tech Debt Tracker (auto-create tasks from minor review issues)
   techDebtTracking: process.env.TECH_DEBT_TRACKING !== 'false', // default: true
 

@@ -74,6 +74,9 @@ export const EVENT_TYPES = {
   // Style guide detector events
   STYLE_GUIDE_GENERATED: 'style-guide:generated',
 
+  // Estimation tracker events
+  ESTIMATION_RECORDED: 'estimation:recorded',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
