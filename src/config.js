@@ -135,6 +135,10 @@ export const config = {
   depCheckEnabled: process.env.DEP_CHECK_ENABLED === 'true',
   depCheckIntervalHours: parseInt(process.env.DEP_CHECK_INTERVAL_HOURS || '24', 10),
 
+  // Codebase Knowledge Index (semantic map injected into Coder prompt)
+  codebaseIndexEnabled: process.env.CODEBASE_INDEX_ENABLED !== 'false', // default: true
+  codebaseContextMaxTokens: parseInt(process.env.CODEBASE_CONTEXT_MAX_TOKENS || '2000', 10),
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',

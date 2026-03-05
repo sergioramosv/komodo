@@ -3,6 +3,7 @@ import { getCoderSystemPrompt, getCoderFixSystemPrompt } from '../prompts/coder-
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
+import { getCodebaseContext } from '../intelligence/codebase-indexer.js';
 
 /**
  * Build the MCP server list for the Coder agent.
@@ -37,6 +38,19 @@ export async function implementTask(taskSpec, cwd, { model } = {}) {
 
   const systemPrompt = getCoderSystemPrompt({ enableBrowserMcp: config.enableBrowserMcp });
 
+  // Build codebase context if enabled
+  let codebaseSection = '';
+  if (config.codebaseIndexEnabled && cwd) {
+    try {
+      const { summary } = getCodebaseContext(cwd);
+      if (summary) {
+        codebaseSection = `\n## Project structure\n${summary}\n`;
+      }
+    } catch (err) {
+      logger.warn(`Could not generate codebase index: ${err.message}`, 'CODER');
+    }
+  }
+
   const userPrompt = `Implementa la siguiente tarea:
 
 ## Tarea
@@ -56,7 +70,7 @@ ${(taskSpec.acceptanceCriteria || []).map((c, i) => `${i + 1}. ${c}`).join('\n')
 2. Implementa el código necesario
 3. Commitea y haz push a la branch
 4. Abre una PR con create_pr
-
+${codebaseSection}
 Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, summary.`;
 
   const result = await runAgent({
