@@ -231,6 +231,45 @@ export function formatAllClisRateLimited(metadata) {
   ].join('\n');
 }
 
+// --- CI Monitor event formatters ---
+
+/**
+ * Notificación: CI passed after merge.
+ */
+export function formatCiPassed(metadata) {
+  const pr = escapeMarkdown(String(metadata.prNumber || '?'));
+  const runId = escapeMarkdown(String(metadata.runId || '?'));
+
+  return [
+    `\u2705 *CI passed*`,
+    ``,
+    `*PR:* \\#${pr}`,
+    `*Run:* \`${runId}\``,
+  ].join('\n');
+}
+
+/**
+ * Notificación: CI failed after merge.
+ */
+export function formatCiFailed(metadata) {
+  const pr = escapeMarkdown(String(metadata.prNumber || '?'));
+  const runId = escapeMarkdown(String(metadata.runId || '?'));
+  const errorSnippet = escapeMarkdown((metadata.errorLog || '').slice(0, 500));
+
+  const lines = [
+    `\u{1F6A8} *CI failed after merge*`,
+    ``,
+    `*PR:* \\#${pr}`,
+    `*Run:* \`${runId}\``,
+  ];
+
+  if (errorSnippet) {
+    lines.push(`*Error:* ${errorSnippet}`);
+  }
+
+  return lines.join('\n');
+}
+
 // --- Daemon event formatters ---
 
 /**

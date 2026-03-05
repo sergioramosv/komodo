@@ -19,6 +19,7 @@ import { createTechDebtTasks } from '../tech-debt/tech-debt-tracker.js';
 import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
+import { monitorCi } from '../ci-monitor/ci-monitor.js';
 
 /**
  * Fetches the codingGuidelines field from a project.
@@ -608,6 +609,26 @@ export async function runTask(projectId, cwd) {
       } catch (err) {
         logger.warn(`No se pudo actualizar tarea a done: ${err.message}`, 'KOMODO');
       }
+
+      // CI Monitor: watch GitHub Actions after merge (non-blocking for task result)
+      if (merged) {
+        try {
+          const ciResult = await monitorCi({
+            prNumber,
+            repo,
+            projectId: projectId || config.defaultProjectId,
+          });
+          if (!ciResult.skipped) {
+            if (ciResult.passed) {
+              logger.success(`CI passed for PR #${prNumber} merge`, 'KOMODO');
+            } else {
+              logger.warn(`CI failed or timed out for PR #${prNumber} merge`, 'KOMODO');
+            }
+          }
+        } catch (err) {
+          logger.warn(`CI monitor error (non-blocking): ${err.message}`, 'KOMODO');
+        }
+      }
     } else {
       logger.info('AUTO_MERGE=false → PR aprobada, esperando merge manual.', 'KOMODO');
 
@@ -988,6 +1009,15 @@ async function _continueFromMerge(taskSpec, prNumber, repo, startTime, reviewCyc
     }
 
     try { await changeTaskStatus(taskSpec.taskId, 'done'); } catch { /* noop */ }
+
+    // CI Monitor: watch GitHub Actions after merge
+    if (merged) {
+      try {
+        await monitorCi({ prNumber, repo, projectId: config.defaultProjectId });
+      } catch (err) {
+        logger.warn(`CI monitor error (non-blocking): ${err.message}`, 'KOMODO');
+      }
+    }
   } else {
     logger.info('AUTO_MERGE=false → PR aprobada, esperando merge manual.', 'KOMODO');
     try { await changeTaskStatus(taskSpec.taskId, 'to-validate'); } catch { /* noop */ }
