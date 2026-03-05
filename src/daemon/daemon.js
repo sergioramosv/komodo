@@ -9,6 +9,7 @@ import { checkpointManager } from '../state/checkpoint-manager.js';
 import { checkForPendingCheckpoints } from '../orchestrator.js';
 import { checkSchedule, formatMinutes } from '../scheduler/scheduler.js';
 import { shutdownManager } from '../shutdown/shutdown-manager.js';
+import { runDependencyCheck } from '../auto-improve/dependency-checker.js';
 
 const AGENT = 'DAEMON';
 
@@ -87,6 +88,7 @@ export async function watch(projectId, options = {}) {
   const results = [];
   let tasksCompleted = 0;
   let tasksFailed = 0;
+  let lastDepCheck = 0; // timestamp of last dependency check
 
   // Main daemon loop
   while (true) {
@@ -130,6 +132,17 @@ export async function watch(projectId, options = {}) {
     const hasTasks = await _hasEligibleTasks(projectId);
 
     if (!hasTasks) {
+      // Run periodic dependency check during idle
+      const depCheckIntervalMs = config.depCheckIntervalHours * 60 * 60 * 1000;
+      if (config.depCheckEnabled && (Date.now() - lastDepCheck) >= depCheckIntervalMs) {
+        try {
+          await runDependencyCheck({ projectId, cwd });
+        } catch (err) {
+          logger.warn(`Dependency check failed (non-blocking): ${err.message}`, AGENT);
+        }
+        lastDepCheck = Date.now();
+      }
+
       // Enter idle mode
       komodoState.setExecutionState(EXECUTION_STATES.DAEMON_IDLE);
       eventBus.emitEvent(EVENT_TYPES.DAEMON_IDLE, {
