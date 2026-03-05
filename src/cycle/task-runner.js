@@ -14,6 +14,7 @@ import { selectModel } from '../triage/model-selector.js';
 import { shouldDecompose, decomposeTask } from '../triage/task-decomposer.js';
 import { fallbackManager } from '../agents/fallback-manager.js';
 import { withWatchdog } from '../watchdog/watchdog.js';
+import { createTechDebtTasks } from '../tech-debt/tech-debt-tracker.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -501,6 +502,14 @@ export async function runTask(projectId, cwd) {
       return result;
     }
 
+    // Tech debt: create tasks from minor/suggestion issues left after approved review
+    try {
+      const reviewIssues = reviewResult.finalReview?.issues || [];
+      await createTechDebtTasks({ issues: reviewIssues, prNumber, projectId: projectId || config.defaultProjectId });
+    } catch (err) {
+      logger.warn(`Tech debt tracking failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
     // Check for rate limit pause before next step
     if (komodoState.isPauseRequested()) {
       logger.warn('Execution paused by rate limit after review step.', 'KOMODO');
@@ -815,6 +824,14 @@ async function _continueFromReview(taskSpec, prNumber, repo, startTime, cwd, son
       success: false, taskSpec, prNumber, startTime,
       reviewCycles: reviewResult.cycles, error: reviewResult.error,
     });
+  }
+
+  // Tech debt: create tasks from minor/suggestion issues left after approved review
+  try {
+    const reviewIssues = reviewResult.finalReview?.issues || [];
+    await createTechDebtTasks({ issues: reviewIssues, prNumber, projectId: config.defaultProjectId });
+  } catch (err) {
+    logger.warn(`Tech debt tracking failed (non-blocking): ${err.message}`, 'KOMODO');
   }
 
   if (komodoState.isPauseRequested()) {
