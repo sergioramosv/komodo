@@ -194,16 +194,25 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
 
       incrementalSection = buildIncrementalPromptSection(incrementalContext);
 
+      // Detect base branch from remote HEAD (fallback to 'main')
+      let baseBranch = 'main';
+      try {
+        const { execFile } = await import('child_process');
+        const { promisify } = await import('util');
+        const execFileAsync = promisify(execFile);
+        const { stdout } = await execFileAsync('git', ['symbolic-ref', 'refs/remotes/origin/HEAD', '--short'], { cwd });
+        baseBranch = stdout.trim().replace('origin/', '');
+      } catch { /* fallback to 'main' */ }
+
       // Get actual full diff tokens for savings calculation
-      const fullDiffTokenEstimate = await getFullDiffTokenEstimate(cwd);
+      const fullDiffTokenEstimate = await getFullDiffTokenEstimate(cwd, baseBranch);
       if (fullDiffTokenEstimate > 0) {
         incrementalMetrics = calculateSavings(fullDiffTokenEstimate, incrementalContext.incrementalDiffTokenEstimate);
+        logger.info(
+          `Incremental review: ~${incrementalMetrics.tokensSaved} tokens saved (~${incrementalMetrics.percentageSaved}%)`,
+          'REVIEWER',
+        );
       }
-
-      logger.info(
-        `Incremental review: ~${incrementalMetrics.tokensSaved} tokens saved (~${incrementalMetrics.percentageSaved}%)`,
-        'REVIEWER',
-      );
     } catch (err) {
       logger.warn(`Could not build incremental context, falling back to full review: ${err.message}`, 'REVIEWER');
     }
