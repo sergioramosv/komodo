@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/firebase';
-
-interface CoverageEntry {
-  coverage: number;
-  delta: number | null;
-  commitSha: string;
-  prNumber: string;
-  timestamp: string;
-}
+import type { CoverageEntry } from '@/types/coverage';
 
 export async function GET(
   _req: NextRequest,

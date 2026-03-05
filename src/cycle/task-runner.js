@@ -20,7 +20,7 @@ import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
-import { analyzeCoverage, updateBaselineAfterMerge } from '../coverage/coverage-analyzer.js';
+import { analyzeCoverage, updateBaselineAfterMerge, recordCoverageHistory } from '../coverage/coverage-analyzer.js';
 
 /**
  * Fetches the codingGuidelines field from a project.
@@ -528,6 +528,19 @@ export async function runTask(projectId, cwd) {
     if (!coverageReport.skipped) {
       if (coverageReport.success) {
         logger.info(`Coverage delta: ${coverageReport.summary}`, 'KOMODO');
+
+        // Record coverage data point for dashboard trend tracking
+        try {
+          await recordCoverageHistory({
+            projectId: projectId || config.defaultProjectId,
+            coverage: coverageReport.coverage,
+            delta: coverageReport.delta,
+            commitSha: taskSpec.branchName,
+            prNumber: String(prNumber),
+          });
+        } catch (err) {
+          logger.warn(`Coverage history recording failed (non-blocking): ${err.message}`, 'KOMODO');
+        }
       } else {
         logger.warn('Coverage analysis failed, continuing with review...', 'KOMODO');
       }

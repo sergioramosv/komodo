@@ -1,14 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-
-interface CoverageEntry {
-  coverage: number;
-  delta: number | null;
-  commitSha: string;
-  prNumber: string;
-  timestamp: string;
-}
+import type { CoverageEntry } from '@/types/coverage';
 
 interface CoverageTrendData {
   history: CoverageEntry[];

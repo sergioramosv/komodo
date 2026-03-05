@@ -72,17 +72,15 @@ export function resolveCoverageCommand(cwd) {
  * @returns {{ success: boolean, coverage: number|null, output: string }}
  */
 export function runCoverage(command, cwd) {
-  const [cmd, ...args] = command.split(' ');
-  const isWindows = process.platform === 'win32';
-
+  // Use shell: true to handle commands with paths containing spaces
   let output;
   try {
-    output = execFileSync(cmd, args, {
+    output = execFileSync(command, {
       cwd,
       encoding: 'utf-8',
       timeout: DEFAULT_TIMEOUT,
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: isWindows,
+      shell: true,
     });
   } catch (err) {
     // Coverage tools may exit non-zero when tests fail but still produce output

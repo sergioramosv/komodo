@@ -72,16 +72,14 @@ export function resolveTestCommand(cwd) {
  * @returns {{ passed: boolean, output: string, exitCode: number }}
  */
 export function runTests(command, cwd) {
-  const [cmd, ...args] = command.split(' ');
-  const isWindows = process.platform === 'win32';
-
+  // Use shell: true to handle commands with paths containing spaces
   try {
-    const output = execFileSync(cmd, args, {
+    const output = execFileSync(command, {
       cwd,
       encoding: 'utf-8',
       timeout: DEFAULT_TIMEOUT,
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: isWindows,
+      shell: true,
     });
 
     return { passed: true, output, exitCode: 0 };
