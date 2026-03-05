@@ -32,6 +32,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
   const maxCycles = config.maxReviewCycles;
   let cycles = 0;
   let lastReview = null;
+  let lastReviewSHA = null;
 
   for (let i = 1; i <= maxCycles; i++) {
     cycles = i;
@@ -55,13 +56,26 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
     });
     eventBus.emitAgentEvent('REVIEWER', 'working', { cycle: i });
 
-    const reviewResult = await reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model: reviewerModel, codingGuidelines });
+    const reviewResult = await reviewPR({
+      prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport,
+      model: reviewerModel, codingGuidelines,
+      reviewCycle: i,
+      previousReview: lastReview,
+      lastReviewSHA,
+    });
 
     if (reviewResult.cost) {
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
         agentName: 'REVIEWER',
         metadata: { cost: reviewResult.cost },
       });
+    }
+
+    if (reviewResult.incremental && reviewResult.incrementalMetrics) {
+      logger.info(
+        `Incremental review saved ~${reviewResult.incrementalMetrics.tokensSaved} tokens (~${reviewResult.incrementalMetrics.percentageSaved}%)`,
+        'KOMODO',
+      );
     }
 
     eventBus.emitAgentEvent('REVIEWER', 'done');
@@ -83,6 +97,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
     }
 
     lastReview = reviewResult.review;
+    lastReviewSHA = reviewResult.reviewSHA || lastReviewSHA;
 
     // ¿Aprobado?
     if (lastReview.verdict === 'APPROVED') {
