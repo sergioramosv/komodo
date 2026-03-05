@@ -65,6 +65,9 @@ export const EVENT_TYPES = {
   // Tech debt tracker events
   TECH_DEBT_CREATED: 'tech-debt:created',
 
+  // Dependency checker events
+  DEP_CHECK_COMPLETED: 'dep-check:completed',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 

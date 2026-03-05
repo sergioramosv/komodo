@@ -131,6 +131,10 @@ export const config = {
   // Tech Debt Tracker (auto-create tasks from minor review issues)
   techDebtTracking: process.env.TECH_DEBT_TRACKING !== 'false', // default: true
 
+  // Dependency Checker (periodic npm audit / outdated)
+  depCheckEnabled: process.env.DEP_CHECK_ENABLED === 'true',
+  depCheckIntervalHours: parseInt(process.env.DEP_CHECK_INTERVAL_HOURS || '24', 10),
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
