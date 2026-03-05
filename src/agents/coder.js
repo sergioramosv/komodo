@@ -35,7 +35,7 @@ function getCoderMcpServers() {
  * @param {string} [options.model] - Model to use (from model-selector)
  * @returns {Promise<{success: boolean, pr: Object|null, cost: number|null, duration: number, error?: string}>}
  */
-export async function implementTask(taskSpec, cwd, { model } = {}) {
+export async function implementTask(taskSpec, cwd, { model, codingGuidelines } = {}) {
   logger.taskHeader(`CODER - Implementando: ${taskSpec.title}`);
 
   const systemPrompt = getCoderSystemPrompt({ enableBrowserMcp: config.enableBrowserMcp });
@@ -77,6 +77,12 @@ export async function implementTask(taskSpec, cwd, { model } = {}) {
     logger.warn(`Could not generate review feedback: ${err.message}`, 'CODER');
   }
 
+  // Build coding guidelines section if provided
+  let guidelinesSection = '';
+  if (codingGuidelines) {
+    guidelinesSection = `\n## Project Coding Guidelines (MANDATORY)\n${codingGuidelines}\n`;
+  }
+
   const userPrompt = `Implementa la siguiente tarea:
 
 ## Tarea
@@ -96,7 +102,7 @@ ${(taskSpec.acceptanceCriteria || []).map((c, i) => `${i + 1}. ${c}`).join('\n')
 2. Implementa el código necesario
 3. Commitea y haz push a la branch
 4. Abre una PR con create_pr
-${codebaseSection}${styleSection}${feedbackSection}
+${codebaseSection}${styleSection}${feedbackSection}${guidelinesSection}
 Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, summary.`;
 
   const result = await runAgent({
@@ -164,7 +170,7 @@ Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, 
  * @param {string} [options.model] - Model to use (from model-selector)
  * @returns {Promise<{success: boolean, fix: Object|null, cost: number|null, duration: number, error?: string}>}
  */
-export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, { model } = {}) {
+export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, { model, codingGuidelines } = {}) {
   logger.taskHeader(`CODER - Arreglando issues de PR #${prNumber}`);
 
   const systemPrompt = getCoderFixSystemPrompt({ enableBrowserMcp: config.enableBrowserMcp });
@@ -184,6 +190,12 @@ export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, {
     logger.warn(`Could not generate review feedback: ${err.message}`, 'CODER');
   }
 
+  // Build coding guidelines section if provided
+  let guidelinesSection = '';
+  if (codingGuidelines) {
+    guidelinesSection = `\n## Project Coding Guidelines (MANDATORY)\n${codingGuidelines}\n`;
+  }
+
   const userPrompt = `El Reviewer ha encontrado estos problemas en la PR #${prNumber}:
 
 ## Feedback del Reviewer
@@ -196,7 +208,7 @@ ${issuesList || 'Sin issues específicos'}
 - **Título**: ${taskSpec.title}
 - **Branch**: ${taskSpec.branchName}
 - **Repo**: ${extractOwnerRepo(taskSpec.repoUrl)}
-${feedbackSection}
+${feedbackSection}${guidelinesSection}
 ## Instrucciones
 1. Lee el código actual en la branch
 2. Arregla CADA issue listado arriba

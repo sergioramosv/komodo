@@ -23,6 +23,10 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
   const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [codingGuidelines, setCodingGuidelines] = useState('');
+  const [guidelinesLoading, setGuidelinesLoading] = useState(false);
+  const [guidelinesSaving, setGuidelinesSaving] = useState(false);
+  const [guidelinesStatus, setGuidelinesStatus] = useState<'idle' | 'saved' | 'error'>('idle');
 
   const fetchData = useCallback(async () => {
     try {
@@ -50,6 +54,43 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Fetch coding guidelines when active project changes
+  useEffect(() => {
+    if (!config.activeProjectId) {
+      setCodingGuidelines('');
+      return;
+    }
+    setGuidelinesLoading(true);
+    fetch(`/api/projects/${config.activeProjectId}/coding-guidelines`)
+      .then((res) => res.json())
+      .then((data) => setCodingGuidelines(data.codingGuidelines || ''))
+      .catch(() => setCodingGuidelines(''))
+      .finally(() => setGuidelinesLoading(false));
+  }, [config.activeProjectId]);
+
+  async function handleSaveGuidelines() {
+    if (!config.activeProjectId) return;
+    setGuidelinesSaving(true);
+    setGuidelinesStatus('idle');
+    try {
+      const res = await fetch(`/api/projects/${config.activeProjectId}/coding-guidelines`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codingGuidelines }),
+      });
+      if (res.ok) {
+        setGuidelinesStatus('saved');
+        setTimeout(() => setGuidelinesStatus('idle'), 3000);
+      } else {
+        setGuidelinesStatus('error');
+      }
+    } catch {
+      setGuidelinesStatus('error');
+    } finally {
+      setGuidelinesSaving(false);
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -150,6 +191,55 @@ export default function SettingsPage() {
           </div>
         )}
       </section>
+
+      {/* Coding Guidelines */}
+      {config.activeProjectId && (
+        <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-semibold">Coding Guidelines</h2>
+              <p className="text-xs text-neutral-500 mt-1">
+                Custom instructions injected into Coder and Reviewer prompts for this project
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {guidelinesStatus === 'saved' && (
+                <span className="text-sm text-green-400">Saved</span>
+              )}
+              {guidelinesStatus === 'error' && (
+                <span className="text-sm text-red-400">Failed to save</span>
+              )}
+              <button
+                onClick={handleSaveGuidelines}
+                disabled={guidelinesSaving || guidelinesLoading}
+                className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {guidelinesSaving ? 'Saving...' : 'Save Guidelines'}
+              </button>
+            </div>
+          </div>
+          {guidelinesLoading ? (
+            <p className="text-sm text-neutral-500">Loading guidelines...</p>
+          ) : (
+            <div>
+              <textarea
+                value={codingGuidelines}
+                onChange={(e) => {
+                  if (e.target.value.length <= 2000) {
+                    setCodingGuidelines(e.target.value);
+                  }
+                }}
+                placeholder="e.g., Always use Zod for validation. Never use 'any'. Use vitest for tests. Prefer named exports..."
+                rows={6}
+                className="w-full rounded border border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200 placeholder-neutral-600 resize-y"
+              />
+              <p className="mt-1 text-xs text-neutral-500">
+                {codingGuidelines.length}/2000 characters — Free-form text, will be injected as-is
+              </p>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Agent Configuration */}
       <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
