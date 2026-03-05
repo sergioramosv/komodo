@@ -62,6 +62,9 @@ export const EVENT_TYPES = {
   // Auto-improve events
   AUTO_IMPROVE_PROPOSALS_GENERATED: 'auto-improve:proposals-generated',
 
+  // Tech debt tracker events
+  TECH_DEBT_CREATED: 'tech-debt:created',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
