@@ -5,6 +5,7 @@ import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
 import { getCodebaseContext } from '../intelligence/codebase-indexer.js';
 import { getStyleContext } from '../intelligence/style-detector.js';
+import { getReviewFeedbackContext } from '../intelligence/review-feedback.js';
 
 /**
  * Build the MCP server list for the Coder agent.
@@ -65,6 +66,17 @@ export async function implementTask(taskSpec, cwd, { model } = {}) {
     }
   }
 
+  // Build review feedback context (common mistakes from past reviews)
+  let feedbackSection = '';
+  try {
+    const { summary } = getReviewFeedbackContext();
+    if (summary) {
+      feedbackSection = `\n## ${summary}\n`;
+    }
+  } catch (err) {
+    logger.warn(`Could not generate review feedback: ${err.message}`, 'CODER');
+  }
+
   const userPrompt = `Implementa la siguiente tarea:
 
 ## Tarea
@@ -84,7 +96,7 @@ ${(taskSpec.acceptanceCriteria || []).map((c, i) => `${i + 1}. ${c}`).join('\n')
 2. Implementa el código necesario
 3. Commitea y haz push a la branch
 4. Abre una PR con create_pr
-${codebaseSection}${styleSection}
+${codebaseSection}${styleSection}${feedbackSection}
 Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, summary.`;
 
   const result = await runAgent({
@@ -161,6 +173,17 @@ export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, {
     .map((issue, i) => `${i + 1}. ${typeof issue === 'string' ? issue : issue.description || JSON.stringify(issue)}`)
     .join('\n');
 
+  // Build review feedback context (common mistakes to watch for while fixing)
+  let feedbackSection = '';
+  try {
+    const { summary } = getReviewFeedbackContext();
+    if (summary) {
+      feedbackSection = `\n## ${summary}\n`;
+    }
+  } catch (err) {
+    logger.warn(`Could not generate review feedback: ${err.message}`, 'CODER');
+  }
+
   const userPrompt = `El Reviewer ha encontrado estos problemas en la PR #${prNumber}:
 
 ## Feedback del Reviewer
@@ -173,7 +196,7 @@ ${issuesList || 'Sin issues específicos'}
 - **Título**: ${taskSpec.title}
 - **Branch**: ${taskSpec.branchName}
 - **Repo**: ${extractOwnerRepo(taskSpec.repoUrl)}
-
+${feedbackSection}
 ## Instrucciones
 1. Lee el código actual en la branch
 2. Arregla CADA issue listado arriba
