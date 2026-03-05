@@ -79,6 +79,11 @@ export const EVENT_TYPES = {
   PRE_PR_TESTS_PASSED: 'tests:pre-pr:passed',
   PRE_PR_TESTS_FAILED: 'tests:pre-pr:failed',
 
+  // CI Monitor events
+  CI_MONITOR_START: 'ci:monitor:start',
+  CI_PASSED: 'ci:passed',
+  CI_FAILED: 'ci:failed',
+
   // Estimation tracker events
   ESTIMATION_RECORDED: 'estimation:recorded',
 
