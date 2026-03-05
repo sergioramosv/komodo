@@ -406,6 +406,7 @@ export async function runAgent({
     PLANNER: config.cliPlanner,
     CODER: config.cliCoder,
     REVIEWER: config.cliReviewer,
+    QA: config.cliQA,
   };
   const configuredCli = cli || cliMap[name] || 'claude';
 

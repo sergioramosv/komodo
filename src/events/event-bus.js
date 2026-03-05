@@ -85,6 +85,9 @@ export const EVENT_TYPES = {
   CI_FAILED: 'ci:failed',
   CI_AUTO_REVERTED: 'ci:auto-reverted',
 
+  // QA agent events
+  QA_TESTS_GENERATED: 'qa:tests-generated',
+
   // Coverage delta events
   COVERAGE_CHECK_START: 'coverage:check:start',
   COVERAGE_CHECK_COMPLETE: 'coverage:check:complete',
@@ -110,6 +113,9 @@ export const EVENT_TYPES = {
   AGENT_REVIEWER_WORKING: 'agent:reviewer:working',
   AGENT_REVIEWER_DONE: 'agent:reviewer:done',
   AGENT_REVIEWER_IDLE: 'agent:reviewer:idle',
+  AGENT_QA_WORKING: 'agent:qa:working',
+  AGENT_QA_DONE: 'agent:qa:done',
+  AGENT_QA_IDLE: 'agent:qa:idle',
 };
 
 /**
