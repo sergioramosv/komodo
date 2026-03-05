@@ -123,6 +123,11 @@ export const config = {
   prCommentBugsPollMinutes: parseInt(process.env.PR_COMMENT_BUGS_POLL_MINUTES || '3', 10),
   prCommentBugsRepo: process.env.PR_COMMENT_BUGS_REPO || process.env.GITHUB_ISSUE_REPO || '',
 
+  // Auto-improve (codebase analysis when backlog is empty)
+  autoImprove: process.env.AUTO_IMPROVE === 'true',
+  autoImproveMaxProposals: parseInt(process.env.AUTO_IMPROVE_MAX_PROPOSALS || '5', 10),
+  autoImproveCategories: process.env.AUTO_IMPROVE_CATEGORIES || '',
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',

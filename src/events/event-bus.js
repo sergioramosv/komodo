@@ -59,6 +59,9 @@ export const EVENT_TYPES = {
   SHUTDOWN_STARTED: 'shutdown:started',
   SHUTDOWN_COMPLETE: 'shutdown:complete',
 
+  // Auto-improve events
+  AUTO_IMPROVE_PROPOSALS_GENERATED: 'auto-improve:proposals-generated',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
