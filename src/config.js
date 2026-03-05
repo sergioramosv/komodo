@@ -196,6 +196,7 @@ export const config = {
   // Auto Release (create GitHub Release when sprint completes)
   autoRelease: process.env.AUTO_RELEASE === 'true', // default: false
   releaseOnSprintComplete: process.env.RELEASE_ON_SPRINT_COMPLETE !== 'false', // default: true
+  releaseIgnoreBugs: process.env.RELEASE_IGNORE_BUGS === 'true', // default: false — override release gate
 
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',

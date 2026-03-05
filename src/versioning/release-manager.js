@@ -5,6 +5,7 @@ import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { getAll } from '../../skills/planning-task-mcp/src/firebase.js';
 import { classifyTask, formatTaskEntry } from './changelog-generator.js';
 import { readVersion } from './version-bumper.js';
+import { evaluateReleaseGate } from './release-gate.js';
 
 const AGENT = 'RELEASE';
 const GH_TIMEOUT = 30_000;
@@ -168,7 +169,31 @@ export async function autoRelease({ sprintId, projectId, repo, cwd, dashboardUrl
     return { skipped: true, reason: 'sprint not complete' };
   }
 
-  logger.info(`Sprint "${sprint?.name || sprintId}" complete! Creating release...`, AGENT);
+  logger.info(`Sprint "${sprint?.name || sprintId}" complete! Checking release gate...`, AGENT);
+
+  // Check for blocking bugs before creating release
+  const gate = await evaluateReleaseGate(projectId);
+
+  if (!gate.allowed) {
+    const bugTitles = gate.blockingBugs.map(b => `[${b.severity}] ${b.title}`).join(', ');
+    logger.warn(`Release blocked by ${gate.blockingBugs.length} bug(s): ${bugTitles}`, AGENT);
+    return {
+      skipped: true,
+      reason: 'blocking bugs',
+      blockingBugs: gate.blockingBugs.map(b => ({
+        id: b.id,
+        title: b.title,
+        severity: b.severity,
+        status: b.status,
+      })),
+    };
+  }
+
+  if (gate.overridden) {
+    logger.warn('Release gate overridden via RELEASE_IGNORE_BUGS=true', AGENT);
+  }
+
+  logger.info(`Release gate passed. Creating release...`, AGENT);
 
   // Read current version for the tag
   let version;

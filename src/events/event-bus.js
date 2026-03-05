@@ -123,6 +123,8 @@ export const EVENT_TYPES = {
 
   // Release events
   RELEASE_CREATED: 'release:created',
+  RELEASE_GATE_PASSED: 'release:gate:passed',
+  RELEASE_GATE_BLOCKED: 'release:gate:blocked',
 
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
