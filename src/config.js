@@ -145,6 +145,9 @@ export const config = {
   // Style Guide Detector (auto-detected conventions injected into Coder prompt)
   styleDetectorEnabled: process.env.STYLE_DETECTOR_ENABLED !== 'false', // default: true
 
+  // Smart Task Ordering: context affinity boost (0-1, default: 0.2 = 20% boost)
+  contextAffinityBoost: parseFloat(process.env.CONTEXT_AFFINITY_BOOST || '0.2'),
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',

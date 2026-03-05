@@ -4,6 +4,8 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
 import { getAll } from '../../skills/planning-task-mcp/src/firebase.js';
+import { komodoState } from '../state/komodo-state.js';
+import { rankWithContextAffinity, buildAffinityHint } from '../smart-ordering/context-affinity.js';
 
 /**
  * Fetches all tasks for a project from Firebase RTDB.
@@ -76,6 +78,7 @@ export async function pickNextTask(projectId, { model } = {}) {
 
   // ── Step 1: Pre-filter blocked tasks BEFORE agent ranking ──
   let eligibleTaskIds = null;
+  let affinityHint = '';
   try {
     const allTasks = await fetchProjectTasks(projectId);
     const todoTasks = allTasks.filter(t => t.status === 'to-do');
@@ -105,6 +108,13 @@ export async function pickNextTask(projectId, { model } = {}) {
     }
 
     eligibleTaskIds = eligible.map(t => t.id);
+
+    // ── Step 1b: Context affinity boost ──
+    const previousContext = komodoState.lastCompletedTaskContext;
+    if (previousContext && previousContext.filesChanged?.length > 0) {
+      const ranked = rankWithContextAffinity(eligible, previousContext);
+      affinityHint = buildAffinityHint(ranked);
+    }
   } catch (err) {
     logger.warn(`Could not pre-filter blocked tasks: ${err.message}. Proceeding without filter.`, 'PLANNER');
   }
@@ -120,6 +130,10 @@ export async function pickNextTask(projectId, { model } = {}) {
 
   if (eligibleTaskIds) {
     userPrompt += `\n\nIMPORTANTE — Dependencias pre-filtradas: las siguientes tareas son las ÚNICAS elegibles (sus dependencias ya están resueltas). Solo selecciona de esta lista:\n${eligibleTaskIds.map(id => `- ${id}`).join('\n')}`;
+  }
+
+  if (affinityHint) {
+    userPrompt += `\n\n${affinityHint}`;
   }
 
   const result = await runAgent({

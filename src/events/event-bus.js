@@ -77,6 +77,9 @@ export const EVENT_TYPES = {
   // Estimation tracker events
   ESTIMATION_RECORDED: 'estimation:recorded',
 
+  // Smart ordering / context affinity events
+  CONTEXT_AFFINITY_APPLIED: 'smart-ordering:affinity-applied',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
