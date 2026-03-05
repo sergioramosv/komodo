@@ -4,6 +4,7 @@ import { resolve } from 'path';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
+import { getDb } from '../../skills/planning-task-mcp/src/firebase.js';
 
 const AGENT = 'COVERAGE';
 const DEFAULT_TIMEOUT = 300_000; // 5 min
@@ -314,6 +315,36 @@ export function updateBaselineAfterMerge({ cwd, commitSha } = {}) {
   eventBus.emitEvent(EVENT_TYPES.COVERAGE_BASELINE_UPDATED, {
     metadata: { coverage: result.coverage, commitSha },
   });
+}
+
+/**
+ * Record a coverage data point in Firebase for trend tracking.
+ *
+ * @param {Object} options
+ * @param {string} options.projectId - Project ID
+ * @param {number} options.coverage - Coverage percentage
+ * @param {number|null} options.delta - Coverage delta vs baseline
+ * @param {string} [options.commitSha] - Commit SHA
+ * @param {string} [options.prNumber] - PR number
+ */
+export async function recordCoverageHistory({ projectId, coverage, delta, commitSha, prNumber } = {}) {
+  if (!projectId || typeof coverage !== 'number') return;
+
+  try {
+    const db = getDb();
+    const entry = {
+      coverage,
+      delta: delta ?? null,
+      commitSha: commitSha || '',
+      prNumber: prNumber || '',
+      timestamp: new Date().toISOString(),
+    };
+
+    await db.ref(`metrics/${projectId}/coverageHistory`).push(entry);
+    logger.info(`Coverage history recorded: ${coverage}%`, AGENT);
+  } catch (err) {
+    logger.warn(`Failed to record coverage history: ${err.message}`, AGENT);
+  }
 }
 
 /**

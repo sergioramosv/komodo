@@ -38,6 +38,12 @@ vi.mock('fs', () => ({
   mkdirSync: vi.fn(),
 }));
 
+const mockPush = vi.fn(() => Promise.resolve());
+const mockRef = vi.fn(() => ({ push: mockPush }));
+vi.mock('../../skills/planning-task-mcp/src/firebase.js', () => ({
+  getDb: vi.fn(() => ({ ref: mockRef })),
+}));
+
 const { config } = await import('../config.js');
 const { eventBus } = await import('../events/event-bus.js');
 const { execFileSync } = await import('child_process');
@@ -52,6 +58,7 @@ const {
   analyzeCoverage,
   updateBaselineAfterMerge,
   buildCoverageSection,
+  recordCoverageHistory,
 } = await import('./coverage-analyzer.js');
 
 describe('coverage-analyzer', () => {
@@ -482,6 +489,78 @@ Lines        : 75.2% ( 188/250 )`;
       });
 
       expect(section).toContain('COVERAGE STABLE');
+    });
+  });
+
+  // ── recordCoverageHistory ──
+
+  describe('recordCoverageHistory', () => {
+    beforeEach(() => {
+      mockRef.mockClear();
+      mockPush.mockClear();
+      mockPush.mockResolvedValue(undefined);
+    });
+
+    it('records coverage data to Firebase', async () => {
+      await recordCoverageHistory({
+        projectId: 'proj-1',
+        coverage: 85.5,
+        delta: 3.5,
+        commitSha: 'abc123',
+        prNumber: '42',
+      });
+
+      expect(mockRef).toHaveBeenCalledWith('metrics/proj-1/coverageHistory');
+      expect(mockPush).toHaveBeenCalledWith(
+        expect.objectContaining({
+          coverage: 85.5,
+          delta: 3.5,
+          commitSha: 'abc123',
+          prNumber: '42',
+          timestamp: expect.any(String),
+        }),
+      );
+    });
+
+    it('skips when projectId is missing', async () => {
+      await recordCoverageHistory({ coverage: 80 });
+
+      expect(mockRef).not.toHaveBeenCalled();
+    });
+
+    it('skips when coverage is not a number', async () => {
+      await recordCoverageHistory({ projectId: 'proj-1', coverage: null });
+
+      expect(mockRef).not.toHaveBeenCalled();
+    });
+
+    it('handles Firebase errors gracefully', async () => {
+      mockPush.mockRejectedValue(new Error('Firebase down'));
+
+      await recordCoverageHistory({
+        projectId: 'proj-1',
+        coverage: 80,
+        delta: -1,
+      });
+
+      // Should not throw
+      expect(mockRef).toHaveBeenCalled();
+    });
+
+    it('records with null delta when not provided', async () => {
+      await recordCoverageHistory({
+        projectId: 'proj-1',
+        coverage: 75,
+      });
+
+      expect(mockPush).toHaveBeenCalledWith(
+        expect.objectContaining({
+          coverage: 75,
+          delta: null,
+          commitSha: '',
+          prNumber: '',
+        }),
+      );
     });
   });
 });
