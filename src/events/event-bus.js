@@ -109,6 +109,12 @@ export const EVENT_TYPES = {
   PARALLEL_RATE_LIMIT_PAUSE: 'parallel:rate-limit:pause',
   PARALLEL_RATE_LIMIT_RESUME: 'parallel:rate-limit:resume',
 
+  // Worker pool events
+  WORKER_STARTED: 'worker:started',
+  WORKER_COMPLETED: 'worker:completed',
+  WORKER_FAILED: 'worker:failed',
+  WORKER_POOL_DRAINED: 'worker-pool:drained',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
