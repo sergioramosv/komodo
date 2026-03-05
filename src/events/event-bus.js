@@ -68,6 +68,9 @@ export const EVENT_TYPES = {
   // Dependency checker events
   DEP_CHECK_COMPLETED: 'dep-check:completed',
 
+  // Codebase knowledge index events
+  CODEBASE_INDEX_GENERATED: 'codebase-index:generated',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
