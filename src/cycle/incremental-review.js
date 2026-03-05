@@ -22,22 +22,21 @@ export function shouldUseIncrementalReview(cycle) {
  *
  * @param {Object} options
  * @param {Object} options.previousReview - The previous review result
- * @param {string} options.branchName - Branch name for the PR
  * @param {string} options.cwd - Working directory
  * @param {number} options.cycle - Current cycle number
+ * @param {string} [options.lastReviewSHA] - Commit SHA at the time of the last review
  * @returns {Promise<{
  *   incrementalDiff: string,
  *   previousIssuesSummary: string,
  *   newFiles: string[],
- *   fullDiffTokenEstimate: number,
  *   incrementalDiffTokenEstimate: number,
  * }>}
  */
-export async function buildIncrementalContext({ previousReview, branchName, cwd, cycle }) {
+export async function buildIncrementalContext({ previousReview, cwd, cycle, lastReviewSHA }) {
   const previousIssuesSummary = formatPreviousIssues(previousReview);
 
-  // Get the last fix commit(s) diff — commits since last review
-  const { diff: incrementalDiff, newFiles } = await getFixCommitDiff(cwd);
+  // Get the fix commit(s) diff — all commits since last review
+  const { diff: incrementalDiff, newFiles } = await getFixCommitDiff(cwd, lastReviewSHA);
 
   // Estimate tokens (rough: ~4 chars per token)
   const incrementalDiffTokenEstimate = estimateTokens(incrementalDiff);
@@ -60,29 +59,30 @@ export async function buildIncrementalContext({ previousReview, branchName, cwd,
 }
 
 /**
- * Gets the diff of only the last fix commit(s).
- * Uses `git diff HEAD~1..HEAD` to get changes from the most recent commit.
- * If multiple fix commits were made, it detects all fix commits since the last review.
+ * Gets the diff of fix commit(s) since the last review.
+ * Uses `git diff <lastReviewSHA>..HEAD` to capture all fix commits.
  *
  * @param {string} cwd - Working directory
+ * @param {string} [lastReviewSHA] - Commit SHA at the time of the last review
  * @returns {Promise<{ diff: string, newFiles: string[] }>}
  */
-async function getFixCommitDiff(cwd) {
+async function getFixCommitDiff(cwd, lastReviewSHA) {
   const { execFile } = await import('child_process');
   const { promisify } = await import('util');
   const execFileAsync = promisify(execFile);
 
   const execOpts = { cwd, maxBuffer: 10 * 1024 * 1024 };
+  const diffRange = lastReviewSHA ? `${lastReviewSHA}..HEAD` : 'HEAD~1..HEAD';
 
   try {
-    // Get the diff of the last commit (fix commit)
+    // Get the diff of all fix commits since last review
     const { stdout: diff } = await execFileAsync(
-      'git', ['diff', 'HEAD~1..HEAD'], execOpts,
+      'git', ['diff', diffRange], execOpts,
     );
 
-    // Detect new files added in the fix commit
+    // Detect new files added in the fix commits
     const { stdout: statusOutput } = await execFileAsync(
-      'git', ['diff', '--name-status', 'HEAD~1..HEAD'], execOpts,
+      'git', ['diff', '--name-status', diffRange], execOpts,
     );
 
     const newFiles = statusOutput
@@ -141,7 +141,12 @@ ${context.previousIssuesSummary}
 ### Your Task
 1. For EACH previous issue listed above, verify if it was properly fixed
 2. Check that the fix doesn't introduce NEW issues
-3. If a previous issue was NOT fixed, report it again with a note that it persists`;
+3. If a previous issue was NOT fixed, report it again with a note that it persists
+
+### Fix Commit Diff
+\`\`\`diff
+${context.incrementalDiff}
+\`\`\``;
 
   if (context.newFiles.length > 0) {
     section += `
@@ -157,7 +162,7 @@ ${context.newFiles.map(f => `- ${f}`).join('\n')}`;
 /**
  * Calculates metrics comparing incremental vs full review.
  *
- * @param {number} fullDiffTokens - Token estimate for the full PR diff
+ * @param {number} fullDiffTokens - Token estimate for the full PR diff (actual)
  * @param {number} incrementalDiffTokens - Token estimate for the incremental diff
  * @returns {{ tokensSaved: number, percentageSaved: number }}
  */
@@ -168,6 +173,44 @@ export function calculateSavings(fullDiffTokens, incrementalDiffTokens) {
     : 0;
 
   return { tokensSaved, percentageSaved };
+}
+
+/**
+ * Gets the current HEAD commit SHA.
+ *
+ * @param {string} cwd - Working directory
+ * @returns {Promise<string>} The HEAD commit SHA
+ */
+export async function getHeadSHA(cwd) {
+  const { execFile } = await import('child_process');
+  const { promisify } = await import('util');
+  const execFileAsync = promisify(execFile);
+
+  const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd });
+  return stdout.trim();
+}
+
+/**
+ * Gets the full PR diff token estimate by running git diff against the base branch.
+ *
+ * @param {string} cwd - Working directory
+ * @param {string} baseBranch - Base branch (e.g. 'main')
+ * @returns {Promise<number>} Estimated tokens for the full diff
+ */
+export async function getFullDiffTokenEstimate(cwd, baseBranch = 'main') {
+  const { execFile } = await import('child_process');
+  const { promisify } = await import('util');
+  const execFileAsync = promisify(execFile);
+
+  try {
+    const { stdout: diff } = await execFileAsync(
+      'git', ['diff', `${baseBranch}...HEAD`],
+      { cwd, maxBuffer: 10 * 1024 * 1024 },
+    );
+    return estimateTokens(diff);
+  } catch {
+    return 0;
+  }
 }
 
 /**

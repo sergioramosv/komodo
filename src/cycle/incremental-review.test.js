@@ -96,9 +96,10 @@ describe('incremental-review', () => {
   });
 
   describe('buildIncrementalPromptSection', () => {
-    it('includes incremental review header and previous issues', () => {
+    it('includes incremental review header, previous issues, and fix diff', () => {
       const context = {
         previousIssuesSummary: 'Previous review found 2 issue(s)',
+        incrementalDiff: 'diff --git a/src/foo.js b/src/foo.js\n+added line',
         newFiles: [],
         incrementalDiffTokenEstimate: 500,
       };
@@ -106,12 +107,16 @@ describe('incremental-review', () => {
       expect(result).toContain('INCREMENTAL REVIEW MODE');
       expect(result).toContain('Previous Issues to Verify');
       expect(result).toContain('Previous review found 2 issue(s)');
+      expect(result).toContain('### Fix Commit Diff');
+      expect(result).toContain('diff --git a/src/foo.js b/src/foo.js');
+      expect(result).toContain('+added line');
       expect(result).not.toContain('New Files Added');
     });
 
     it('includes new files section when present', () => {
       const context = {
         previousIssuesSummary: 'Issues summary',
+        incrementalDiff: 'some diff content',
         newFiles: ['src/new-helper.js', 'src/new-test.js'],
         incrementalDiffTokenEstimate: 800,
       };

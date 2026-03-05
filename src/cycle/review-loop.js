@@ -32,6 +32,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
   const maxCycles = config.maxReviewCycles;
   let cycles = 0;
   let lastReview = null;
+  let lastReviewSHA = null;
 
   for (let i = 1; i <= maxCycles; i++) {
     cycles = i;
@@ -60,6 +61,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
       model: reviewerModel, codingGuidelines,
       reviewCycle: i,
       previousReview: lastReview,
+      lastReviewSHA,
     });
 
     if (reviewResult.cost) {
@@ -95,6 +97,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
     }
 
     lastReview = reviewResult.review;
+    lastReviewSHA = reviewResult.reviewSHA || lastReviewSHA;
 
     // ¿Aprobado?
     if (lastReview.verdict === 'APPROVED') {

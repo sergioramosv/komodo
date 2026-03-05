@@ -9,7 +9,8 @@ import {
   buildIncrementalContext,
   buildIncrementalPromptSection,
   calculateSavings,
-  estimateTokens,
+  getHeadSHA,
+  getFullDiffTokenEstimate,
 } from '../cycle/incremental-review.js';
 
 /**
@@ -117,10 +118,20 @@ ${coderFaults.map(f => `- **${f.name}** (${f.type}): ${f.error}`).join('\n')}
  *   error?: string
  * }>}
  */
-export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines, reviewCycle, previousReview }) {
+export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines, reviewCycle, previousReview, lastReviewSHA }) {
   const isIncremental = shouldUseIncrementalReview(reviewCycle || 1);
   const modeLabel = isIncremental ? 'INCREMENTAL' : 'FULL';
   logger.taskHeader(`REVIEWER - Revisando PR #${prNumber} (${modeLabel})`);
+
+  // Capture HEAD SHA before review so next cycle can diff against it
+  let currentSHA = null;
+  if (cwd) {
+    try {
+      currentSHA = await getHeadSHA(cwd);
+    } catch (err) {
+      logger.warn(`Could not get HEAD SHA: ${err.message}`, 'REVIEWER');
+    }
+  }
 
   const systemPrompt = getReviewerSystemPrompt({
     enableBrowserMcp: config.enableBrowserMcp,
@@ -176,16 +187,18 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
     try {
       const incrementalContext = await buildIncrementalContext({
         previousReview,
-        branchName: taskSpec.branchName,
         cwd,
         cycle: reviewCycle,
+        lastReviewSHA,
       });
 
       incrementalSection = buildIncrementalPromptSection(incrementalContext);
 
-      // Estimate full diff tokens for savings calculation
-      const fullDiffTokenEstimate = estimateTokens(criteriaList + sonarSection + coverageSection + qaSection) + incrementalContext.incrementalDiffTokenEstimate * 3;
-      incrementalMetrics = calculateSavings(fullDiffTokenEstimate, incrementalContext.incrementalDiffTokenEstimate);
+      // Get actual full diff tokens for savings calculation
+      const fullDiffTokenEstimate = await getFullDiffTokenEstimate(cwd);
+      if (fullDiffTokenEstimate > 0) {
+        incrementalMetrics = calculateSavings(fullDiffTokenEstimate, incrementalContext.incrementalDiffTokenEstimate);
+      }
 
       logger.info(
         `Incremental review: ~${incrementalMetrics.tokensSaved} tokens saved (~${incrementalMetrics.percentageSaved}%)`,
@@ -235,6 +248,7 @@ ${diffInstruction}
       review: null,
       cost: result.cost,
       duration: result.duration,
+      reviewSHA: currentSHA,
       error: result.error || 'El Reviewer no devolvió un resultado válido',
     };
   }
@@ -281,6 +295,7 @@ ${diffInstruction}
     duration: result.duration,
     incremental: isIncremental,
     incrementalMetrics: incrementalMetrics || null,
+    reviewSHA: currentSHA,
   };
 }
 
