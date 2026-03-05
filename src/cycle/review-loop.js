@@ -28,7 +28,7 @@ import { recordReviewIssues, recordAvoidedPatterns } from './review-feedback-rec
  *   error?: string
  * }>}
  */
-export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, reviewerModel, coderModel, codingGuidelines }) {
+export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, reviewerModel, coderModel, codingGuidelines }) {
   const maxCycles = config.maxReviewCycles;
   let cycles = 0;
   let lastReview = null;
@@ -55,7 +55,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, r
     });
     eventBus.emitAgentEvent('REVIEWER', 'working', { cycle: i });
 
-    const reviewResult = await reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, model: reviewerModel, codingGuidelines });
+    const reviewResult = await reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, model: reviewerModel, codingGuidelines });
 
     if (reviewResult.cost) {
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {

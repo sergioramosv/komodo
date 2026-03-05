@@ -157,6 +157,11 @@ export const config = {
   ciMonitorTimeoutMinutes: parseInt(process.env.CI_MONITOR_TIMEOUT_MINUTES || '15', 10),
   autoRevert: process.env.AUTO_REVERT === 'true', // default: false, requires opt-in
 
+  // Coverage Delta Check (compare PR coverage vs baseline)
+  coverageCheck: process.env.COVERAGE_CHECK !== 'false', // default: true
+  coverageCmd: process.env.COVERAGE_CMD || 'auto',
+  minCoverageDelta: parseFloat(process.env.MIN_COVERAGE_DELTA || '-2'),
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',

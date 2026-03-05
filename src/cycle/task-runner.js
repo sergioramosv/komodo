@@ -20,6 +20,7 @@ import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
+import { analyzeCoverage, updateBaselineAfterMerge } from '../coverage/coverage-analyzer.js';
 
 /**
  * Fetches the codingGuidelines field from a project.
@@ -520,6 +521,19 @@ export async function runTask(projectId, cwd) {
     }
 
     // ═══════════════════════════════════════════
+    // PASO 4.5: COVERAGE DELTA — Comparar cobertura
+    // ═══════════════════════════════════════════
+    const coverageReport = analyzeCoverage({ cwd });
+
+    if (!coverageReport.skipped) {
+      if (coverageReport.success) {
+        logger.info(`Coverage delta: ${coverageReport.summary}`, 'KOMODO');
+      } else {
+        logger.warn('Coverage analysis failed, continuing with review...', 'KOMODO');
+      }
+    }
+
+    // ═══════════════════════════════════════════
     // PASO 5: REVIEW LOOP — Reviewer ↔ Coder
     // ═══════════════════════════════════════════
     logger.logStep(5, 6, 'Review loop...', 'KOMODO');
@@ -535,7 +549,7 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
 
     const reviewResult = await withWatchdog(
-      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, reviewerModel, coderModel, codingGuidelines }),
+      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, reviewerModel, coderModel, codingGuidelines }),
       { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
     );
 
@@ -630,6 +644,13 @@ export async function runTask(projectId, cwd) {
           }
         } catch (err) {
           logger.warn(`CI monitor error (non-blocking): ${err.message}`, 'KOMODO');
+        }
+
+        // Update coverage baseline after successful merge
+        try {
+          updateBaselineAfterMerge({ cwd });
+        } catch (err) {
+          logger.warn(`Coverage baseline update failed (non-blocking): ${err.message}`, 'KOMODO');
         }
       }
     } else {

@@ -85,6 +85,12 @@ export const EVENT_TYPES = {
   CI_FAILED: 'ci:failed',
   CI_AUTO_REVERTED: 'ci:auto-reverted',
 
+  // Coverage delta events
+  COVERAGE_CHECK_START: 'coverage:check:start',
+  COVERAGE_CHECK_COMPLETE: 'coverage:check:complete',
+  COVERAGE_CHECK_ERROR: 'coverage:check:error',
+  COVERAGE_BASELINE_UPDATED: 'coverage:baseline:updated',
+
   // Estimation tracker events
   ESTIMATION_RECORDED: 'estimation:recorded',
 
