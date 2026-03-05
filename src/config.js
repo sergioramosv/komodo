@@ -118,6 +118,11 @@ export const config = {
   githubIssueLabel: process.env.GITHUB_ISSUE_LABEL || 'komodo',
   githubIssueRepo: process.env.GITHUB_ISSUE_REPO || '',
 
+  // PR Comment Bug Reports (@komodo bug: ...)
+  enablePrCommentBugs: process.env.PR_COMMENT_BUGS === 'true',
+  prCommentBugsPollMinutes: parseInt(process.env.PR_COMMENT_BUGS_POLL_MINUTES || '3', 10),
+  prCommentBugsRepo: process.env.PR_COMMENT_BUGS_REPO || process.env.GITHUB_ISSUE_REPO || '',
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
