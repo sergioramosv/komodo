@@ -8,12 +8,13 @@ import { KomodoWsServer } from './server/ws-server.js';
 import { checkpointManager } from './state/checkpoint-manager.js';
 
 import { fallbackManager } from './agents/fallback-manager.js';
+import { shutdownManager } from './shutdown/shutdown-manager.js';
 
 // Daemon / watch mode
 export { watch } from './daemon/daemon.js';
 
 // Re-export para que consumidores externos puedan suscribirse
-export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES, checkpointManager, fallbackManager };
+export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES, checkpointManager, fallbackManager, shutdownManager };
 
 /**
  * Ejecuta N tareas del backlog de un proyecto.
@@ -85,6 +86,9 @@ export async function run(projectId, options = {}) {
     logger.warn(`No se pudo iniciar WS server: ${err.message}`, 'KOMODO');
   }
 
+  // Register graceful shutdown handlers (SIGINT/SIGTERM)
+  shutdownManager.register({ wsServer });
+
   const results = [];
   let tasksCompleted = 0;
   let tasksFailed = 0;
@@ -140,6 +144,9 @@ export async function run(projectId, options = {}) {
       if (!continuous) break;
     }
   }
+
+  // Unregister shutdown handlers (cleanup handled manually below)
+  shutdownManager.unregister();
 
   // Stop checkpoint manager
   checkpointManager.stop();
@@ -318,6 +325,9 @@ async function _executeResume(checkpoint, filepath, cwd) {
     logger.warn(`No se pudo iniciar WS server: ${err.message}`, 'KOMODO');
   }
 
+  // Register graceful shutdown handlers (SIGINT/SIGTERM)
+  shutdownManager.register({ wsServer });
+
   try {
     const result = await resumeTask(checkpoint, cwd);
 
@@ -337,6 +347,7 @@ async function _executeResume(checkpoint, filepath, cwd) {
 
     return result;
   } finally {
+    shutdownManager.unregister();
     checkpointManager.stop();
 
     if (komodoState.executionState !== EXECUTION_STATES.PAUSED) {

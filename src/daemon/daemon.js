@@ -8,6 +8,7 @@ import { KomodoWsServer } from '../server/ws-server.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
 import { checkForPendingCheckpoints } from '../orchestrator.js';
 import { checkSchedule, formatMinutes } from '../scheduler/scheduler.js';
+import { shutdownManager } from '../shutdown/shutdown-manager.js';
 
 const AGENT = 'DAEMON';
 
@@ -63,6 +64,9 @@ export async function watch(projectId, options = {}) {
   } catch (err) {
     logger.warn(`No se pudo iniciar WS server: ${err.message}`, AGENT);
   }
+
+  // Register graceful shutdown handlers (SIGINT/SIGTERM)
+  shutdownManager.register({ wsServer });
 
   // Emit daemon:started
   eventBus.emitEvent(EVENT_TYPES.DAEMON_STARTED, {
@@ -175,6 +179,7 @@ export async function watch(projectId, options = {}) {
   }
 
   // Cleanup
+  shutdownManager.unregister();
   checkpointManager.stop();
   komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
 
