@@ -193,6 +193,10 @@ export const config = {
     ? process.env.AUTO_CHANGELOG === 'true'
     : process.env.AUTO_VERSION === 'true', // default: true if AUTO_VERSION=true
 
+  // Auto Release (create GitHub Release when sprint completes)
+  autoRelease: process.env.AUTO_RELEASE === 'true', // default: false
+  releaseOnSprintComplete: process.env.RELEASE_ON_SPRINT_COMPLETE !== 'false', // default: true
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
