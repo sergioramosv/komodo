@@ -111,6 +111,12 @@ export class KomodoState {
      * @type {{ taskId: string, title: string, filesChanged: string[], keywords: Set<string> } | null}
      */
     this.lastCompletedTaskContext = null;
+
+    /**
+     * Release readiness gate status.
+     * @type {{ ready: boolean, blockingBugs: Array<{ id: string, title: string, severity: string, status: string }> }}
+     */
+    this.releaseReadiness = { ready: true, blockingBugs: [] };
   }
 
   /**
@@ -136,6 +142,10 @@ export class KomodoState {
       totalTasks: this.totalTasks,
       executionState: this.executionState,
       sonarAnalysis: { ...this.sonarAnalysis },
+      releaseReadiness: {
+        ready: this.releaseReadiness.ready,
+        blockingBugs: [...this.releaseReadiness.blockingBugs],
+      },
     };
   }
 

@@ -358,6 +358,37 @@ export function formatReleaseCreated(metadata) {
   return lines.join('\n');
 }
 
+/**
+ * Notificacion: Release blocked by open bugs.
+ */
+export function formatReleaseGateBlocked(metadata) {
+  const bugCount = escapeMarkdown(String((metadata.blockingBugs || []).length));
+  const overridden = metadata.overridden ? ' \\(OVERRIDE\\)' : '';
+
+  const lines = [
+    `\u{1F6AB} *Release bloqueado por bugs*${overridden}`,
+    ``,
+    `*Bugs bloqueantes:* ${bugCount}`,
+  ];
+
+  for (const bug of (metadata.blockingBugs || [])) {
+    const severity = escapeMarkdown(bug.severity || '?');
+    const title = escapeMarkdown(bug.title || '?');
+    const status = escapeMarkdown(bug.status || '?');
+    lines.push(`  \\- \\[${severity}\\] ${title} \\(${status}\\)`);
+  }
+
+  if (metadata.overridden) {
+    lines.push(``);
+    lines.push(`_Release forzado con RELEASE\\_IGNORE\\_BUGS\\=true_`);
+  } else {
+    lines.push(``);
+    lines.push(`_Resuelve los bugs para desbloquear el release\\._`);
+  }
+
+  return lines.join('\n');
+}
+
 // --- Query command formatters ---
 
 /**

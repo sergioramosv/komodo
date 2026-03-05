@@ -19,6 +19,7 @@ import {
   formatCiPassed,
   formatCiFailed,
   formatReleaseCreated,
+  formatReleaseGateBlocked,
 } from './formatter.js';
 
 const AGENT = 'TELEGRAM';
@@ -39,6 +40,7 @@ const MINIMAL_EVENTS = new Set([
   EVENT_TYPES.DAEMON_STOPPED,
   EVENT_TYPES.CI_FAILED,
   EVENT_TYPES.RELEASE_CREATED,
+  EVENT_TYPES.RELEASE_GATE_BLOCKED,
   // Errors are handled separately via TASK_COMPLETED with success=false
 ]);
 
@@ -219,6 +221,14 @@ export function startNotifier() {
   };
   eventBus.on(EVENT_TYPES.RELEASE_CREATED, onReleaseCreated);
   unsubscribers.push(() => eventBus.off(EVENT_TYPES.RELEASE_CREATED, onReleaseCreated));
+
+  // --- RELEASE_GATE_BLOCKED ---
+  const onReleaseGateBlocked = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.RELEASE_GATE_BLOCKED)) return;
+    sendNotification(formatReleaseGateBlocked(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.RELEASE_GATE_BLOCKED, onReleaseGateBlocked);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.RELEASE_GATE_BLOCKED, onReleaseGateBlocked));
 }
 
 /**

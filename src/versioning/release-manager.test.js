@@ -35,11 +35,16 @@ vi.mock('./version-bumper.js', () => ({
   readVersion: vi.fn(),
 }));
 
+vi.mock('./release-gate.js', () => ({
+  evaluateReleaseGate: vi.fn(),
+}));
+
 const { config } = await import('../config.js');
 const { eventBus, EVENT_TYPES } = await import('../events/event-bus.js');
 const { getAll } = await import('../../skills/planning-task-mcp/src/firebase.js');
 const { execFileSync } = await import('child_process');
 const { readVersion } = await import('./version-bumper.js');
+const { evaluateReleaseGate } = await import('./release-gate.js');
 const {
   isSprintComplete,
   generateReleaseNotes,
@@ -54,6 +59,7 @@ describe('release-manager', () => {
     config.releaseOnSprintComplete = true;
     config.rootDir = '/fake/komodo';
     config.versionFile = 'package.json';
+    evaluateReleaseGate.mockResolvedValue({ allowed: true, blockingBugs: [], overridden: false });
   });
 
   afterEach(() => {
@@ -368,6 +374,75 @@ describe('release-manager', () => {
           }),
         }),
       );
+    });
+
+    it('blocks release when there are critical/high bugs', async () => {
+      getAll.mockImplementation((path) => {
+        if (path === 'tasks') {
+          return [
+            { id: 't1', sprintId: 'sp1', projectId: 'proj1', status: 'done', title: 'feat: login' },
+          ];
+        }
+        if (path === 'sprints') {
+          return [{ id: 'sp1', projectId: 'proj1', name: 'Sprint 1' }];
+        }
+        return [];
+      });
+
+      evaluateReleaseGate.mockResolvedValue({
+        allowed: false,
+        blockingBugs: [
+          { id: 'b1', title: 'Critical crash', severity: 'critical', status: 'open' },
+        ],
+        overridden: false,
+      });
+
+      const result = await autoRelease({
+        sprintId: 'sp1',
+        projectId: 'proj1',
+        repo: 'org/repo',
+      });
+
+      expect(result.skipped).toBe(true);
+      expect(result.reason).toBe('blocking bugs');
+      expect(result.blockingBugs).toHaveLength(1);
+      expect(result.blockingBugs[0].severity).toBe('critical');
+      expect(execFileSync).not.toHaveBeenCalled();
+    });
+
+    it('allows release with RELEASE_IGNORE_BUGS override', async () => {
+      getAll.mockImplementation((path) => {
+        if (path === 'tasks') {
+          return [
+            { id: 't1', sprintId: 'sp1', projectId: 'proj1', status: 'done', title: 'feat: login', prNumber: 1 },
+          ];
+        }
+        if (path === 'sprints') {
+          return [{ id: 'sp1', projectId: 'proj1', name: 'Sprint 1' }];
+        }
+        return [];
+      });
+
+      evaluateReleaseGate.mockResolvedValue({
+        allowed: true,
+        blockingBugs: [
+          { id: 'b1', title: 'Known issue', severity: 'high', status: 'open' },
+        ],
+        overridden: true,
+      });
+
+      readVersion.mockReturnValue('1.0.0');
+      execFileSync.mockReturnValue('https://github.com/org/repo/releases/tag/v1.0.0');
+
+      const result = await autoRelease({
+        sprintId: 'sp1',
+        projectId: 'proj1',
+        repo: 'org/repo',
+      });
+
+      expect(result.skipped).toBe(false);
+      expect(result.tag).toBe('v1.0.0');
+      expect(execFileSync).toHaveBeenCalled();
     });
 
     it('uses fallback version 0.0.0 when readVersion fails', async () => {
