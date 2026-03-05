@@ -58,6 +58,42 @@ ${issueDetails.map(i => `| ${i.severity} | ${i.file} | ${i.line} | ${i.message} 
 }
 
 /**
+ * Construye la sección de QA Agent report para el prompt del Reviewer.
+ *
+ * @param {Object} qaReport - Reporte del QA agent
+ * @returns {string} Sección markdown formateada
+ */
+function buildQASection(qaReport) {
+  let section = `
+## QA Agent Report
+
+- **Tests generated**: ${qaReport.testsGenerated}
+- **Passed**: ${qaReport.testsPassed} | **Failed**: ${qaReport.testsFailed}
+- **Files created**: ${(qaReport.filesCreated || []).join(', ') || 'none'}
+- **Pushed to branch**: ${qaReport.pushed ? 'yes' : 'no'}`;
+
+  const coderFaults = (qaReport.failedTests || []).filter(t => t.failsCoderCode);
+  if (coderFaults.length > 0) {
+    section += `
+
+### Tests that fail Coder code (IMPORTANT)
+${coderFaults.map(f => `- **${f.name}** (${f.type}): ${f.error}`).join('\n')}
+
+**These failures indicate bugs in the Coder's implementation. Factor them into your review verdict.**`;
+  }
+
+  section += `
+
+### Instructions
+- Review the QA-generated tests for quality and correctness
+- If QA tests reveal bugs in the Coder's code, include them as issues in your review
+- Evaluate if the QA tests adequately cover the acceptance criteria
+`;
+
+  return section;
+}
+
+/**
  * Ejecuta el agente Reviewer para revisar una PR.
  *
  * @param {Object} options
@@ -74,7 +110,7 @@ ${issueDetails.map(i => `| ${i.severity} | ${i.file} | ${i.line} | ${i.message} 
  *   error?: string
  * }>}
  */
-export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, model, codingGuidelines }) {
+export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines }) {
   logger.taskHeader(`REVIEWER - Revisando PR #${prNumber}`);
 
   const systemPrompt = getReviewerSystemPrompt({
@@ -115,6 +151,9 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
   // Build coverage delta section if report is available
   const coverageSection = buildCoverageSection(coverageReport);
 
+  // Build QA report section if available
+  const qaSection = qaReport ? buildQASection(qaReport) : '';
+
   // Build coding guidelines section if provided
   const guidelinesSection = codingGuidelines
     ? `\n## Project Coding Guidelines (MANDATORY — verify compliance)\n${codingGuidelines}\n`
@@ -128,7 +167,7 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
 
 ## Criterios de aceptación
 ${criteriaList || 'No especificados'}
-${guidelinesSection}${sonarSection}${coverageSection}
+${guidelinesSection}${sonarSection}${coverageSection}${qaSection}
 ## Instrucciones
 1. Llama a get_review_brief() para ver errores frecuentes del coder
 2. Lee el diff completo con get_pr_diff({ repo: "${repo}", prNumber: ${prNumber} })

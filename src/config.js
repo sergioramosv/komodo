@@ -76,17 +76,21 @@ export const config = {
   modelMap_claude_PLANNER: process.env.MODEL_MAP_CLAUDE_PLANNER || '',
   modelMap_claude_CODER: process.env.MODEL_MAP_CLAUDE_CODER || '',
   modelMap_claude_REVIEWER: process.env.MODEL_MAP_CLAUDE_REVIEWER || '',
+  modelMap_claude_QA: process.env.MODEL_MAP_CLAUDE_QA || '',
   modelMap_codex_PLANNER: process.env.MODEL_MAP_CODEX_PLANNER || '',
   modelMap_codex_CODER: process.env.MODEL_MAP_CODEX_CODER || '',
   modelMap_codex_REVIEWER: process.env.MODEL_MAP_CODEX_REVIEWER || '',
+  modelMap_codex_QA: process.env.MODEL_MAP_CODEX_QA || '',
   modelMap_gemini_PLANNER: process.env.MODEL_MAP_GEMINI_PLANNER || '',
   modelMap_gemini_CODER: process.env.MODEL_MAP_GEMINI_CODER || '',
   modelMap_gemini_REVIEWER: process.env.MODEL_MAP_GEMINI_REVIEWER || '',
+  modelMap_gemini_QA: process.env.MODEL_MAP_GEMINI_QA || '',
 
   // Force model override per role (overrides complexity-based selection)
   forceModel_PLANNER: process.env.FORCE_MODEL_PLANNER || '',
   forceModel_CODER: process.env.FORCE_MODEL_CODER || '',
   forceModel_REVIEWER: process.env.FORCE_MODEL_REVIEWER || '',
+  forceModel_QA: process.env.FORCE_MODEL_QA || '',
 
   // Rate limit fallback
   rateLimitFallback: process.env.RATE_LIMIT_FALLBACK !== 'false', // default: true
@@ -156,6 +160,14 @@ export const config = {
   ciMonitor: process.env.CI_MONITOR === 'true', // default: false
   ciMonitorTimeoutMinutes: parseInt(process.env.CI_MONITOR_TIMEOUT_MINUTES || '15', 10),
   autoRevert: process.env.AUTO_REVERT === 'true', // default: false, requires opt-in
+
+  // QA Agent (generate and execute tests between Coder and Reviewer)
+  qaAgent: process.env.QA_AGENT === 'true', // default: false
+  cliQA: process.env.CLI_QA || 'claude',
+  qaTestTypes: (process.env.QA_TEST_TYPES || 'unit,edge-cases')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean),
 
   // Coverage Delta Check (compare PR coverage vs baseline)
   coverageCheck: process.env.COVERAGE_CHECK !== 'false', // default: true
