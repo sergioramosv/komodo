@@ -18,6 +18,7 @@ import {
   formatDaemonStopped,
   formatCiPassed,
   formatCiFailed,
+  formatReleaseCreated,
 } from './formatter.js';
 
 const AGENT = 'TELEGRAM';
@@ -37,6 +38,7 @@ const MINIMAL_EVENTS = new Set([
   EVENT_TYPES.DAEMON_STARTED,
   EVENT_TYPES.DAEMON_STOPPED,
   EVENT_TYPES.CI_FAILED,
+  EVENT_TYPES.RELEASE_CREATED,
   // Errors are handled separately via TASK_COMPLETED with success=false
 ]);
 
@@ -209,6 +211,14 @@ export function startNotifier() {
   };
   eventBus.on(EVENT_TYPES.CI_FAILED, onCiFailed);
   unsubscribers.push(() => eventBus.off(EVENT_TYPES.CI_FAILED, onCiFailed));
+
+  // --- RELEASE_CREATED ---
+  const onReleaseCreated = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.RELEASE_CREATED)) return;
+    sendNotification(formatReleaseCreated(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.RELEASE_CREATED, onReleaseCreated);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.RELEASE_CREATED, onReleaseCreated));
 }
 
 /**

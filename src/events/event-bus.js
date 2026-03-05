@@ -121,6 +121,9 @@ export const EVENT_TYPES = {
   WORKER_FAILED: 'worker:failed',
   WORKER_POOL_DRAINED: 'worker-pool:drained',
 
+  // Release events
+  RELEASE_CREATED: 'release:created',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
