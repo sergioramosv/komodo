@@ -2,6 +2,7 @@ import { pickNextTask } from '../agents/planner.js';
 import { implementTask, fixReviewIssues } from '../agents/coder.js';
 import { reviewLoop } from './review-loop.js';
 import { analyzeSonar } from '../sonar/analyzer.js';
+import { executePrePRTests } from '../testing/pre-pr-tests.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { runGh } from '../../skills/github-mcp/src/gh-cli.js';
@@ -226,7 +227,7 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     // PASO 1: PLANNER — Elegir tarea
     // ═══════════════════════════════════════════
-    logger.logStep(1, 5, 'Planner eligiendo tarea...', 'KOMODO');
+    logger.logStep(1, 6, 'Planner eligiendo tarea...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.PLANNING);
     komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.WORKING });
@@ -343,7 +344,7 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     // PASO 2: CODER — Implementar
     // ═══════════════════════════════════════════
-    logger.logStep(2, 5, 'Coder implementando...', 'KOMODO');
+    logger.logStep(2, 6, 'Coder implementando...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.CODING, { currentTask: taskSpec.taskId });
     komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId });
@@ -438,9 +439,52 @@ export async function runTask(projectId, cwd) {
     }
 
     // ═══════════════════════════════════════════
-    // PASO 3: SONAR ANALYSIS — Análisis de calidad
+    // PASO 3: PRE-PR TESTS — Ejecutar tests antes de review
     // ═══════════════════════════════════════════
-    logger.logStep(3, 5, 'Análisis SonarQube...', 'KOMODO');
+    logger.logStep(3, 6, 'Pre-PR tests...', 'KOMODO');
+
+    komodoState.updatePhase(PHASES.ANALYZING, { currentPR: prNumber });
+
+    const testReport = await executePrePRTests({
+      cwd,
+      onFixAttempt: async (failureOutput, attempt) => {
+        logger.info(`Auto-fixing test failures (attempt ${attempt})...`, 'KOMODO');
+        const fixResult = await fixReviewIssues(
+          taskSpec,
+          prNumber,
+          {
+            summary: 'Pre-PR tests are failing. Fix the test failures.',
+            issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
+          },
+          cwd,
+          { model: coderModel, codingGuidelines },
+        );
+        return { fixed: fixResult.success };
+      },
+    });
+
+    if (!testReport.skipped) {
+      if (testReport.passed) {
+        logger.success(`Pre-PR tests passed: ${testReport.summary}`, 'KOMODO');
+      } else if (testReport.needsManualReview) {
+        logger.warn(`Tests failing after ${testReport.attempts} attempts — PR will include warning`, 'KOMODO');
+        // Add warning note to PR via comment
+        try {
+          runGh([
+            'pr', 'comment', String(prNumber),
+            '--repo', repo,
+            '--body', `⚠️ **[Tests failing - needs manual review]**\n\nPre-PR tests failed after ${testReport.attempts} attempts.\n\n<details>\n<summary>Last test output</summary>\n\n\`\`\`\n${testReport.output.slice(0, 5000)}\n\`\`\`\n</details>`,
+          ]);
+        } catch (err) {
+          logger.warn(`Could not add test failure comment to PR: ${err.message}`, 'KOMODO');
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // PASO 4: SONAR ANALYSIS — Análisis de calidad
+    // ═══════════════════════════════════════════
+    logger.logStep(4, 6, 'Análisis SonarQube...', 'KOMODO');
     logger.startSpinner('Ejecutando análisis SonarQube...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.ANALYZING, { currentPR: prNumber });
@@ -475,9 +519,9 @@ export async function runTask(projectId, cwd) {
     }
 
     // ═══════════════════════════════════════════
-    // PASO 4: REVIEW LOOP — Reviewer ↔ Coder
+    // PASO 5: REVIEW LOOP — Reviewer ↔ Coder
     // ═══════════════════════════════════════════
-    logger.logStep(4, 5, 'Review loop...', 'KOMODO');
+    logger.logStep(5, 6, 'Review loop...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
     komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING });
@@ -540,9 +584,9 @@ export async function runTask(projectId, cwd) {
     }
 
     // ═══════════════════════════════════════════
-    // PASO 5: MERGE + UPDATE TASK
+    // PASO 6: MERGE + UPDATE TASK
     // ═══════════════════════════════════════════
-    logger.logStep(5, 5, 'Finalizando...', 'KOMODO');
+    logger.logStep(6, 6, 'Finalizando...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.MERGING, { currentPR: prNumber });
 
