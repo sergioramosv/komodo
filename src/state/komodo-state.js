@@ -103,6 +103,12 @@ export class KomodoState {
      * @type {{ status: 'idle'|'running'|'done'|'error'|'skipped', qualityGate: string|null, issues: Object|null }}
      */
     this.sonarAnalysis = { status: 'idle', qualityGate: null, issues: null };
+
+    /**
+     * Context from the last completed task (for smart ordering / context affinity).
+     * @type {{ taskId: string, title: string, filesChanged: string[], keywords: Set<string> } | null}
+     */
+    this.lastCompletedTaskContext = null;
   }
 
   /**

@@ -16,6 +16,7 @@ import { fallbackManager } from '../agents/fallback-manager.js';
 import { withWatchdog } from '../watchdog/watchdog.js';
 import { createTechDebtTasks } from '../tech-debt/tech-debt-tracker.js';
 import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
+import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -590,6 +591,14 @@ export async function runTask(projectId, cwd) {
     } catch (err) {
       logger.warn(`Estimation tracking failed (non-blocking): ${err.message}`, 'KOMODO');
     }
+
+    // Record context for smart task ordering (context affinity)
+    komodoState.lastCompletedTaskContext = {
+      taskId: taskSpec.taskId,
+      title: taskSpec.title,
+      filesChanged: coderResult.pr.filesChanged || [],
+      keywords: extractTaskKeywords(taskSpec),
+    };
 
     komodoState.updatePhase(PHASES.IDLE, {
       currentTask: null,
