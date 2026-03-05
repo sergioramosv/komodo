@@ -74,6 +74,11 @@ export const EVENT_TYPES = {
   // Style guide detector events
   STYLE_GUIDE_GENERATED: 'style-guide:generated',
 
+  // Pre-PR test execution events
+  PRE_PR_TESTS_START: 'tests:pre-pr:start',
+  PRE_PR_TESTS_PASSED: 'tests:pre-pr:passed',
+  PRE_PR_TESTS_FAILED: 'tests:pre-pr:failed',
+
   // Estimation tracker events
   ESTIMATION_RECORDED: 'estimation:recorded',
 
