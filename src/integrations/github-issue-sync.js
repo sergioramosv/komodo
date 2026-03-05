@@ -142,13 +142,13 @@ export function swapLabel(repo, issueNumber, oldLabel, newLabel) {
 /**
  * Checks if a task already exists for a given GitHub issue number.
  *
+ * @param {Array<Object>} existingTasks - Pre-loaded tasks array
  * @param {string} projectId - Project ID in planning-task-mcp
  * @param {number} issueNumber - GitHub issue number
- * @returns {Promise<boolean>}
+ * @returns {boolean}
  */
-async function taskExistsForIssue(projectId, issueNumber) {
-  const tasks = await getAll('tasks');
-  return tasks.some(
+function taskExistsForIssue(existingTasks, projectId, issueNumber) {
+  return existingTasks.some(
     t => t.projectId === projectId && t.githubIssueNumber === issueNumber,
   );
 }
@@ -160,13 +160,14 @@ async function taskExistsForIssue(projectId, issueNumber) {
  * @param {string} repo - Repository in owner/repo format
  * @param {string} projectId - Project ID in planning-task-mcp
  * @param {string} label - The trigger label (to swap after processing)
+ * @param {Array<Object>} existingTasks - Pre-loaded tasks to check for duplicates
  * @returns {Promise<{ created: boolean, taskId?: string, skipped?: string }>}
  */
-export async function syncIssue(issue, repo, projectId, label) {
+export async function syncIssue(issue, repo, projectId, label, existingTasks) {
   const { number, title, body } = issue;
 
   // Skip if already synced
-  if (await taskExistsForIssue(projectId, number)) {
+  if (taskExistsForIssue(existingTasks, projectId, number)) {
     logger.info(`Issue #${number} already synced, skipping`, AGENT_TAG);
     return { created: false, skipped: 'already-synced' };
   }
@@ -245,13 +246,22 @@ export async function pollOnce({ repo, projectId, label = 'komodo' }) {
 
   logger.info(`Found ${issues.length} issue(s) to process`, AGENT_TAG);
 
+  // Load all tasks once to avoid O(N*M) repeated fetches
+  let existingTasks;
+  try {
+    existingTasks = await getAll('tasks');
+  } catch (err) {
+    logger.error(`Failed to load tasks: ${err.message}`, AGENT_TAG);
+    return { synced: 0, skipped: 0, errors: 1 };
+  }
+
   let synced = 0;
   let skipped = 0;
   let errors = 0;
 
   for (const issue of issues) {
     try {
-      const result = await syncIssue(issue, repo, projectId, label);
+      const result = await syncIssue(issue, repo, projectId, label, existingTasks);
       if (result.created) synced++;
       else skipped++;
     } catch (err) {
