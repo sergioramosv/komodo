@@ -331,6 +331,33 @@ export function formatDaemonStopped(metadata) {
   ].join('\n');
 }
 
+// --- Release event formatters ---
+
+/**
+ * Notificacion: GitHub Release created after sprint completion.
+ */
+export function formatReleaseCreated(metadata) {
+  const tag = escapeMarkdown(metadata.tag || '?');
+  const sprintName = escapeMarkdown(metadata.sprintName || '?');
+  const taskCount = escapeMarkdown(String(metadata.taskCount || 0));
+  const repo = metadata.repo || '';
+  const releaseUrl = metadata.releaseUrl || '';
+
+  const lines = [
+    `\u{1F680} *GitHub Release creado*`,
+    ``,
+    `*Tag:* \`${tag}\``,
+    `*Sprint:* ${sprintName}`,
+    `*Tareas:* ${taskCount}`,
+  ];
+
+  if (releaseUrl) {
+    lines.push(`*Release:* [Ver release](${escapeUrl(releaseUrl)})`);
+  }
+
+  return lines.join('\n');
+}
+
 // --- Query command formatters ---
 
 /**
