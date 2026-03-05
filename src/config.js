@@ -188,6 +188,11 @@ export const config = {
   autoVersion: process.env.AUTO_VERSION === 'true', // default: false
   versionFile: process.env.VERSION_FILE || 'package.json',
 
+  // Auto Changelog (generate CHANGELOG.md entries after version bump)
+  autoChangelog: process.env.AUTO_CHANGELOG
+    ? process.env.AUTO_CHANGELOG === 'true'
+    : process.env.AUTO_VERSION === 'true', // default: true if AUTO_VERSION=true
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
