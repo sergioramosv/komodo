@@ -198,6 +198,10 @@ export const config = {
   releaseOnSprintComplete: process.env.RELEASE_ON_SPRINT_COMPLETE !== 'false', // default: true
   releaseIgnoreBugs: process.env.RELEASE_IGNORE_BUGS === 'true', // default: false — override release gate
 
+  // Event Persistence (persist EventBus events to Firebase for analytics)
+  eventRetentionDays: parseInt(process.env.EVENT_RETENTION_DAYS || '30', 10),
+  eventPersistTypes: process.env.EVENT_PERSIST_TYPES || '*', // '*' = all, or comma-separated list
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
