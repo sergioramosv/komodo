@@ -174,6 +174,9 @@ export const config = {
   coverageCmd: process.env.COVERAGE_CMD || 'auto',
   minCoverageDelta: parseFloat(process.env.MIN_COVERAGE_DELTA || '-2'),
 
+  // Parallel Execution (run multiple independent tasks simultaneously)
+  maxParallel: parseInt(process.env.MAX_PARALLEL || '1', 10), // default: 1 = sequential
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
