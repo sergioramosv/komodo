@@ -2,7 +2,8 @@ import { execFileSync } from 'child_process';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
-import { create } from '../../skills/planning-task-mcp/src/firebase.js';
+import { create, update } from '../../skills/planning-task-mcp/src/firebase.js';
+import { autoRevertPR } from './auto-revert.js';
 
 const AGENT = 'CI-MONITOR';
 const POLL_INTERVAL_MS = 15_000; // 15s between polls
@@ -188,6 +189,7 @@ export async function createCiBugTask({ prNumber, runId, errorLog, projectId, re
  * @param {string} options.repo - Repository in owner/repo format
  * @param {string} options.projectId - Project ID for bug creation
  * @param {string} [options.mergeCommitSha] - Optional merge commit SHA (auto-detected if not provided)
+ * @param {string} [options.taskId] - Original task ID (for auto-revert rollback to to-do)
  * @returns {Promise<CiMonitorResult>}
  *
  * @typedef {object} CiMonitorResult
@@ -199,7 +201,7 @@ export async function createCiBugTask({ prNumber, runId, errorLog, projectId, re
  * @property {string} [errorLog] - Failed log output (if CI failed)
  * @property {string|null} [bugTaskId] - Created bug task ID (if CI failed)
  */
-export async function monitorCi({ prNumber, repo, projectId, mergeCommitSha }) {
+export async function monitorCi({ prNumber, repo, projectId, mergeCommitSha, taskId }) {
   if (!config.ciMonitor) {
     return { success: true, skipped: true, reason: 'CI_MONITOR disabled', passed: false, runId: null };
   }
@@ -263,12 +265,34 @@ export async function monitorCi({ prNumber, repo, projectId, mergeCommitSha }) {
         metadata: { prNumber, runId: run.databaseId, errorLog, repo },
       });
 
-      // Create bug task
+      // Auto-revert: revert the merge and return task to to-do
+      let revertResult = null;
+      if (config.autoRevert) {
+        revertResult = autoRevertPR({
+          prNumber,
+          repo,
+          errorLog,
+          runId: run.databaseId,
+          mergeCommitSha: sha,
+        });
+
+        if (revertResult.success && taskId) {
+          try {
+            await rollbackTaskToTodo(taskId, prNumber, run.databaseId);
+          } catch (err) {
+            logger.warn(`Could not rollback task ${taskId} to to-do: ${err.message}`, AGENT);
+          }
+        }
+      }
+
+      // Create bug task (only if auto-revert is disabled or failed)
       let bugTaskId = null;
-      try {
-        bugTaskId = await createCiBugTask({ prNumber, runId: run.databaseId, errorLog, projectId, repo });
-      } catch (err) {
-        logger.warn(`Could not create CI bug task: ${err.message}`, AGENT);
+      if (!revertResult?.success) {
+        try {
+          bugTaskId = await createCiBugTask({ prNumber, runId: run.databaseId, errorLog, projectId, repo });
+        } catch (err) {
+          logger.warn(`Could not create CI bug task: ${err.message}`, AGENT);
+        }
       }
 
       return {
@@ -278,6 +302,8 @@ export async function monitorCi({ prNumber, repo, projectId, mergeCommitSha }) {
         runId: run.databaseId,
         errorLog,
         bugTaskId,
+        reverted: revertResult?.success || false,
+        revertPrNumber: revertResult?.revertPrNumber || null,
       };
     } catch (err) {
       logger.warn(`CI poll error: ${err.message}`, AGENT);
@@ -294,4 +320,20 @@ export async function monitorCi({ prNumber, repo, projectId, mergeCommitSha }) {
     runId: null,
     errorLog: `Timed out after ${config.ciMonitorTimeoutMinutes} minutes`,
   };
+}
+
+/**
+ * Rolls back a task to to-do status after auto-revert, adding a note about the CI failure.
+ *
+ * @param {string} taskId - Task ID to rollback
+ * @param {number} prNumber - Original PR number
+ * @param {number} runId - Failed CI run ID
+ */
+async function rollbackTaskToTodo(taskId, prNumber, runId) {
+  await update('tasks', taskId, {
+    status: 'to-do',
+    autoRevertNote: `Auto-reverted: CI failed after merging PR #${prNumber} (run #${runId}). Task returned to to-do.`,
+    autoRevertedAt: new Date().toISOString(),
+  });
+  logger.info(`Task ${taskId} returned to to-do after auto-revert`, AGENT);
 }
