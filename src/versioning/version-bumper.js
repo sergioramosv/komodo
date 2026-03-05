@@ -3,6 +3,7 @@ import { execFileSync } from 'child_process';
 import { resolve } from 'path';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { autoChangelog } from './changelog-generator.js';
 
 const AGENT = 'VERSIONING';
 const GIT_TIMEOUT = 15_000;
@@ -105,11 +106,13 @@ export function writeVersion(newVersion, cwd, versionFile = 'package.json') {
  * @param {string} newVersion
  * @param {string} [cwd] - Working directory
  * @param {string} [versionFile] - File that was updated
+ * @param {string[]} [extraFiles] - Additional files to stage (e.g. CHANGELOG.md)
  */
-export function commitAndPushVersion(newVersion, cwd, versionFile = 'package.json') {
+export function commitAndPushVersion(newVersion, cwd, versionFile = 'package.json', extraFiles = []) {
   const workDir = cwd || config.rootDir;
 
-  execFileSync('git', ['add', versionFile], {
+  const filesToStage = [versionFile, ...extraFiles];
+  execFileSync('git', ['add', ...filesToStage], {
     cwd: workDir,
     encoding: 'utf-8',
     timeout: GIT_TIMEOUT,
@@ -154,9 +157,17 @@ export function autoVersionBump({ task, cwd, versionFile = 'package.json' }) {
   logger.info(`Bumping version: ${oldVersion} → ${newVersion} (${bumpType})`, AGENT);
 
   writeVersion(newVersion, cwd, versionFile);
-  commitAndPushVersion(newVersion, cwd, versionFile);
+
+  // Generate changelog entry (committed together with version bump)
+  const extraFiles = [];
+  const changelogResult = autoChangelog({ newVersion, task, cwd });
+  if (!changelogResult.skipped && changelogResult.changelogPath) {
+    extraFiles.push('CHANGELOG.md');
+  }
+
+  commitAndPushVersion(newVersion, cwd, versionFile, extraFiles);
 
   logger.success(`Version bumped to ${newVersion}`, AGENT);
 
-  return { skipped: false, oldVersion, newVersion, bumpType };
+  return { skipped: false, oldVersion, newVersion, bumpType, changelog: changelogResult };
 }
