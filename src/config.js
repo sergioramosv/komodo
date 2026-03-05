@@ -184,6 +184,10 @@ export const config = {
   // Incremental Review (only re-review fix commits in fix cycles)
   incrementalReview: process.env.INCREMENTAL_REVIEW !== 'false', // default: true
 
+  // Semantic Versioning (auto-bump version after merge)
+  autoVersion: process.env.AUTO_VERSION === 'true', // default: false
+  versionFile: process.env.VERSION_FILE || 'package.json',
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',

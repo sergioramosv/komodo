@@ -22,6 +22,7 @@ import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
 import { analyzeCoverage, updateBaselineAfterMerge, recordCoverageHistory } from '../coverage/coverage-analyzer.js';
+import { autoVersionBump } from '../versioning/version-bumper.js';
 
 /**
  * Fetches the codingGuidelines field from a project.
@@ -744,6 +745,13 @@ export async function runTask(projectId, cwd) {
         } catch (err) {
           logger.warn(`Coverage baseline update failed (non-blocking): ${err.message}`, 'KOMODO');
         }
+
+        // Auto version bump after successful merge
+        try {
+          autoVersionBump({ task: taskSpec, cwd, versionFile: config.versionFile });
+        } catch (err) {
+          logger.warn(`Auto version bump failed (non-blocking): ${err.message}`, 'KOMODO');
+        }
       }
     } else {
       logger.info('AUTO_MERGE=false → PR aprobada, esperando merge manual.', 'KOMODO');
@@ -1132,6 +1140,13 @@ async function _continueFromMerge(taskSpec, prNumber, repo, startTime, reviewCyc
         await monitorCi({ prNumber, repo, projectId: config.defaultProjectId, taskId: taskSpec.taskId });
       } catch (err) {
         logger.warn(`CI monitor error (non-blocking): ${err.message}`, 'KOMODO');
+      }
+
+      // Auto version bump after successful merge
+      try {
+        autoVersionBump({ task: taskSpec, versionFile: config.versionFile });
+      } catch (err) {
+        logger.warn(`Auto version bump failed (non-blocking): ${err.message}`, 'KOMODO');
       }
     }
   } else {
