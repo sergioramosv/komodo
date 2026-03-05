@@ -15,6 +15,7 @@ import { shouldDecompose, decomposeTask } from '../triage/task-decomposer.js';
 import { fallbackManager } from '../agents/fallback-manager.js';
 import { withWatchdog } from '../watchdog/watchdog.js';
 import { createTechDebtTasks } from '../tech-debt/tech-debt-tracker.js';
+import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
 
 /**
  * Extrae owner/repo de una URL de GitHub.
@@ -572,6 +573,23 @@ export async function runTask(projectId, cwd) {
         totalDuration,
       },
     });
+
+    // Record estimation metrics (best effort)
+    try {
+      await recordTaskMetrics({
+        taskId: taskSpec.taskId,
+        projectId: projectId || config.defaultProjectId,
+        estimatedDevPoints: taskSpec.devPoints || 0,
+        totalDuration,
+        reviewCycles: reviewResult.cycles,
+        approved: true,
+        merged,
+        filesChanged: coderResult.pr.filesChanged || [],
+        model: coderModel || '',
+      });
+    } catch (err) {
+      logger.warn(`Estimation tracking failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
 
     komodoState.updatePhase(PHASES.IDLE, {
       currentTask: null,
