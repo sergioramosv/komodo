@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
 import { getCodebaseContext } from '../intelligence/codebase-indexer.js';
+import { getStyleContext } from '../intelligence/style-detector.js';
 
 /**
  * Build the MCP server list for the Coder agent.
@@ -51,6 +52,19 @@ export async function implementTask(taskSpec, cwd, { model } = {}) {
     }
   }
 
+  // Build style guide context if enabled
+  let styleSection = '';
+  if (config.styleDetectorEnabled && cwd) {
+    try {
+      const { summary } = getStyleContext(cwd);
+      if (summary) {
+        styleSection = `\n## Code style rules (MANDATORY)\n${summary}\n`;
+      }
+    } catch (err) {
+      logger.warn(`Could not generate style guide: ${err.message}`, 'CODER');
+    }
+  }
+
   const userPrompt = `Implementa la siguiente tarea:
 
 ## Tarea
@@ -70,7 +84,7 @@ ${(taskSpec.acceptanceCriteria || []).map((c, i) => `${i + 1}. ${c}`).join('\n')
 2. Implementa el código necesario
 3. Commitea y haz push a la branch
 4. Abre una PR con create_pr
-${codebaseSection}
+${codebaseSection}${styleSection}
 Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, summary.`;
 
   const result = await runAgent({

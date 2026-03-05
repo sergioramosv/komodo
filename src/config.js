@@ -139,6 +139,9 @@ export const config = {
   codebaseIndexEnabled: process.env.CODEBASE_INDEX_ENABLED !== 'false', // default: true
   codebaseContextMaxTokens: parseInt(process.env.CODEBASE_CONTEXT_MAX_TOKENS || '2000', 10),
 
+  // Style Guide Detector (auto-detected conventions injected into Coder prompt)
+  styleDetectorEnabled: process.env.STYLE_DETECTOR_ENABLED !== 'false', // default: true
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
