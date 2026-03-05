@@ -177,6 +177,10 @@ export const config = {
   // Parallel Execution (run multiple independent tasks simultaneously)
   maxParallel: parseInt(process.env.MAX_PARALLEL || '1', 10), // default: 1 = sequential
 
+  // Smart Batching (group trivial tasks into a single PR)
+  smartBatching: process.env.SMART_BATCHING === 'true', // default: false
+  batchMaxTasks: parseInt(process.env.BATCH_MAX_TASKS || '5', 10),
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
