@@ -148,6 +148,10 @@ export const config = {
   // Smart Task Ordering: context affinity boost (0-1, default: 0.2 = 20% boost)
   contextAffinityBoost: parseFloat(process.env.CONTEXT_AFFINITY_BOOST || '0.2'),
 
+  // Pre-PR Test Execution
+  prePrTests: process.env.PRE_PR_TESTS !== 'false', // default: true
+  prePrTestCmd: process.env.PRE_PR_TEST_CMD || 'auto',
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
