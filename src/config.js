@@ -112,6 +112,12 @@ export const config = {
   schedule: process.env.SCHEDULE || '',
   scheduleTimezone: process.env.SCHEDULE_TIMEZONE || '',
 
+  // GitHub Issue Sync
+  enableGithubIssueSync: process.env.GITHUB_ISSUE_SYNC === 'true',
+  githubIssuePollMinutes: parseInt(process.env.GITHUB_ISSUE_POLL_MINUTES || '5', 10),
+  githubIssueLabel: process.env.GITHUB_ISSUE_LABEL || 'komodo',
+  githubIssueRepo: process.env.GITHUB_ISSUE_REPO || '',
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
