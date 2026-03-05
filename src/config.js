@@ -181,6 +181,9 @@ export const config = {
   smartBatching: process.env.SMART_BATCHING === 'true', // default: false
   batchMaxTasks: parseInt(process.env.BATCH_MAX_TASKS || '5', 10),
 
+  // Incremental Review (only re-review fix commits in fix cycles)
+  incrementalReview: process.env.INCREMENTAL_REVIEW !== 'false', // default: true
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',

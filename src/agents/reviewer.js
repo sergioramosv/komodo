@@ -4,6 +4,13 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
 import { buildCoverageSection } from '../coverage/coverage-analyzer.js';
+import {
+  shouldUseIncrementalReview,
+  buildIncrementalContext,
+  buildIncrementalPromptSection,
+  calculateSavings,
+  estimateTokens,
+} from '../cycle/incremental-review.js';
 
 /**
  * Build the MCP server list for the Reviewer agent.
@@ -110,8 +117,10 @@ ${coderFaults.map(f => `- **${f.name}** (${f.type}): ${f.error}`).join('\n')}
  *   error?: string
  * }>}
  */
-export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines }) {
-  logger.taskHeader(`REVIEWER - Revisando PR #${prNumber}`);
+export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines, reviewCycle, previousReview }) {
+  const isIncremental = shouldUseIncrementalReview(reviewCycle || 1);
+  const modeLabel = isIncremental ? 'INCREMENTAL' : 'FULL';
+  logger.taskHeader(`REVIEWER - Revisando PR #${prNumber} (${modeLabel})`);
 
   const systemPrompt = getReviewerSystemPrompt({
     enableBrowserMcp: config.enableBrowserMcp,
@@ -159,6 +168,38 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
     ? `\n## Project Coding Guidelines (MANDATORY — verify compliance)\n${codingGuidelines}\n`
     : '';
 
+  // Build incremental review section if in fix cycle
+  let incrementalSection = '';
+  let incrementalMetrics = null;
+
+  if (isIncremental && previousReview && cwd) {
+    try {
+      const incrementalContext = await buildIncrementalContext({
+        previousReview,
+        branchName: taskSpec.branchName,
+        cwd,
+        cycle: reviewCycle,
+      });
+
+      incrementalSection = buildIncrementalPromptSection(incrementalContext);
+
+      // Estimate full diff tokens for savings calculation
+      const fullDiffTokenEstimate = estimateTokens(criteriaList + sonarSection + coverageSection + qaSection) + incrementalContext.incrementalDiffTokenEstimate * 3;
+      incrementalMetrics = calculateSavings(fullDiffTokenEstimate, incrementalContext.incrementalDiffTokenEstimate);
+
+      logger.info(
+        `Incremental review: ~${incrementalMetrics.tokensSaved} tokens saved (~${incrementalMetrics.percentageSaved}%)`,
+        'REVIEWER',
+      );
+    } catch (err) {
+      logger.warn(`Could not build incremental context, falling back to full review: ${err.message}`, 'REVIEWER');
+    }
+  }
+
+  const diffInstruction = isIncremental && incrementalSection
+    ? `2. Lee SOLO el diff del último fix commit (ya incluido abajo). Si necesitas contexto adicional, usa get_pr_diff({ repo: "${repo}", prNumber: ${prNumber} })`
+    : `2. Lee el diff completo con get_pr_diff({ repo: "${repo}", prNumber: ${prNumber} })`;
+
   const userPrompt = `Revisa la Pull Request #${prNumber} del repositorio "${repo}".
 
 ## Contexto de la tarea
@@ -167,10 +208,10 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
 
 ## Criterios de aceptación
 ${criteriaList || 'No especificados'}
-${guidelinesSection}${sonarSection}${coverageSection}${qaSection}
+${guidelinesSection}${sonarSection}${coverageSection}${qaSection}${incrementalSection}
 ## Instrucciones
 1. Llama a get_review_brief() para ver errores frecuentes del coder
-2. Lee el diff completo con get_pr_diff({ repo: "${repo}", prNumber: ${prNumber} })
+${diffInstruction}
 3. Revisa cada criterio (correctitud, error handling, edge cases, naming, tests, seguridad)
 4. Si necesitas más contexto, lee archivos del repo con Read/Glob/Grep${browserCheckInstruction}`;
 
@@ -238,6 +279,8 @@ ${guidelinesSection}${sonarSection}${coverageSection}${qaSection}
     },
     cost: result.cost,
     duration: result.duration,
+    incremental: isIncremental,
+    incrementalMetrics: incrementalMetrics || null,
   };
 }
 

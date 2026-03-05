@@ -55,13 +55,25 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
     });
     eventBus.emitAgentEvent('REVIEWER', 'working', { cycle: i });
 
-    const reviewResult = await reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model: reviewerModel, codingGuidelines });
+    const reviewResult = await reviewPR({
+      prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport,
+      model: reviewerModel, codingGuidelines,
+      reviewCycle: i,
+      previousReview: lastReview,
+    });
 
     if (reviewResult.cost) {
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
         agentName: 'REVIEWER',
         metadata: { cost: reviewResult.cost },
       });
+    }
+
+    if (reviewResult.incremental && reviewResult.incrementalMetrics) {
+      logger.info(
+        `Incremental review saved ~${reviewResult.incrementalMetrics.tokensSaved} tokens (~${reviewResult.incrementalMetrics.percentageSaved}%)`,
+        'KOMODO',
+      );
     }
 
     eventBus.emitAgentEvent('REVIEWER', 'done');
