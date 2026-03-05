@@ -3,6 +3,7 @@ import { getReviewerSystemPrompt } from '../prompts/reviewer-system.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
+import { buildCoverageSection } from '../coverage/coverage-analyzer.js';
 
 /**
  * Build the MCP server list for the Reviewer agent.
@@ -73,7 +74,7 @@ ${issueDetails.map(i => `| ${i.severity} | ${i.file} | ${i.line} | ${i.message} 
  *   error?: string
  * }>}
  */
-export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, model, codingGuidelines }) {
+export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, model, codingGuidelines }) {
   logger.taskHeader(`REVIEWER - Revisando PR #${prNumber}`);
 
   const systemPrompt = getReviewerSystemPrompt({
@@ -111,6 +112,9 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, mod
     ? buildSonarSection(sonarReport)
     : '';
 
+  // Build coverage delta section if report is available
+  const coverageSection = buildCoverageSection(coverageReport);
+
   // Build coding guidelines section if provided
   const guidelinesSection = codingGuidelines
     ? `\n## Project Coding Guidelines (MANDATORY — verify compliance)\n${codingGuidelines}\n`
@@ -124,7 +128,7 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, mod
 
 ## Criterios de aceptación
 ${criteriaList || 'No especificados'}
-${guidelinesSection}${sonarSection}
+${guidelinesSection}${sonarSection}${coverageSection}
 ## Instrucciones
 1. Llama a get_review_brief() para ver errores frecuentes del coder
 2. Lee el diff completo con get_pr_diff({ repo: "${repo}", prNumber: ${prNumber} })
@@ -170,7 +174,7 @@ ${guidelinesSection}${sonarSection}
   }
 
   // Normalizar el verdict
-  const verdict = normalizeVerdict(data.verdict, data.score, data.issues, sonarReport);
+  const verdict = normalizeVerdict(data.verdict, data.score, data.issues, sonarReport, coverageReport);
 
   // Log del resultado
   if (verdict === 'APPROVED') {
@@ -204,12 +208,17 @@ ${guidelinesSection}${sonarSection}
  * - REQUEST_CHANGES si Quality Gate falla con issues BLOCKER
  * - REQUEST_CHANGES en cualquier otro caso que no cumpla el umbral
  */
-function normalizeVerdict(rawVerdict, score, issues = [], sonarReport) {
+function normalizeVerdict(rawVerdict, score, issues = [], sonarReport, coverageReport) {
   const hasCritical = issues.some(i => i.severity === 'critical');
   const hasMajor = issues.some(i => i.severity === 'major');
 
   // Forzar REQUEST_CHANGES si Quality Gate falló con BLOCKERs
   if (sonarReport?.success && sonarReport.qualityGate !== 'OK' && sonarReport.issues?.BLOCKER > 0) {
+    return 'REQUEST_CHANGES';
+  }
+
+  // Forzar REQUEST_CHANGES si coverage baja más del umbral permitido
+  if (coverageReport?.success && coverageReport.belowThreshold) {
     return 'REQUEST_CHANGES';
   }
 
