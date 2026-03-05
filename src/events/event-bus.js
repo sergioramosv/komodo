@@ -83,6 +83,7 @@ export const EVENT_TYPES = {
   CI_MONITOR_START: 'ci:monitor:start',
   CI_PASSED: 'ci:passed',
   CI_FAILED: 'ci:failed',
+  CI_AUTO_REVERTED: 'ci:auto-reverted',
 
   // Estimation tracker events
   ESTIMATION_RECORDED: 'estimation:recorded',

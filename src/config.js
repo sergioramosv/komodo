@@ -155,6 +155,7 @@ export const config = {
   // CI Monitor (watch GitHub Actions after merge)
   ciMonitor: process.env.CI_MONITOR === 'true', // default: false
   ciMonitorTimeoutMinutes: parseInt(process.env.CI_MONITOR_TIMEOUT_MINUTES || '15', 10),
+  autoRevert: process.env.AUTO_REVERT === 'true', // default: false, requires opt-in
 
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',

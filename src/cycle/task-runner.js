@@ -617,10 +617,13 @@ export async function runTask(projectId, cwd) {
             prNumber,
             repo,
             projectId: projectId || config.defaultProjectId,
+            taskId: taskSpec.taskId,
           });
           if (!ciResult.skipped) {
             if (ciResult.passed) {
               logger.success(`CI passed for PR #${prNumber} merge`, 'KOMODO');
+            } else if (ciResult.reverted) {
+              logger.warn(`CI failed for PR #${prNumber} — auto-reverted (revert PR #${ciResult.revertPrNumber})`, 'KOMODO');
             } else {
               logger.warn(`CI failed or timed out for PR #${prNumber} merge`, 'KOMODO');
             }
@@ -1013,7 +1016,7 @@ async function _continueFromMerge(taskSpec, prNumber, repo, startTime, reviewCyc
     // CI Monitor: watch GitHub Actions after merge
     if (merged) {
       try {
-        await monitorCi({ prNumber, repo, projectId: config.defaultProjectId });
+        await monitorCi({ prNumber, repo, projectId: config.defaultProjectId, taskId: taskSpec.taskId });
       } catch (err) {
         logger.warn(`CI monitor error (non-blocking): ${err.message}`, 'KOMODO');
       }
