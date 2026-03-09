@@ -10,6 +10,7 @@ import { checkForPendingCheckpoints } from '../orchestrator.js';
 import { checkSchedule, formatMinutes } from '../scheduler/scheduler.js';
 import { shutdownManager } from '../shutdown/shutdown-manager.js';
 import { runDependencyCheck } from '../auto-improve/dependency-checker.js';
+import { startWebhookOutgoing, stopWebhookOutgoing } from '../integrations/webhook-outgoing.js';
 
 const AGENT = 'DAEMON';
 
@@ -65,6 +66,9 @@ export async function watch(projectId, options = {}) {
   } catch (err) {
     logger.warn(`No se pudo iniciar WS server: ${err.message}`, AGENT);
   }
+
+  // Start webhook outgoing (forwards events to external URLs if configured)
+  startWebhookOutgoing();
 
   // Register graceful shutdown handlers (SIGINT/SIGTERM)
   shutdownManager.register({ wsServer });
@@ -192,6 +196,7 @@ export async function watch(projectId, options = {}) {
   }
 
   // Cleanup
+  stopWebhookOutgoing();
   shutdownManager.unregister();
   checkpointManager.stop();
   komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
