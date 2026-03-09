@@ -227,6 +227,9 @@ export const config = {
   sonarHostUrl: process.env.SONAR_HOST_URL || '',
   sonarProjectKey: process.env.SONAR_PROJECT_KEY || '',
 
+  // Multi-project support (comma-separated IDs or '*' for all user projects)
+  projects: process.env.PROJECTS || '',
+
   // Plugins
   pluginsDir: resolve(ROOT_DIR, process.env.PLUGINS_DIR || './plugins'),
   enabledPlugins: (process.env.ENABLED_PLUGINS || '')
