@@ -3,6 +3,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 
 const AGENT = 'WEBHOOK';
+const FETCH_TIMEOUT_MS = 10_000;
 
 /**
  * Returns the list of target URLs from config.
@@ -59,11 +60,19 @@ export async function sendWithRetry(url, payload, headers, maxRetries = 3) {
   let lastError;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+      let response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
 
       logger.info(`Webhook sent to ${url} — status ${response.status} (attempt ${attempt})`, AGENT);
 

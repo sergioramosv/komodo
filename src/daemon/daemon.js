@@ -10,8 +10,6 @@ import { checkForPendingCheckpoints } from '../orchestrator.js';
 import { checkSchedule, formatMinutes } from '../scheduler/scheduler.js';
 import { shutdownManager } from '../shutdown/shutdown-manager.js';
 import { runDependencyCheck } from '../auto-improve/dependency-checker.js';
-import { budgetManager } from '../cost/budget-manager.js';
-import { persistDailyCost } from '../cost/cost-persistence.js';
 import { startWebhookOutgoing, stopWebhookOutgoing } from '../integrations/webhook-outgoing.js';
 
 const AGENT = 'DAEMON';
@@ -61,9 +59,6 @@ export async function watch(projectId, options = {}) {
   // Start checkpoint manager
   checkpointManager.start();
 
-  // Start budget manager
-  budgetManager.start({ projectId, persistFn: persistDailyCost });
-
   // Start WebSocket server
   const wsServer = new KomodoWsServer();
   try {
@@ -105,13 +100,6 @@ export async function watch(projectId, options = {}) {
     if (komodoState.executionState === EXECUTION_STATES.STOPPED) {
       logger.info('Stop requested. Shutting down daemon.', AGENT);
       break;
-    }
-
-    // Check budget pause
-    if (komodoState.executionState === EXECUTION_STATES.BUDGET_PAUSED) {
-      logger.warn('Budget exceeded. Daemon paused until next period reset.', AGENT);
-      await _sleep(60_000);
-      continue;
     }
 
     // Check schedule window
@@ -211,7 +199,6 @@ export async function watch(projectId, options = {}) {
   stopWebhookOutgoing();
   shutdownManager.unregister();
   checkpointManager.stop();
-  budgetManager.stop();
   komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
 
   eventBus.emitEvent(EVENT_TYPES.DAEMON_STOPPED, {

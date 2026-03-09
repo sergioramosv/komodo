@@ -135,11 +135,12 @@ describe('sendWithRetry', () => {
 
     expect(result).toEqual({ url: 'https://hook.com', status: 200, ok: true, attempts: 1 });
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenCalledWith('https://hook.com', {
+    expect(mockFetch).toHaveBeenCalledWith('https://hook.com', expect.objectContaining({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ event: 'test' }),
-    });
+    }));
+    expect(mockFetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
   });
 
   it('retries on network error with exponential backoff', async () => {
@@ -169,16 +170,29 @@ describe('sendWithRetry', () => {
     expect(logger.error).toHaveBeenCalledTimes(1);
   });
 
-  it('returns non-ok status without retrying', async () => {
+  it('retries on 5xx server errors', async () => {
     const mockFetch = vi.fn().mockResolvedValue({ status: 500, ok: false });
     vi.stubGlobal('fetch', mockFetch);
 
     const result = await sendWithRetry('https://hook.com', {}, {}, 3);
 
-    expect(result.status).toBe(500);
+    expect(result.status).toBe(0);
+    expect(result.ok).toBe(false);
+    expect(result.attempts).toBe(3);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(logger.warn).toHaveBeenCalledTimes(3);
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns 4xx client error without retrying', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ status: 422, ok: false });
+    vi.stubGlobal('fetch', mockFetch);
+
+    const result = await sendWithRetry('https://hook.com', {}, {}, 3);
+
+    expect(result.status).toBe(422);
     expect(result.ok).toBe(false);
     expect(result.attempts).toBe(1);
-    // No retry — HTTP errors are not retried, only network failures
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 });
