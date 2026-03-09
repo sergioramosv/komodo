@@ -16,6 +16,12 @@ export const EVENT_TYPES = {
   COST_UPDATED: 'cost:updated',
   BROWSER_CHECK: 'browser:check',
 
+  // Budget manager events
+  BUDGET_UPDATED: 'budget:updated',
+  BUDGET_WARNING: 'budget:warning',
+  BUDGET_EXCEEDED: 'budget:exceeded',
+  BUDGET_RESET: 'budget:reset',
+
   // SonarQube analysis events
   SONAR_ANALYSIS_START: 'sonar:analysis:start',
   SONAR_ANALYSIS_COMPLETE: 'sonar:analysis:complete',

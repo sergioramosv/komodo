@@ -33,6 +33,7 @@ export const EXECUTION_STATES = {
   DAEMON_IDLE: 'daemon:idle',
   DAEMON_RUNNING: 'daemon:running',
   SCHEDULER_WAITING: 'scheduler:waiting',
+  BUDGET_PAUSED: 'budget:paused',
 };
 
 /**
@@ -117,6 +118,18 @@ export class KomodoState {
      * @type {{ ready: boolean, blockingBugs: Array<{ id: string, title: string, severity: string, status: string }> }}
      */
     this.releaseReadiness = { ready: true, blockingBugs: [] };
+
+    /**
+     * Budget tracking state.
+     * @type {{ dailySpent: number, weeklySpent: number, dailyBudget: number, weeklyBudget: number, paused: boolean }}
+     */
+    this.budget = {
+      dailySpent: 0,
+      weeklySpent: 0,
+      dailyBudget: 0,
+      weeklyBudget: 0,
+      paused: false,
+    };
   }
 
   /**
@@ -146,6 +159,7 @@ export class KomodoState {
         ready: this.releaseReadiness.ready,
         blockingBugs: [...this.releaseReadiness.blockingBugs],
       },
+      budget: { ...this.budget },
     };
   }
 
