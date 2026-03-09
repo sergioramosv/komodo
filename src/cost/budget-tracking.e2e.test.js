@@ -120,13 +120,17 @@ const { config } = await import('../config.js');
 /**
  * Collects all events of the given type emitted during `fn()`.
  * Registers the listener BEFORE calling fn and removes it after.
+ * Uses try/finally to guarantee cleanup even if fn() throws.
  */
 function collectEvents(type, fn) {
   const captured = [];
   const listener = (payload) => captured.push(payload);
   eventBus.on(type, listener);
-  fn();
-  eventBus.off(type, listener);
+  try {
+    fn();
+  } finally {
+    eventBus.off(type, listener);
+  }
   return captured;
 }
 
@@ -423,9 +427,42 @@ describe('Cost tracking E2E — full cycle', () => {
     });
   });
 
-  // ── Segment 5: full cycle integration ─────────────────────────────────────
+  // ── Segment 5: edge cases — invalid inputs to recordCost() ────────────────
 
-  describe('complete cycle: tracking → 80% alert → 100% pause → daily reset', () => {
+  describe('recordCost() input validation edge cases', () => {
+    it('recordCost(0) — zero cost is a no-op and does not emit events', () => {
+      const updates = collectEvents(EVENT_TYPES.BUDGET_UPDATED, () => {
+        budgetManager.recordCost(0);
+      });
+
+      expect(updates).toHaveLength(0);
+      expect(budgetManager.getStatus().dailySpent).toBe(0);
+    });
+
+    it('recordCost(-5) — negative cost is rejected and does not accumulate', () => {
+      const result = budgetManager.recordCost(-5);
+
+      expect(budgetManager.getStatus().dailySpent).toBe(0);
+      // Either returns an error indicator or silently ignores it
+      if (result !== undefined) {
+        expect(result.allowed === false || result.error !== undefined || result === null).toBeTruthy();
+      }
+    });
+
+    it('recordCost(null) — null input does not crash and does not accumulate', () => {
+      expect(() => budgetManager.recordCost(null)).not.toThrow();
+      expect(budgetManager.getStatus().dailySpent).toBe(0);
+    });
+
+    it('recordCost(undefined) — undefined input does not crash and does not accumulate', () => {
+      expect(() => budgetManager.recordCost(undefined)).not.toThrow();
+      expect(budgetManager.getStatus().dailySpent).toBe(0);
+    });
+  });
+
+  // ── Segment 6: full cycle integration ─────────────────────────────────────
+
+  describe('complete cycle: tracking → 80% alert → 100% pause → daily reset → resume', () => {
     it('runs the full cost tracking lifecycle end-to-end', () => {
       const emittedEvents = [];
       const updatedListener = () => emittedEvents.push('updated');
@@ -488,6 +525,7 @@ describe('Cost tracking E2E — full cycle', () => {
 
     it('Firebase persistence is called throughout the cycle', () => {
       budgetManager.stop();
+      vi.clearAllTimers(); // ensure no pending timers from the beforeEach start remain
 
       const mockPersist = vi.fn(async () => {});
       budgetManager.start({ projectId: 'e2e-project', persistFn: mockPersist });
