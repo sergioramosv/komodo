@@ -239,6 +239,7 @@ export const config = {
   sonarToken: process.env.SONAR_TOKEN || '',
   sonarHostUrl: process.env.SONAR_HOST_URL || '',
   sonarProjectKey: process.env.SONAR_PROJECT_KEY || '',
+  sonarOrganization: process.env.SONAR_ORGANIZATION || '',
 
   // Multi-project support (comma-separated IDs or '*' for all user projects)
   projects: process.env.PROJECTS || '',

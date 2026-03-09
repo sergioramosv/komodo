@@ -88,12 +88,11 @@ async function waitForAnalysis() {
 /**
  * Obtiene el estado del Quality Gate para el proyecto.
  *
- * @param {string} [branch] - Nombre del branch (opcional)
+ * @param {Object} [ctx] - Query context: { branch } or { pullRequest }
  * @returns {Promise<string>} Estado: 'OK', 'WARN', 'ERROR', 'NONE'
  */
-async function fetchQualityGateStatus(branch) {
-  const params = { projectKey: config.sonarProjectKey };
-  if (branch) params.branch = branch;
+async function fetchQualityGateStatus(ctx = {}) {
+  const params = { projectKey: config.sonarProjectKey, ...ctx };
 
   const data = await sonarApi('/api/qualitygates/project_status', params);
   return data.projectStatus?.status || 'NONE';
@@ -102,17 +101,17 @@ async function fetchQualityGateStatus(branch) {
 /**
  * Obtiene los issues agrupados por severidad.
  *
- * @param {string} [branch] - Nombre del branch (opcional)
+ * @param {Object} [ctx] - Query context: { branch } or { pullRequest }
  * @returns {Promise<{ BLOCKER: number, CRITICAL: number, MAJOR: number, MINOR: number, INFO: number, total: number }>}
  */
-async function fetchIssuesBySeverity(branch) {
+async function fetchIssuesBySeverity(ctx = {}) {
   const params = {
     componentKeys: config.sonarProjectKey,
     resolved: 'false',
     ps: '1',
     facets: 'severities',
+    ...ctx,
   };
-  if (branch) params.branch = branch;
 
   const data = await sonarApi('/api/issues/search', params);
 
@@ -133,17 +132,17 @@ async function fetchIssuesBySeverity(branch) {
 /**
  * Obtiene los detalles de issues BLOCKER y CRITICAL (archivo, línea, mensaje).
  *
- * @param {string} [branch] - Nombre del branch (opcional)
+ * @param {Object} [ctx] - Query context: { branch } or { pullRequest }
  * @returns {Promise<Array<{ severity: string, file: string, line: number, message: string, rule: string }>>}
  */
-async function fetchBlockerCriticalDetails(branch) {
+async function fetchBlockerCriticalDetails(ctx = {}) {
   const params = {
     componentKeys: config.sonarProjectKey,
     resolved: 'false',
     severities: 'BLOCKER,CRITICAL',
     ps: '100',
+    ...ctx,
   };
-  if (branch) params.branch = branch;
 
   const data = await sonarApi('/api/issues/search', params);
 
@@ -159,16 +158,16 @@ async function fetchBlockerCriticalDetails(branch) {
 /**
  * Obtiene métricas clave del proyecto.
  *
- * @param {string} [branch] - Nombre del branch (opcional)
+ * @param {Object} [ctx] - Query context: { branch } or { pullRequest }
  * @returns {Promise<{ bugs: number, vulnerabilities: number, code_smells: number, duplicated_lines_density: number, coverage: number }>}
  */
-async function fetchMetrics(branch) {
+async function fetchMetrics(ctx = {}) {
   const metricKeys = 'bugs,vulnerabilities,code_smells,duplicated_lines_density,coverage';
   const params = {
     component: config.sonarProjectKey,
     metricKeys,
+    ...ctx,
   };
-  if (branch) params.branch = branch;
 
   const data = await sonarApi('/api/measures/component', params);
 
@@ -236,11 +235,14 @@ export async function analyzeSonar({ branch, cwd, prNumber, baseBranch = 'main' 
     await waitForAnalysis();
 
     // Step 3: Fetch results
+    // When analyzing a PR, SonarCloud stores results under pullRequest context,
+    // not branch context. Use prNumber for API queries when available.
+    const queryCtx = prNumber ? { pullRequest: String(prNumber) } : (branch ? { branch } : {});
     const [qualityGate, issues, metrics, issueDetails] = await Promise.all([
-      fetchQualityGateStatus(branch),
-      fetchIssuesBySeverity(branch),
-      fetchMetrics(branch),
-      fetchBlockerCriticalDetails(branch),
+      fetchQualityGateStatus(queryCtx),
+      fetchIssuesBySeverity(queryCtx),
+      fetchMetrics(queryCtx),
+      fetchBlockerCriticalDetails(queryCtx),
     ]);
 
     const report = {

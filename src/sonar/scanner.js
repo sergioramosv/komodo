@@ -79,6 +79,9 @@ export async function runSonarScan({ cwd, prNumber, branch, baseBranch = 'main' 
         `-Dsonar.sources=src`,
         `-Dsonar.sourceEncoding=UTF-8`,
       );
+      if (config.sonarOrganization) {
+        args.push(`-Dsonar.organization=${config.sonarOrganization}`);
+      }
     }
 
     // PR decoration: pass PR parameters so SonarCloud posts comments on the PR
@@ -101,6 +104,7 @@ export async function runSonarScan({ cwd, prNumber, branch, baseBranch = 'main' 
         SONAR_TOKEN: config.sonarToken,
         SONAR_HOST_URL: config.sonarHostUrl,
         SONAR_PROJECT_KEY: config.sonarProjectKey,
+        SONAR_ORGANIZATION: config.sonarOrganization,
       },
     });
 
