@@ -518,6 +518,13 @@ export async function runAgent({
     const result = extractJSON(rawResult);
     const duration = (Date.now() - startTime) / 1000;
 
+    // Check stdout/result for rate limit signals (Claude embeds them in JSON result)
+    const rateLimitInResult = checkAndEmitRateLimit(rawResult || '', resolvedCli, name);
+    // Also check the full stdout in case the rate limit message is in a non-result line
+    if (!rateLimitInResult) {
+      checkAndEmitRateLimit(stdout, resolvedCli, name);
+    }
+
     if (!result) {
       logger.warn('Could not extract JSON from response', name);
       logger.warn(`Raw (first 500 chars): ${(rawResult || '').slice(0, 500)}`, name);
@@ -532,6 +539,7 @@ export async function runAgent({
       cost,
       turns,
       duration: Math.round(duration * 10) / 10,
+      rateLimited: rateLimitInResult,
     };
   } catch (err) {
     const duration = (Date.now() - startTime) / 1000;

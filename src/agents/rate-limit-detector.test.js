@@ -130,6 +130,28 @@ describe('detectRateLimit', () => {
     });
   });
 
+  describe('Claude CLI — real-world "hit your limit" messages', () => {
+    it('detects "You\'ve hit your limit · resets 8pm"', () => {
+      const result = detectRateLimit("You've hit your limit · resets 8pm (Europe/Madrid)", 'claude');
+      expect(result.detected).toBe(true);
+    });
+
+    it('detects "hit your limit" case-insensitive', () => {
+      const result = detectRateLimit('Hit Your Limit - please wait', 'claude');
+      expect(result.detected).toBe(true);
+    });
+
+    it('detects "resets 2am" format', () => {
+      const result = detectRateLimit('Limit reached. resets 2am', 'claude');
+      expect(result.detected).toBe(true);
+    });
+
+    it('detects "resets 10pm" format', () => {
+      const result = detectRateLimit('resets 10pm (UTC)', 'claude');
+      expect(result.detected).toBe(true);
+    });
+  });
+
   describe('no false positives', () => {
     it('does not detect rate limit in normal stderr', () => {
       const result = detectRateLimit(NORMAL_STDERR, 'claude');
@@ -208,6 +230,23 @@ describe('parseRetryAfter', () => {
   it('parses real Codex rate limit message', () => {
     const msg = 'Error: 429 rate_limit_exceeded: You\'ve exceeded your rate limit. Current usage: 90000 tokens per min. Please retry after 22s.';
     expect(parseRetryAfter(msg)).toBe(22);
+  });
+
+  it('parses "resets 8pm" — returns positive seconds', () => {
+    const seconds = parseRetryAfter("You've hit your limit · resets 8pm (Europe/Madrid)");
+    expect(seconds).toBeGreaterThan(0);
+    // Should be at least 60 seconds (minimum floor)
+    expect(seconds).toBeGreaterThanOrEqual(60);
+  });
+
+  it('parses "resets 2am" — returns positive seconds', () => {
+    const seconds = parseRetryAfter('Limit reached. resets 2am');
+    expect(seconds).toBeGreaterThan(0);
+  });
+
+  it('parses "resets 10:30pm" with minutes', () => {
+    const seconds = parseRetryAfter('resets 10:30pm');
+    expect(seconds).toBeGreaterThan(0);
   });
 
   it('returns null when no retry-after found', () => {

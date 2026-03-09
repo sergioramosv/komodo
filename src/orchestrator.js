@@ -10,6 +10,7 @@ import { checkpointManager } from './state/checkpoint-manager.js';
 import { fallbackManager } from './agents/fallback-manager.js';
 import { shutdownManager } from './shutdown/shutdown-manager.js';
 import { pluginLoader } from './plugins/plugin-loader.js';
+import { heartbeatMonitor } from './heartbeat/heartbeat-monitor.js';
 
 // Daemon / watch mode
 export { watch } from './daemon/daemon.js';
@@ -86,6 +87,9 @@ export async function run(projectId, options = {}) {
   // Start checkpoint manager for rate limit recovery
   checkpointManager.start();
 
+  // Start heartbeat monitor for auto-recovery from rate limits
+  heartbeatMonitor.start();
+
   // Iniciar WebSocket server para dashboard en tiempo real
   const wsServer = new KomodoWsServer();
   try {
@@ -156,8 +160,9 @@ export async function run(projectId, options = {}) {
   // Unregister shutdown handlers (cleanup handled manually below)
   shutdownManager.unregister();
 
-  // Stop checkpoint manager
+  // Stop checkpoint manager and heartbeat monitor
   checkpointManager.stop();
+  heartbeatMonitor.stop();
 
   // Set state to stopped when loop ends (unless already paused by rate limit)
   if (komodoState.executionState !== EXECUTION_STATES.PAUSED) {
@@ -322,8 +327,9 @@ async function _executeResume(checkpoint, filepath, cwd) {
   });
   komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
 
-  // Start checkpoint manager for new rate limits during resume
+  // Start checkpoint manager and heartbeat for new rate limits during resume
   checkpointManager.start();
+  heartbeatMonitor.start();
 
   // Start WebSocket server
   const wsServer = new KomodoWsServer();
@@ -357,6 +363,7 @@ async function _executeResume(checkpoint, filepath, cwd) {
   } finally {
     shutdownManager.unregister();
     checkpointManager.stop();
+    heartbeatMonitor.stop();
 
     if (komodoState.executionState !== EXECUTION_STATES.PAUSED) {
       komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
