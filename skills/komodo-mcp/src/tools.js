@@ -32,6 +32,8 @@ const { config, validateConfig } = await import('../../../src/config.js');
 const { runAgent } = await import('../../../src/agents/base-agent.js');
 const { eventBus, EVENT_TYPES } = await import('../../../src/events/event-bus.js');
 const { checkpointManager } = await import('../../../src/state/checkpoint-manager.js');
+const { komodoState, EXECUTION_STATES } = await import('../../../src/state/komodo-state.js');
+const { heartbeatMonitor } = await import('../../../src/heartbeat/heartbeat-monitor.js');
 const { analyzeSonar } = await import('../../../src/sonar/analyzer.js');
 
 let runGh;
@@ -43,6 +45,54 @@ try {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Check if an agent result indicates a rate limit and save a checkpoint if so.
+ * Returns a structured "paused" response if rate-limited, or null otherwise.
+ */
+async function handleRateLimitIfNeeded(result, { taskId, title, branchName, repoUrl, flowStep, prNumber }) {
+  // Detect rate limit from error message or rawResult
+  const errorText = result?.error || result?.rawResult || '';
+  const isRateLimited = result?.rateLimited ||
+    /hit your limit/i.test(errorText) ||
+    /resets \d+(?:am|pm)/i.test(errorText) ||
+    /rate limit/i.test(errorText) ||
+    /429/.test(errorText);
+
+  if (!isRateLimited) return null;
+
+  // Save checkpoint for later resume
+  try {
+    checkpointManager.start();
+    checkpointManager.setFlowContext({
+      taskId,
+      taskTitle: title,
+      branchName: branchName || '',
+      repoUrl: repoUrl || '',
+      prNumber: prNumber || null,
+    });
+    await checkpointManager.saveCheckpoint(flowStep, config.cliCoder);
+    komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
+
+    // Start heartbeat monitor so it can detect recovery
+    heartbeatMonitor.start();
+  } catch (err) {
+    // Best effort — checkpoint save failed but we still report the rate limit
+  }
+
+  return {
+    success: false,
+    paused: true,
+    rateLimited: true,
+    flowStep,
+    taskId,
+    title,
+    branchName,
+    prNumber: prNumber || null,
+    error: errorText,
+    message: `Rate limit detectado. Checkpoint guardado en paso "${flowStep}". Usa komodo_resume para reanudar cuando el CLI se recupere, o espera al auto-resume del heartbeat monitor.`,
+  };
+}
 
 function extractOwnerRepo(repoUrl) {
   if (!repoUrl) return '';
@@ -105,6 +155,16 @@ export const tools = {
       });
 
       if (!result.success) {
+        // Check for rate limit in planner
+        const pausedResponse = await handleRateLimitIfNeeded(result, {
+          taskId: 'unknown',
+          title: 'planning',
+          branchName: '',
+          repoUrl: '',
+          flowStep: 'plan',
+        });
+        if (pausedResponse) return pausedResponse;
+
         return { success: false, error: result.error, duration: result.duration };
       }
 
@@ -187,6 +247,16 @@ export const tools = {
       });
 
       if (!result.success) {
+        // Check for rate limit and save checkpoint if detected
+        const pausedResponse = await handleRateLimitIfNeeded(result, {
+          taskId: params.taskId,
+          title: params.title,
+          branchName: params.branchName,
+          repoUrl: params.repoUrl,
+          flowStep: 'code',
+        });
+        if (pausedResponse) return pausedResponse;
+
         return { success: false, error: result.error, duration: result.duration };
       }
 
@@ -307,6 +377,17 @@ export const tools = {
       });
 
       if (!result.success) {
+        // Check for rate limit and save checkpoint if detected
+        const pausedResponse = await handleRateLimitIfNeeded(result, {
+          taskId: 'unknown',
+          title: params.taskTitle,
+          branchName: '',
+          repoUrl: '',
+          flowStep: 'review',
+          prNumber: params.prNumber,
+        });
+        if (pausedResponse) return pausedResponse;
+
         return { success: false, error: result.error, duration: result.duration };
       }
 
@@ -379,6 +460,17 @@ export const tools = {
       });
 
       if (!result.success) {
+        // Check for rate limit and save checkpoint if detected
+        const pausedResponse = await handleRateLimitIfNeeded(result, {
+          taskId: params.taskId,
+          title: params.title,
+          branchName: params.branchName,
+          repoUrl: params.repoUrl,
+          flowStep: 'fix',
+          prNumber: params.prNumber,
+        });
+        if (pausedResponse) return pausedResponse;
+
         return { success: false, error: result.error, duration: result.duration };
       }
 

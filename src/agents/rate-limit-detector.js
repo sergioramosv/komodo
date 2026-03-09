@@ -18,6 +18,9 @@ const RATE_LIMIT_PATTERNS = {
     /quota exceeded/i,
     /overloaded/i,
     /capacity/i,
+    /hit your limit/i,
+    /you've hit your limit/i,
+    /resets \d+(?:am|pm)/i,
   ],
   codex: [
     /rate limit/i,
@@ -95,6 +98,22 @@ const RETRY_AFTER_PATTERNS = [
   { regex: /wait\s+(\d+)\s*s(?:econds?)?/i, toSeconds: (m) => Number(m[1]) },
   // "retry in 5 minutes" / "try again in 5 min"
   { regex: /(?:retry|try\s+again)\s+in\s+(\d+)\s*min(?:utes?)?/i, toSeconds: (m) => Number(m[1]) * 60 },
+  // "resets 8pm" / "resets 2am" — Claude CLI format: estimate seconds until that hour
+  {
+    regex: /resets\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)/i,
+    toSeconds: (m) => {
+      let hour = Number(m[1]);
+      const min = m[2] ? Number(m[2]) : 0;
+      const period = m[3].toLowerCase();
+      if (period === 'pm' && hour < 12) hour += 12;
+      if (period === 'am' && hour === 12) hour = 0;
+      const now = new Date();
+      const target = new Date(now);
+      target.setHours(hour, min, 0, 0);
+      if (target <= now) target.setDate(target.getDate() + 1);
+      return Math.max(Math.round((target - now) / 1000), 60);
+    },
+  },
 ];
 
 /**
