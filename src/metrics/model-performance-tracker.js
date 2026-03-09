@@ -46,13 +46,23 @@ export async function recordModelPerformance({
   cost = 0,
   approved,
 }) {
-  if (!config.estimationTracking) {
+  if (!config.modelPerformanceTracking) {
     return { recorded: false };
   }
 
   if (!taskId || !projectId) {
     logger.warn('Missing taskId or projectId for model performance tracking', AGENT_TAG);
     return { recorded: false };
+  }
+
+  const safeReviewCycles = Number.isFinite(reviewCycles) ? reviewCycles : 0;
+  const safeDurationSeconds = Number.isFinite(durationSeconds) ? durationSeconds : 0;
+
+  if (!Number.isFinite(reviewCycles) || !Number.isFinite(durationSeconds)) {
+    logger.warn(
+      `Non-finite numeric inputs for model performance tracking: reviewCycles=${reviewCycles}, durationSeconds=${durationSeconds}. Using 0 as fallback.`,
+      AGENT_TAG,
+    );
   }
 
   const completedAt = new Date().toISOString();
@@ -64,8 +74,8 @@ export async function recordModelPerformance({
     coderModel: coderModel || '',
     reviewerModel: reviewerModel || '',
     reviewScore: reviewScore ?? null,
-    reviewCycles,
-    durationSeconds,
+    reviewCycles: safeReviewCycles,
+    durationSeconds: safeDurationSeconds,
     cost,
     approved,
     completedAt,
@@ -92,8 +102,8 @@ export async function recordModelPerformance({
         .map(({ role, model }) =>
           updateModelAggregate(db, projectId, model, role, {
             reviewScore,
-            reviewCycles,
-            durationSeconds,
+            reviewCycles: safeReviewCycles,
+            durationSeconds: safeDurationSeconds,
             cost,
           }),
         ),
@@ -143,6 +153,7 @@ export async function recordModelPerformance({
 async function updateModelAggregate(db, projectId, model, role, { reviewScore, reviewCycles, durationSeconds, cost }) {
   const modelKey = toFirebaseKey(model);
   const ref = db.ref(`metrics/${projectId}/model-performance/by-model/${modelKey}/${role}`);
+  const lastUpdated = new Date().toISOString();
 
   await ref.transaction((current) => {
     if (current === null) {
@@ -156,7 +167,7 @@ async function updateModelAggregate(db, projectId, model, role, { reviewScore, r
         avgCycles: reviewCycles,
         avgDurationSeconds: durationSeconds,
         totalCost: cost,
-        lastUpdated: new Date().toISOString(),
+        lastUpdated,
       };
     }
 
@@ -187,7 +198,7 @@ async function updateModelAggregate(db, projectId, model, role, { reviewScore, r
       avgCycles: newAvgCycles,
       avgDurationSeconds: newAvgDuration,
       totalCost: (current.totalCost || 0) + cost,
-      lastUpdated: new Date().toISOString(),
+      lastUpdated,
     };
   });
 }

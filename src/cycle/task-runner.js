@@ -884,7 +884,7 @@ export async function runTask(projectId, cwd) {
         reviewCycles: reviewResult.cycles,
         durationSeconds: totalDuration,
         cost: taskCost,
-        approved: true,
+        approved: reviewResult.approved,
       });
     } catch (err) {
       logger.warn(`Model performance tracking failed (non-blocking): ${err.message}`, 'KOMODO');

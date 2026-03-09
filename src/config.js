@@ -135,6 +135,9 @@ export const config = {
   // Estimation Tracker (compare estimated vs actual devPoints)
   estimationTracking: process.env.ESTIMATION_TRACKING !== 'false', // default: true
 
+  // Model Performance Tracker (record per-model metrics in Firebase)
+  modelPerformanceTracking: process.env.MODEL_PERFORMANCE_TRACKING !== 'false', // default: true
+
   // Tech Debt Tracker (auto-create tasks from minor review issues)
   techDebtTracking: process.env.TECH_DEBT_TRACKING !== 'false', // default: true
 
