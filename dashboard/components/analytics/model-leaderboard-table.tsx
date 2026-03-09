@@ -3,7 +3,8 @@
 export interface LeaderboardRow {
   model: string;
   role: string;
-  avgScore: number;
+  /** null means no review scores exist for this model+role (not a real score of zero) */
+  avgScore: number | null;
   avgCycles: number;
   avgDurationMinutes: number;
   avgCost: number;
@@ -16,8 +17,8 @@ const ROLE_COLORS: Record<string, string> = {
   reviewer: 'text-purple-400 bg-purple-950 border-purple-800',
 };
 
-function ScoreBadge({ score }: { score: number }) {
-  if (score === 0) return <span className="text-neutral-500">—</span>;
+function ScoreBadge({ score }: { score: number | null }) {
+  if (score === null) return <span className="text-neutral-500">—</span>;
   const color =
     score >= 8 ? 'text-green-400' : score >= 6 ? 'text-yellow-400' : 'text-red-400';
   return <span className={`font-semibold ${color}`}>{score.toFixed(1)}</span>;
