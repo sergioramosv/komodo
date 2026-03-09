@@ -20,6 +20,8 @@ import {
   formatCiFailed,
   formatReleaseCreated,
   formatReleaseGateBlocked,
+  formatBudgetWarning,
+  formatBudgetExceeded,
 } from './formatter.js';
 
 const AGENT = 'TELEGRAM';
@@ -41,6 +43,8 @@ const MINIMAL_EVENTS = new Set([
   EVENT_TYPES.CI_FAILED,
   EVENT_TYPES.RELEASE_CREATED,
   EVENT_TYPES.RELEASE_GATE_BLOCKED,
+  EVENT_TYPES.BUDGET_WARNING,
+  EVENT_TYPES.BUDGET_EXCEEDED,
   // Errors are handled separately via TASK_COMPLETED with success=false
 ]);
 
@@ -229,6 +233,22 @@ export function startNotifier() {
   };
   eventBus.on(EVENT_TYPES.RELEASE_GATE_BLOCKED, onReleaseGateBlocked);
   unsubscribers.push(() => eventBus.off(EVENT_TYPES.RELEASE_GATE_BLOCKED, onReleaseGateBlocked));
+
+  // --- BUDGET_WARNING (80% threshold reached) ---
+  const onBudgetWarning = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.BUDGET_WARNING)) return;
+    sendNotification(formatBudgetWarning(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.BUDGET_WARNING, onBudgetWarning);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.BUDGET_WARNING, onBudgetWarning));
+
+  // --- BUDGET_EXCEEDED (100% — daemon auto-paused) ---
+  const onBudgetExceeded = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.BUDGET_EXCEEDED)) return;
+    sendNotification(formatBudgetExceeded(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.BUDGET_EXCEEDED, onBudgetExceeded);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.BUDGET_EXCEEDED, onBudgetExceeded));
 }
 
 /**
