@@ -24,6 +24,7 @@ import { monitorCi } from '../ci-monitor/ci-monitor.js';
 import { analyzeCoverage, updateBaselineAfterMerge, recordCoverageHistory } from '../coverage/coverage-analyzer.js';
 import { autoVersionBump } from '../versioning/version-bumper.js';
 import { autoRelease } from '../versioning/release-manager.js';
+import { pluginLoader } from '../plugins/plugin-loader.js';
 
 /**
  * Fetches the codingGuidelines field from a project.
@@ -629,6 +630,21 @@ export async function runTask(projectId, cwd) {
     }
 
     // ═══════════════════════════════════════════
+    // PLUGINS: before-review
+    // ═══════════════════════════════════════════
+    try {
+      await pluginLoader.executePlugins('before-review', {
+        task: { id: taskSpec.taskId, title: taskSpec.title, body: taskSpec.body },
+        prNumber: String(prNumber),
+        branchName: taskSpec.branchName,
+        repoPath: cwd,
+        repo,
+      });
+    } catch (err) {
+      logger.warn(`Plugin before-review error (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
+    // ═══════════════════════════════════════════
     // PASO 5: REVIEW LOOP — Reviewer ↔ Coder
     // ═══════════════════════════════════════════
     logger.logStep(5, 6, 'Review loop...', 'KOMODO');
@@ -694,6 +710,21 @@ export async function runTask(projectId, cwd) {
     }
 
     // ═══════════════════════════════════════════
+    // PLUGINS: after-review
+    // ═══════════════════════════════════════════
+    try {
+      await pluginLoader.executePlugins('after-review', {
+        task: { id: taskSpec.taskId, title: taskSpec.title, body: taskSpec.body },
+        prNumber: String(prNumber),
+        branchName: taskSpec.branchName,
+        repoPath: cwd,
+        repo,
+      });
+    } catch (err) {
+      logger.warn(`Plugin after-review error (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
+    // ═══════════════════════════════════════════
     // PASO 6: MERGE + UPDATE TASK
     // ═══════════════════════════════════════════
     logger.logStep(6, 6, 'Finalizando...', 'KOMODO');
@@ -717,6 +748,21 @@ export async function runTask(projectId, cwd) {
         await changeTaskStatus(taskSpec.taskId, 'done');
       } catch (err) {
         logger.warn(`No se pudo actualizar tarea a done: ${err.message}`, 'KOMODO');
+      }
+
+      // Plugins: after-merge
+      if (merged) {
+        try {
+          await pluginLoader.executePlugins('after-merge', {
+            task: { id: taskSpec.taskId, title: taskSpec.title, body: taskSpec.body },
+            prNumber: String(prNumber),
+            branchName: taskSpec.branchName,
+            repoPath: cwd,
+            repo,
+          });
+        } catch (err) {
+          logger.warn(`Plugin after-merge error (non-blocking): ${err.message}`, 'KOMODO');
+        }
       }
 
       // CI Monitor: watch GitHub Actions after merge (non-blocking for task result)
