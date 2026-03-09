@@ -68,7 +68,11 @@ export async function run(projectId, options = {}) {
   logger.info(`Max review cycles: ${config.maxReviewCycles}`, 'KOMODO');
 
   // Load plugins once at startup
-  await pluginLoader.load();
+  try {
+    await pluginLoader.load();
+  } catch (err) {
+    logger.warn(`Failed to load plugins: ${err.message}`, 'KOMODO');
+  }
 
   // Reset global state for fresh run
   komodoState.updatePhase(PHASES.IDLE, {

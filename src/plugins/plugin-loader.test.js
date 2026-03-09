@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { mkdirSync, writeFileSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { validatePlugin, PLUGIN_POSITIONS } from './plugin-interface.js';
 import { PluginLoader } from './plugin-loader.js';
 
@@ -205,6 +208,106 @@ describe('PluginLoader', () => {
       loader._plugins.push(makePlugin({ name: 'manually-added' }));
       await loader.load(); // segunda llamada — debe ignorarse
       expect(loader._plugins).toHaveLength(1); // no se limpia en segunda llamada
+    });
+  });
+
+  // ── _loadPlugin ────────────────────────────────────────────────────────────
+
+  describe('_loadPlugin', () => {
+    let tmpDir;
+
+    beforeEach(() => {
+      tmpDir = join(tmpdir(), `komodo-plugin-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      mkdirSync(tmpDir, { recursive: true });
+    });
+
+    afterEach(() => {
+      rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    const validPluginEsm = (name, position = 'before-review') => `
+      export default {
+        name: '${name}',
+        role: 'Test plugin role',
+        position: '${position}',
+        execute: async () => ({ success: true, issues: [], suggestions: [] }),
+      };
+    `;
+
+    it('usa index.js cuando existe (candidato preferente sobre <name>.js)', async () => {
+      const pluginDir = join(tmpDir, 'my-plugin');
+      mkdirSync(pluginDir);
+      writeFileSync(join(pluginDir, 'index.js'), validPluginEsm('my-plugin'));
+      // También crea <name>.js para verificar que index.js tiene prioridad
+      writeFileSync(join(tmpDir, 'my-plugin.js'), validPluginEsm('my-plugin-flat'));
+
+      await loader._loadPlugin(tmpDir, 'my-plugin');
+
+      expect(loader._plugins).toHaveLength(1);
+      expect(loader._plugins[0].name).toBe('my-plugin');
+    });
+
+    it('usa <name>.js cuando no existe index.js', async () => {
+      writeFileSync(join(tmpDir, 'flat-plugin.js'), validPluginEsm('flat-plugin', 'after-review'));
+
+      await loader._loadPlugin(tmpDir, 'flat-plugin');
+
+      expect(loader._plugins).toHaveLength(1);
+      expect(loader._plugins[0].name).toBe('flat-plugin');
+      expect(loader._plugins[0].position).toBe('after-review');
+    });
+
+    it('usa module directamente cuando module.default es undefined (named exports)', async () => {
+      writeFileSync(join(tmpDir, 'named-plugin.js'), `
+        export const name = 'named-plugin';
+        export const role = 'Test role';
+        export const position = 'after-merge';
+        export const execute = async () => ({ success: true, issues: [], suggestions: [] });
+      `);
+
+      await loader._loadPlugin(tmpDir, 'named-plugin');
+
+      expect(loader._plugins).toHaveLength(1);
+      expect(loader._plugins[0].name).toBe('named-plugin');
+    });
+
+    it('no carga ningún plugin si no existe ningún candidato', async () => {
+      await loader._loadPlugin(tmpDir, 'nonexistent-plugin');
+
+      expect(loader._plugins).toHaveLength(0);
+    });
+
+    it('no carga el plugin si falla la validación (plugin inválido)', async () => {
+      writeFileSync(join(tmpDir, 'invalid-plugin.js'), `
+        export default {
+          name: 'invalid',
+          // missing: role, position, execute
+        };
+      `);
+
+      await loader._loadPlugin(tmpDir, 'invalid-plugin');
+
+      expect(loader._plugins).toHaveLength(0);
+    });
+
+    it('captura error de import() sin crashear', async () => {
+      writeFileSync(join(tmpDir, 'broken-plugin.js'), `
+        throw new Error('module initialization failed');
+      `);
+
+      await expect(loader._loadPlugin(tmpDir, 'broken-plugin')).resolves.toBeUndefined();
+      expect(loader._plugins).toHaveLength(0);
+    });
+
+    it('carga varios plugins independientes en el mismo directorio', async () => {
+      writeFileSync(join(tmpDir, 'plugin-a.js'), validPluginEsm('plugin-a', 'before-review'));
+      writeFileSync(join(tmpDir, 'plugin-b.js'), validPluginEsm('plugin-b', 'after-review'));
+
+      await loader._loadPlugin(tmpDir, 'plugin-a');
+      await loader._loadPlugin(tmpDir, 'plugin-b');
+
+      expect(loader._plugins).toHaveLength(2);
+      expect(loader._plugins.map(p => p.name)).toEqual(['plugin-a', 'plugin-b']);
     });
   });
 });
