@@ -18,14 +18,16 @@
 
 /**
  * @typedef {Object} PluginContext
- * @property {Object}  task            - The current task object
- * @property {string}  task.id         - Task ID
- * @property {string}  task.title      - Task title
- * @property {string}  [task.body]     - Task description
- * @property {string}  [prNumber]      - Pull request number (if a PR exists)
- * @property {string}  [branchName]    - Feature branch name
- * @property {string}  [repoPath]      - Absolute path to the local repository
- * @property {string}  [repo]          - Repository in owner/repo format
+ * @property {Object}         task                   - The current task object
+ * @property {string}         task.id                - Task ID
+ * @property {string}         task.title             - Task title
+ * @property {string}         [task.body]            - Task description
+ * @property {string}         [prNumber]             - Pull request number (if a PR exists)
+ * @property {string}         [branchName]           - Feature branch name
+ * @property {string}         [repoPath]             - Absolute path to the local repository
+ * @property {string}         [repo]                 - Repository in owner/repo format
+ * @property {string[]}       [changedFiles]         - Files changed in the PR
+ * @property {PluginResult[]} [previousPluginOutputs] - Results from plugins that ran earlier at this position
  */
 
 /**
