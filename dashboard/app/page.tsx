@@ -7,6 +7,7 @@ import { ConnectionStatus } from '@/components/connection-status';
 import dynamic from 'next/dynamic';
 import { ExecutionControls } from '@/components/execution-controls';
 import { CliHealthStatus } from '@/components/cli-health-status';
+import { BudgetWidget } from '@/components/budget-widget';
 
 const OfficeScene3D = dynamic(() => import('@/components/office-scene-3d').then(mod => mod.OfficeScene3D), { ssr: false });
 import type { Phase, AgentStatus, DashboardEvent, SonarAnalysisState } from '@/lib/types';
@@ -59,6 +60,9 @@ const EVENT_COLORS: Record<string, string> = {
   'agent:rate-limit': 'text-yellow-400',
   'cli:recovered': 'text-green-400',
   'session:auto-resumed': 'text-emerald-400',
+  'budget:warning': 'text-amber-400',
+  'budget:exceeded': 'text-red-400',
+  'budget:reset': 'text-emerald-400',
 };
 
 /* ── Page ── */
@@ -211,26 +215,27 @@ export default function DashboardPage() {
               })}
             </section>
 
-            {/* Stats: Cost + Sprint Progress */}
-            <section className="grid grid-cols-2 gap-4">
-              {/* Cost counter */}
-              <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+            {/* Budget Widget */}
+            {snapshot.budget ? (
+              <BudgetWidget budget={snapshot.budget} totalCost={snapshot.totalCost} />
+            ) : (
+              <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
                 <h3 className="mb-1 text-sm font-medium text-neutral-400">Total Cost</h3>
                 <p className="text-2xl font-bold tabular-nums">
                   ${snapshot.totalCost.toFixed(2)}
                   <span className="ml-1 text-xs font-normal text-neutral-500">USD</span>
                 </p>
-              </div>
+              </section>
+            )}
 
-              {/* Sprint progress */}
-              <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-                <h3 className="mb-1 text-sm font-medium text-neutral-400">Tasks</h3>
-                <div className="mt-2 text-2xl font-bold tabular-nums">
-                  {snapshot.tasksCompleted}
-                  <span className="text-sm font-normal text-neutral-500 ml-1">
-                    / {snapshot.totalTasks || '?'}
-                  </span>
-                </div>
+            {/* Tasks */}
+            <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+              <h3 className="mb-1 text-sm font-medium text-neutral-400">Tasks</h3>
+              <div className="mt-2 text-2xl font-bold tabular-nums">
+                {snapshot.tasksCompleted}
+                <span className="text-sm font-normal text-neutral-500 ml-1">
+                  / {snapshot.totalTasks || '?'}
+                </span>
               </div>
             </section>
 
