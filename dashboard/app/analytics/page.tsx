@@ -7,6 +7,7 @@ import { ReviewPassRateChart } from '@/components/analytics/review-pass-rate-cha
 import { DurationComplexityChart } from '@/components/analytics/duration-complexity-chart';
 import { ModelUsageChart } from '@/components/analytics/model-usage-chart';
 import { AnalyticsFilters } from '@/components/analytics/analytics-filters';
+import { BudgetHistory } from '@/components/budget-history';
 
 interface FiltersState {
   startDate: string;
@@ -118,6 +119,8 @@ export default function AnalyticsPage() {
           </div>
 
           <ModelUsageChart data={data.modelUsage} />
+
+          <BudgetHistory projectId={PROJECT_ID} />
         </>
       )}
     </div>

@@ -57,6 +57,14 @@ export interface CliHealth {
   cooldownMinutes: number | null;
 }
 
+export interface BudgetState {
+  dailySpent: number;
+  weeklySpent: number;
+  dailyBudget: number;
+  weeklyBudget: number;
+  paused: boolean;
+}
+
 export interface KomodoSnapshot {
   agents: Record<AgentName, AgentState>;
   phase: Phase;
@@ -69,6 +77,7 @@ export interface KomodoSnapshot {
   totalTasks?: number;
   executionState?: ExecutionState;
   sonarAnalysis?: SonarAnalysisState;
+  budget?: BudgetState;
 }
 
 export interface DashboardEvent {
