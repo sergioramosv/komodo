@@ -9,6 +9,7 @@ import { checkpointManager } from './state/checkpoint-manager.js';
 
 import { fallbackManager } from './agents/fallback-manager.js';
 import { shutdownManager } from './shutdown/shutdown-manager.js';
+import { pluginLoader } from './plugins/plugin-loader.js';
 
 // Daemon / watch mode
 export { watch } from './daemon/daemon.js';
@@ -65,6 +66,9 @@ export async function run(projectId, options = {}) {
   logger.info(`Proyecto: ${projectId}`, 'KOMODO');
   logger.info(`Auto-merge: ${config.autoMerge ? 'sí' : 'no (manual)'}`, 'KOMODO');
   logger.info(`Max review cycles: ${config.maxReviewCycles}`, 'KOMODO');
+
+  // Load plugins once at startup
+  await pluginLoader.load();
 
   // Reset global state for fresh run
   komodoState.updatePhase(PHASES.IDLE, {
