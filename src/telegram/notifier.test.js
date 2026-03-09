@@ -31,6 +31,8 @@ vi.mock('../events/event-bus.js', () => ({
     AGENT_CODER_DONE: 'agent:coder:done',
     CLI_RECOVERED: 'cli:recovered',
     ALL_CLIS_RATE_LIMITED: 'cli:all-rate-limited',
+    BUDGET_WARNING: 'budget:warning',
+    BUDGET_EXCEEDED: 'budget:exceeded',
   },
 }));
 
@@ -274,5 +276,56 @@ describe('startNotifier integration', () => {
     const registeredEvents = eventBus.on.mock.calls.map(c => c[0]);
     expect(registeredEvents).toContain(EVENT_TYPES.CLI_RECOVERED);
     expect(registeredEvents).toContain(EVENT_TYPES.ALL_CLIS_RATE_LIMITED);
+  });
+
+  it('registers listeners for BUDGET_WARNING and BUDGET_EXCEEDED', () => {
+    const registeredEvents = eventBus.on.mock.calls.map(c => c[0]);
+    expect(registeredEvents).toContain(EVENT_TYPES.BUDGET_WARNING);
+    expect(registeredEvents).toContain(EVENT_TYPES.BUDGET_EXCEEDED);
+  });
+
+  it('sends budget warning notification in minimal mode', () => {
+    const handler = getHandler(EVENT_TYPES.BUDGET_WARNING);
+    handler({
+      metadata: {
+        dailySpent: 8.0,
+        dailyBudget: 10,
+        weeklySpent: 20.0,
+        weeklyBudget: 50,
+        percentDaily: 80,
+        percentWeekly: 40,
+      },
+    });
+
+    expect(mockSendMessage).toHaveBeenCalledTimes(1);
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      '123456',
+      expect.stringContaining('Alerta de budget'),
+      { parse_mode: 'MarkdownV2' },
+    );
+  });
+
+  it('sends budget exceeded notification in minimal mode', () => {
+    const handler = getHandler(EVENT_TYPES.BUDGET_EXCEEDED);
+    handler({
+      metadata: {
+        dailySpent: 10.5,
+        dailyBudget: 10,
+        weeklySpent: 10.5,
+        weeklyBudget: 50,
+      },
+    });
+
+    expect(mockSendMessage).toHaveBeenCalledTimes(1);
+    expect(mockSendMessage).toHaveBeenCalledWith(
+      '123456',
+      expect.stringContaining('Budget superado'),
+      { parse_mode: 'MarkdownV2' },
+    );
+  });
+
+  it('shouldNotify allows BUDGET_WARNING and BUDGET_EXCEEDED in both modes', () => {
+    expect(shouldNotify(EVENT_TYPES.BUDGET_WARNING)).toBe(true);
+    expect(shouldNotify(EVENT_TYPES.BUDGET_EXCEEDED)).toBe(true);
   });
 });

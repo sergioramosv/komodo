@@ -553,6 +553,64 @@ function buildProgressBar(percent) {
   return escapeMarkdown('\u2588'.repeat(filled) + '\u2591'.repeat(empty));
 }
 
+// --- Budget event formatters ---
+
+/**
+ * Notificación: Budget warning (80% reached).
+ */
+export function formatBudgetWarning(metadata) {
+  const dailySpent = escapeMarkdown((metadata.dailySpent || 0).toFixed(2));
+  const dailyBudget = metadata.dailyBudget > 0 ? escapeMarkdown(String(metadata.dailyBudget)) : null;
+  const weeklySpent = escapeMarkdown((metadata.weeklySpent || 0).toFixed(2));
+  const weeklyBudget = metadata.weeklyBudget > 0 ? escapeMarkdown(String(metadata.weeklyBudget)) : null;
+
+  const lines = [
+    `\u26A0\uFE0F *Alerta de budget \\(80%\\)*`,
+    ``,
+  ];
+
+  if (dailyBudget) {
+    const pct = metadata.percentDaily != null ? ` \\(${escapeMarkdown(String(metadata.percentDaily))}%\\)` : '';
+    lines.push(`*Diario:* $${dailySpent} / $${dailyBudget}${pct}`);
+  }
+
+  if (weeklyBudget) {
+    const pct = metadata.percentWeekly != null ? ` \\(${escapeMarkdown(String(metadata.percentWeekly))}%\\)` : '';
+    lines.push(`*Semanal:* $${weeklySpent} / $${weeklyBudget}${pct}`);
+  }
+
+  lines.push(`_El daemon se pausará automáticamente al alcanzar el 100%\\._`);
+
+  return lines.join('\n');
+}
+
+/**
+ * Notificación: Budget exceeded — daemon auto-paused.
+ */
+export function formatBudgetExceeded(metadata) {
+  const dailySpent = escapeMarkdown((metadata.dailySpent || 0).toFixed(2));
+  const dailyBudget = metadata.dailyBudget > 0 ? escapeMarkdown(String(metadata.dailyBudget)) : null;
+  const weeklySpent = escapeMarkdown((metadata.weeklySpent || 0).toFixed(2));
+  const weeklyBudget = metadata.weeklyBudget > 0 ? escapeMarkdown(String(metadata.weeklyBudget)) : null;
+
+  const lines = [
+    `\u{1F6D1} *Budget superado — daemon pausado*`,
+    ``,
+  ];
+
+  if (dailyBudget) {
+    lines.push(`*Diario:* $${dailySpent} / $${dailyBudget}`);
+  }
+
+  if (weeklyBudget) {
+    lines.push(`*Semanal:* $${weeklySpent} / $${weeklyBudget}`);
+  }
+
+  lines.push(`_El daemon no ejecutará nuevas tareas hasta que se resetee el período\\._`);
+
+  return lines.join('\n');
+}
+
 // --- Run command formatters ---
 
 /**

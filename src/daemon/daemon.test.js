@@ -25,6 +25,14 @@ const {
     mockConfig: {
       daemonPollInterval: 1,
       daemonMaxTasksPerSession: 0,
+      depCheckEnabled: false,
+      depCheckIntervalHours: 24,
+      schedule: '',
+      webhookUrl: '',
+      webhookUrls: [],
+      webhookEvents: '*',
+      webhookHeaders: [],
+      webhookMaxRetries: 3,
     },
   };
 });
@@ -38,6 +46,7 @@ vi.mock('../state/komodo-state.js', () => ({
     PAUSED: 'paused',
     DAEMON_IDLE: 'daemon:idle',
     DAEMON_RUNNING: 'daemon:running',
+    BUDGET_PAUSED: 'budget:paused',
   },
 }));
 
@@ -84,7 +93,30 @@ vi.mock('../orchestrator.js', () => ({
   checkForPendingCheckpoints: vi.fn().mockResolvedValue({ resumed: false }),
 }));
 
+vi.mock('../scheduler/scheduler.js', () => ({
+  checkSchedule: vi.fn(() => ({ allowed: true })),
+  formatMinutes: vi.fn(),
+}));
+
+vi.mock('../shutdown/shutdown-manager.js', () => ({
+  shutdownManager: { register: vi.fn(), unregister: vi.fn() },
+}));
+
+vi.mock('../auto-improve/dependency-checker.js', () => ({
+  runDependencyCheck: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('../integrations/webhook-outgoing.js', () => ({
+  startWebhookOutgoing: vi.fn(),
+  stopWebhookOutgoing: vi.fn(),
+}));
+
+vi.mock('../cost/budget-manager.js', () => ({
+  budgetManager: { start: vi.fn(), stop: vi.fn() },
+}));
+
 import { watch } from './daemon.js';
+import { budgetManager } from '../cost/budget-manager.js';
 
 // --- Helpers ---
 
@@ -256,6 +288,59 @@ describe('daemon watch()', () => {
 
     expect(result).toEqual({ tasksCompleted: 0, tasksFailed: 0, results: [] });
     expect(mockRunTask).not.toHaveBeenCalled();
+  });
+
+  it('starts and stops budget manager during daemon lifecycle', async () => {
+    setupBacklog([{ id: 't1', status: 'to-do', title: 'Task 1' }]);
+
+    mockRunTask.mockImplementation(async () => {
+      mockKomodoState.executionState = 'stopped';
+      return { taskId: 't1', taskTitle: 'Task 1', success: true };
+    });
+
+    const watchPromise = watch('proj-1');
+    await vi.advanceTimersByTimeAsync(5000);
+    await watchPromise;
+
+    expect(budgetManager.start).toHaveBeenCalledWith({ projectId: 'proj-1' });
+    expect(budgetManager.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not execute new tasks while budget is paused, resumes when budget resets', async () => {
+    setupBacklog([{ id: 't1', status: 'to-do', title: 'Task 1' }]);
+
+    // First task triggers budget exceeded (budgetManager sets state to budget:paused)
+    let callNum = 0;
+    mockRunTask.mockImplementation(async () => {
+      callNum++;
+      if (callNum === 1) {
+        // Simulate budgetManager auto-pausing daemon after first task
+        mockKomodoState.executionState = 'budget:paused';
+        return { taskId: 't1', taskTitle: 'Task 1', success: true };
+      }
+      // Second call after budget reset — stop the daemon
+      mockKomodoState.executionState = 'stopped';
+      return { taskId: 't2', taskTitle: 'Task 2', success: true };
+    });
+
+    const watchPromise = watch('proj-1');
+
+    // First task runs, sets state to budget:paused
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(mockRunTask).toHaveBeenCalledTimes(1);
+
+    // Daemon is now in _waitForBudgetReset — simulate budget period reset
+    mockKomodoState.executionState = 'daemon:running';
+
+    // Advance past the 30s _waitForBudgetReset poll interval
+    await vi.advanceTimersByTimeAsync(35000);
+
+    // Daemon should resume and execute the next task
+    await vi.advanceTimersByTimeAsync(5000);
+    const result = await watchPromise;
+
+    expect(mockRunTask).toHaveBeenCalledTimes(2);
+    expect(result.tasksCompleted).toBe(2);
   });
 
   it('counts failed tasks separately from completed tasks', async () => {

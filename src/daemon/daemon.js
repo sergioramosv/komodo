@@ -11,6 +11,7 @@ import { checkSchedule, formatMinutes } from '../scheduler/scheduler.js';
 import { shutdownManager } from '../shutdown/shutdown-manager.js';
 import { runDependencyCheck } from '../auto-improve/dependency-checker.js';
 import { startWebhookOutgoing, stopWebhookOutgoing } from '../integrations/webhook-outgoing.js';
+import { budgetManager } from '../cost/budget-manager.js';
 
 const AGENT = 'DAEMON';
 
@@ -59,6 +60,9 @@ export async function watch(projectId, options = {}) {
   // Start checkpoint manager
   checkpointManager.start();
 
+  // Start budget manager
+  budgetManager.start({ projectId });
+
   // Start WebSocket server
   const wsServer = new KomodoWsServer();
   try {
@@ -100,6 +104,16 @@ export async function watch(projectId, options = {}) {
     if (komodoState.executionState === EXECUTION_STATES.STOPPED) {
       logger.info('Stop requested. Shutting down daemon.', AGENT);
       break;
+    }
+
+    // Check budget pause — do not execute new agents while budget is exceeded
+    if (komodoState.executionState === EXECUTION_STATES.BUDGET_PAUSED) {
+      logger.warn('Budget paused. Waiting for budget period reset...', AGENT);
+      const shouldContinue = await _waitForBudgetReset(30);
+      if (!shouldContinue) break;
+      komodoState.setExecutionState(EXECUTION_STATES.DAEMON_RUNNING);
+      logger.info('Budget reset. Resuming execution.', AGENT);
+      continue;
     }
 
     // Check schedule window
@@ -199,6 +213,7 @@ export async function watch(projectId, options = {}) {
   stopWebhookOutgoing();
   shutdownManager.unregister();
   checkpointManager.stop();
+  budgetManager.stop();
   komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
 
   eventBus.emitEvent(EVENT_TYPES.DAEMON_STOPPED, {
@@ -282,6 +297,27 @@ async function _waitForScheduleWindow(intervalSeconds = 30) {
 
     const { allowed } = checkSchedule();
     if (allowed) {
+      return true;
+    }
+  }
+}
+
+/**
+ * Waits until the budget period resets (state leaves BUDGET_PAUSED) or the daemon is stopped.
+ * Checks every `intervalSeconds` seconds.
+ *
+ * @param {number} intervalSeconds - How often to check (default: 30)
+ * @returns {Promise<boolean>} true if budget was reset, false if stopped
+ */
+async function _waitForBudgetReset(intervalSeconds = 30) {
+  while (true) {
+    await _sleep(intervalSeconds * 1000);
+
+    if (komodoState.executionState === EXECUTION_STATES.STOPPED) {
+      return false;
+    }
+
+    if (komodoState.executionState !== EXECUTION_STATES.BUDGET_PAUSED) {
       return true;
     }
   }
