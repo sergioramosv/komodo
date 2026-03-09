@@ -109,6 +109,13 @@ describe('loadProjectConfig', () => {
     expect(result.projectId).toBe('proj-abc');
   });
 
+  it('denies access when membership is null (deactivated member)', async () => {
+    getById.mockResolvedValue({ ...mockProject, members: { 'user-123': null } });
+
+    await expect(loadProjectConfig('proj-abc', 'user-123'))
+      .rejects.toThrow('User "user-123" has no access to project "proj-abc"');
+  });
+
   it('skips access check when no userId provided', async () => {
     getById.mockResolvedValue(mockProject);
 

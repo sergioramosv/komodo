@@ -45,7 +45,7 @@ export function parseProjectsEnv() {
 function isMember(project, userId) {
   if (!project.members) return false;
   const membership = project.members[userId];
-  return membership === true || typeof membership === 'object';
+  return membership === true || (membership !== null && typeof membership === 'object');
 }
 
 /**

@@ -7,6 +7,31 @@ import { logger } from './utils/logger.js';
 import { doctor } from './doctor/doctor.js';
 import { loadProjects, parseProjectsEnv } from './multi-project/project-loader.js';
 
+/**
+ * Loads projects from PROJECTS env and returns the first projectId.
+ * Exits the process with an error if no valid projects are found.
+ *
+ * @returns {Promise<string>} The first project's ID
+ */
+async function resolveProjectIdFromEnv() {
+  try {
+    const projects = await loadProjects();
+    if (!projects || projects.length === 0) {
+      logger.error('No se encontraron proyectos válidos en PROJECTS', 'KOMODO');
+      process.exit(1);
+    }
+    const projectId = projects[0].projectId;
+    logger.info(`Multi-project mode: usando proyecto "${projects[0].name}" (${projectId})`, 'KOMODO');
+    if (projects.length > 1) {
+      logger.info(`Proyectos disponibles: ${projects.map(p => p.name).join(', ')}`, 'KOMODO');
+    }
+    return projectId;
+  } catch (err) {
+    logger.error(`Error cargando proyectos: ${err.message}`, 'KOMODO');
+    process.exit(1);
+  }
+}
+
 const program = new Command();
 
 program
@@ -51,22 +76,7 @@ program
 
     // Load and validate projects from PROJECTS env (if no -p flag)
     if (!opts.project && !config.defaultProjectId) {
-      try {
-        const projects = await loadProjects();
-        if (!projects || projects.length === 0) {
-          logger.error('No se encontraron proyectos válidos en PROJECTS', 'KOMODO');
-          process.exit(1);
-        }
-        // For run mode, use the first project (multi-project rotation is daemon territory)
-        projectId = projects[0].projectId;
-        logger.info(`Multi-project mode: usando proyecto "${projects[0].name}" (${projectId})`, 'KOMODO');
-        if (projects.length > 1) {
-          logger.info(`Proyectos disponibles: ${projects.map(p => p.name).join(', ')}`, 'KOMODO');
-        }
-      } catch (err) {
-        logger.error(`Error cargando proyectos: ${err.message}`, 'KOMODO');
-        process.exit(1);
-      }
+      projectId = await resolveProjectIdFromEnv();
     }
 
     try {
@@ -145,22 +155,7 @@ program
 
     // Load and validate projects from PROJECTS env (if no -p flag)
     if (!opts.project && !config.defaultProjectId) {
-      try {
-        const projects = await loadProjects();
-        if (!projects || projects.length === 0) {
-          logger.error('No se encontraron proyectos válidos en PROJECTS', 'KOMODO');
-          process.exit(1);
-        }
-        // For watch mode, use the first project (multi-project daemon rotation is a future feature)
-        projectId = projects[0].projectId;
-        logger.info(`Multi-project mode: usando proyecto "${projects[0].name}" (${projectId})`, 'KOMODO');
-        if (projects.length > 1) {
-          logger.info(`Proyectos disponibles: ${projects.map(p => p.name).join(', ')}`, 'KOMODO');
-        }
-      } catch (err) {
-        logger.error(`Error cargando proyectos: ${err.message}`, 'KOMODO');
-        process.exit(1);
-      }
+      projectId = await resolveProjectIdFromEnv();
     }
 
     try {
