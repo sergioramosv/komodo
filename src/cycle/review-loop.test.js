@@ -69,6 +69,11 @@ vi.mock('../state/checkpoint-manager.js', () => ({
   },
 }));
 
+vi.mock('./review-feedback-recorder.js', () => ({
+  recordReviewIssues: vi.fn().mockResolvedValue(),
+  recordAvoidedPatterns: vi.fn().mockResolvedValue(),
+}));
+
 import { reviewLoop } from './review-loop.js';
 import { reviewPR } from '../agents/reviewer.js';
 import { fixReviewIssues } from '../agents/coder.js';
