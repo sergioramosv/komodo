@@ -18,6 +18,7 @@ import { fallbackManager } from '../agents/fallback-manager.js';
 import { withWatchdog } from '../watchdog/watchdog.js';
 import { createTechDebtTasks } from '../tech-debt/tech-debt-tracker.js';
 import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
+import { recordModelPerformance } from '../metrics/model-performance-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
@@ -228,6 +229,7 @@ export async function runTask(projectId, cwd) {
   let taskSpec = null;
   let prNumber = null;
   let repo = '';
+  let taskCost = 0;
 
   try {
     // ═══════════════════════════════════════════
@@ -254,6 +256,7 @@ export async function runTask(projectId, cwd) {
     );
 
     if (plannerResult.cost) {
+      taskCost += plannerResult.cost;
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
         agentName: 'PLANNER',
         metadata: { cost: plannerResult.cost },
@@ -395,6 +398,7 @@ export async function runTask(projectId, cwd) {
     }
 
     if (coderResult.cost) {
+      taskCost += coderResult.cost;
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
         agentName: 'CODER',
         metadata: { cost: coderResult.cost },
@@ -866,6 +870,24 @@ export async function runTask(projectId, cwd) {
       });
     } catch (err) {
       logger.warn(`Estimation tracking failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
+    // Record model performance metrics (best effort)
+    try {
+      await recordModelPerformance({
+        taskId: taskSpec.taskId,
+        projectId: projectId || config.defaultProjectId,
+        plannerModel: plannerModel || '',
+        coderModel: coderModel || '',
+        reviewerModel: reviewerModel || '',
+        reviewScore: reviewResult.finalReview?.score ?? null,
+        reviewCycles: reviewResult.cycles,
+        durationSeconds: totalDuration,
+        cost: taskCost,
+        approved: true,
+      });
+    } catch (err) {
+      logger.warn(`Model performance tracking failed (non-blocking): ${err.message}`, 'KOMODO');
     }
 
     // Record context for smart task ordering (context affinity)
