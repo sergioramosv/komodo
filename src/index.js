@@ -5,6 +5,32 @@ import { run, resume, checkForPendingCheckpoints, watch } from './orchestrator.j
 import { config } from './config.js';
 import { logger } from './utils/logger.js';
 import { doctor } from './doctor/doctor.js';
+import { loadProjects, parseProjectsEnv } from './multi-project/project-loader.js';
+
+/**
+ * Loads projects from PROJECTS env and returns the first projectId.
+ * Exits the process with an error if no valid projects are found.
+ *
+ * @returns {Promise<string>} The first project's ID
+ */
+async function resolveProjectIdFromEnv() {
+  try {
+    const projects = await loadProjects();
+    if (!projects || projects.length === 0) {
+      logger.error('No se encontraron proyectos válidos en PROJECTS', 'KOMODO');
+      process.exit(1);
+    }
+    const projectId = projects[0].projectId;
+    logger.info(`Multi-project mode: usando proyecto "${projects[0].name}" (${projectId})`, 'KOMODO');
+    if (projects.length > 1) {
+      logger.info(`Proyectos disponibles: ${projects.map(p => p.name).join(', ')}`, 'KOMODO');
+    }
+    return projectId;
+  } catch (err) {
+    logger.error(`Error cargando proyectos: ${err.message}`, 'KOMODO');
+    process.exit(1);
+  }
+}
 
 const program = new Command();
 
@@ -19,17 +45,21 @@ program
 program
   .command('run')
   .description('Ejecuta tareas del backlog de un proyecto')
-  .option('-p, --project <id>', 'ID del proyecto (default: DEFAULT_PROJECT_ID en .env)')
+  .option('-p, --project <id>', 'ID del proyecto (default: DEFAULT_PROJECT_ID o PROJECTS en .env)')
   .option('-t, --tasks <number>', 'Número de tareas a ejecutar (default: 1)', '1')
   .option('-c, --continuous', 'Ejecutar hasta vaciar el backlog')
   .option('--cwd <path>', 'Directorio del repositorio')
   .option('--dry-run', 'Simular: muestra qué tarea elegiría sin ejecutar nada')
   .action(async (opts) => {
-    const projectId = opts.project || config.defaultProjectId;
+    // -p flag takes priority; then PROJECTS env; then DEFAULT_PROJECT_ID
+    let projectId = opts.project || config.defaultProjectId;
 
     if (!projectId) {
-      logger.error('Project ID requerido. Usa -p <id> o configura DEFAULT_PROJECT_ID en .env', 'KOMODO');
-      process.exit(1);
+      const { wildcard, projectIds } = parseProjectsEnv();
+      if (!wildcard && projectIds.length === 0) {
+        logger.error('Project ID requerido. Usa -p <id>, configura DEFAULT_PROJECT_ID o PROJECTS en .env', 'KOMODO');
+        process.exit(1);
+      }
     }
 
     const tasks = opts.continuous ? 0 : parseInt(opts.tasks, 10);
@@ -42,6 +72,11 @@ program
     // Self-diagnostic antes de arrancar
     if (!doctor()) {
       process.exit(1);
+    }
+
+    // Load and validate projects from PROJECTS env (if no -p flag)
+    if (!opts.project && !config.defaultProjectId) {
+      projectId = await resolveProjectIdFromEnv();
     }
 
     try {
@@ -100,19 +135,27 @@ program
 program
   .command('watch')
   .description('Modo daemon: escucha el backlog y ejecuta tareas automáticamente')
-  .option('-p, --project <id>', 'ID del proyecto (default: DEFAULT_PROJECT_ID en .env)')
+  .option('-p, --project <id>', 'ID del proyecto (default: DEFAULT_PROJECT_ID o PROJECTS en .env)')
   .option('--cwd <path>', 'Directorio del repositorio')
   .action(async (opts) => {
-    const projectId = opts.project || config.defaultProjectId;
+    let projectId = opts.project || config.defaultProjectId;
 
     if (!projectId) {
-      logger.error('Project ID requerido. Usa -p <id> o configura DEFAULT_PROJECT_ID en .env', 'KOMODO');
-      process.exit(1);
+      const { wildcard, projectIds } = parseProjectsEnv();
+      if (!wildcard && projectIds.length === 0) {
+        logger.error('Project ID requerido. Usa -p <id>, configura DEFAULT_PROJECT_ID o PROJECTS en .env', 'KOMODO');
+        process.exit(1);
+      }
     }
 
     // Self-diagnostic antes de arrancar
     if (!doctor()) {
       process.exit(1);
+    }
+
+    // Load and validate projects from PROJECTS env (if no -p flag)
+    if (!opts.project && !config.defaultProjectId) {
+      projectId = await resolveProjectIdFromEnv();
     }
 
     try {
