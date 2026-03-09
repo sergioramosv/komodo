@@ -107,7 +107,7 @@ ${coderFaults.map(f => `- **${f.name}** (${f.type}): ${f.error}`).join('\n')}
  * @param {string[]} issues - Issues reportados por plugins before-review
  * @returns {string} Sección markdown formateada, o cadena vacía si no hay issues
  */
-function buildPluginIssuesSection(issues) {
+export function buildPluginIssuesSection(issues) {
   if (!issues || issues.length === 0) return '';
 
   return `
