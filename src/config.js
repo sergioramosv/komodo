@@ -227,6 +227,13 @@ export const config = {
   sonarHostUrl: process.env.SONAR_HOST_URL || '',
   sonarProjectKey: process.env.SONAR_PROJECT_KEY || '',
 
+  // Plugins
+  pluginsDir: resolve(ROOT_DIR, process.env.PLUGINS_DIR || './plugins'),
+  enabledPlugins: (process.env.ENABLED_PLUGINS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean),
+
   // Paths
   rootDir: ROOT_DIR,
   memoryDir: resolve(ROOT_DIR, 'memory'),
