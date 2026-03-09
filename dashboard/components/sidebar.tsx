@@ -7,6 +7,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: '▣' },
   { href: '/analytics', label: 'Analytics', icon: '▤' },
+  { href: '/leaderboard', label: 'Leaderboard', icon: '◈' },
   { href: '/agents', label: 'Agents', icon: '⚙' },
   { href: '/notifications', label: 'Notifications', icon: '▢' },
   { href: '/memory', label: 'Memory', icon: '◉' },
