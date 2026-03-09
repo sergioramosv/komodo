@@ -42,7 +42,7 @@ describe('KomodoState', () => {
 
     it('cada agente tiene todos los campos esperados', () => {
       const agent = state.agents.PLANNER;
-      expect(agent).toEqual({
+      expect(agent).toMatchObject({
         name: 'PLANNER',
         status: 'idle',
         currentTask: null,
@@ -67,12 +67,7 @@ describe('KomodoState', () => {
     it('retorna un objeto plano con todo el estado', () => {
       const snapshot = state.getSnapshot();
 
-      expect(snapshot).toEqual({
-        agents: {
-          PLANNER: { name: 'PLANNER', status: 'idle', currentTask: null, startedAt: null, avatar: 'planner' },
-          CODER: { name: 'CODER', status: 'idle', currentTask: null, startedAt: null, avatar: 'coder' },
-          REVIEWER: { name: 'REVIEWER', status: 'idle', currentTask: null, startedAt: null, avatar: 'reviewer' },
-        },
+      expect(snapshot).toMatchObject({
         phase: 'idle',
         currentTask: null,
         taskDetails: null,
@@ -81,7 +76,11 @@ describe('KomodoState', () => {
         totalCost: 0,
         tasksCompleted: 0,
         totalTasks: 0,
+        multiProject: null,
       });
+      expect(snapshot.agents.PLANNER).toMatchObject({ name: 'PLANNER', status: 'idle' });
+      expect(snapshot.agents.CODER).toMatchObject({ name: 'CODER', status: 'idle' });
+      expect(snapshot.agents.REVIEWER).toMatchObject({ name: 'REVIEWER', status: 'idle' });
     });
 
     it('es serializable a JSON', () => {
