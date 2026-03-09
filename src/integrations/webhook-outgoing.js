@@ -67,7 +67,18 @@ export async function sendWithRetry(url, payload, headers, maxRetries = 3) {
 
       logger.info(`Webhook sent to ${url} — status ${response.status} (attempt ${attempt})`, AGENT);
 
-      return { url, status: response.status, ok: response.ok, attempts: attempt };
+      // Return immediately for success or client errors (4xx); retry on 5xx
+      if (response.ok || response.status < 500) {
+        return { url, status: response.status, ok: response.ok, attempts: attempt };
+      }
+
+      // 5xx — transient server error, retry
+      lastError = new Error(`HTTP ${response.status}`);
+      logger.warn(`Webhook to ${url} got ${response.status} (attempt ${attempt}/${maxRetries})`, AGENT);
+      if (attempt < maxRetries) {
+        const delay = Math.pow(2, attempt - 1) * 1000;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     } catch (err) {
       lastError = err;
       logger.warn(`Webhook to ${url} failed (attempt ${attempt}/${maxRetries}): ${err.message}`, AGENT);
