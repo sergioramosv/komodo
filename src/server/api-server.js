@@ -1,4 +1,5 @@
 import { createServer } from 'http';
+import { timingSafeEqual } from 'crypto';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 
@@ -67,6 +68,8 @@ export class KomodoApiServer {
     res.setHeader('Content-Type', 'application/json');
 
     if (req.method === 'OPTIONS') {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Headers', 'X-Komodo-Key, Content-Type');
       res.writeHead(204);
       res.end();
       return;
@@ -89,7 +92,20 @@ export class KomodoApiServer {
   _authenticate(req, res) {
     const provided = req.headers['x-komodo-key'];
 
-    if (!provided || provided !== config.komodoApiKey) {
+    if (!provided) {
+      res.writeHead(401);
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return false;
+    }
+
+    const expectedBuf = Buffer.from(config.komodoApiKey);
+    const providedBuf = Buffer.from(provided);
+
+    const valid =
+      expectedBuf.length === providedBuf.length &&
+      timingSafeEqual(expectedBuf, providedBuf);
+
+    if (!valid) {
       res.writeHead(401);
       res.end(JSON.stringify({ error: 'Unauthorized' }));
       return false;
