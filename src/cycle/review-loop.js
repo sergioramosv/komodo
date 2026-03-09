@@ -28,7 +28,7 @@ import { recordReviewIssues, recordAvoidedPatterns } from './review-feedback-rec
  *   error?: string
  * }>}
  */
-export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines }) {
+export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues }) {
   const maxCycles = config.maxReviewCycles;
   let cycles = 0;
   let lastReview = null;
@@ -62,6 +62,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
       reviewCycle: i,
       previousReview: lastReview,
       lastReviewSHA,
+      pluginIssues,
     });
 
     if (reviewResult.cost) {

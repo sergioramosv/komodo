@@ -102,6 +102,25 @@ ${coderFaults.map(f => `- **${f.name}** (${f.type}): ${f.error}`).join('\n')}
 }
 
 /**
+ * Construye la sección de Plugin Issues para el prompt del Reviewer.
+ *
+ * @param {string[]} issues - Issues reportados por plugins before-review
+ * @returns {string} Sección markdown formateada, o cadena vacía si no hay issues
+ */
+function buildPluginIssuesSection(issues) {
+  if (!issues || issues.length === 0) return '';
+
+  return `
+## Plugin Analysis Issues (MANDATORY — must address)
+
+The following issues were detected by automated plugins before this review:
+${issues.map(issue => `- ${issue}`).join('\n')}
+
+**You MUST include these issues in your review.** If any are critical or major, your verdict MUST be REQUEST_CHANGES.
+`;
+}
+
+/**
  * Ejecuta el agente Reviewer para revisar una PR.
  *
  * @param {Object} options
@@ -118,7 +137,7 @@ ${coderFaults.map(f => `- **${f.name}** (${f.type}): ${f.error}`).join('\n')}
  *   error?: string
  * }>}
  */
-export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines, reviewCycle, previousReview, lastReviewSHA }) {
+export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines, reviewCycle, previousReview, lastReviewSHA, pluginIssues }) {
   const isIncremental = shouldUseIncrementalReview(reviewCycle || 1);
   const modeLabel = isIncremental ? 'INCREMENTAL' : 'FULL';
   logger.taskHeader(`REVIEWER - Revisando PR #${prNumber} (${modeLabel})`);
@@ -179,6 +198,9 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
     ? `\n## Project Coding Guidelines (MANDATORY — verify compliance)\n${codingGuidelines}\n`
     : '';
 
+  // Build plugin issues section from before-review plugins
+  const pluginIssuesSection = buildPluginIssuesSection(pluginIssues);
+
   // Build incremental review section if in fix cycle
   let incrementalSection = '';
   let incrementalMetrics = null;
@@ -230,7 +252,7 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
 
 ## Criterios de aceptación
 ${criteriaList || 'No especificados'}
-${guidelinesSection}${sonarSection}${coverageSection}${qaSection}${incrementalSection}
+${guidelinesSection}${pluginIssuesSection}${sonarSection}${coverageSection}${qaSection}${incrementalSection}
 ## Instrucciones
 1. Llama a get_review_brief() para ver errores frecuentes del coder
 ${diffInstruction}
