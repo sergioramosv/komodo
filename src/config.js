@@ -202,6 +202,19 @@ export const config = {
   eventRetentionDays: parseInt(process.env.EVENT_RETENTION_DAYS || '30', 10),
   eventPersistTypes: process.env.EVENT_PERSIST_TYPES || '*', // '*' = all, or comma-separated list
 
+  // Webhook Outgoing (send events to external URLs)
+  webhookUrl: process.env.WEBHOOK_URL || '',
+  webhookUrls: (process.env.WEBHOOK_URLS || '')
+    .split(',')
+    .map(u => u.trim())
+    .filter(Boolean),
+  webhookEvents: process.env.WEBHOOK_EVENTS || '*', // '*' = all, or comma-separated list
+  webhookHeaders: (process.env.WEBHOOK_HEADERS || '')
+    .split(',')
+    .map(h => h.trim())
+    .filter(Boolean),
+  webhookMaxRetries: parseInt(process.env.WEBHOOK_MAX_RETRIES || '3', 10),
+
   // SonarQube / SonarCloud
   enableSonar: process.env.ENABLE_SONAR === 'true',
   sonarToken: process.env.SONAR_TOKEN || '',
