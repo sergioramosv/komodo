@@ -244,6 +244,20 @@ function applyEvent(
     case 'sonar:analysis:error':
       next.sonarAnalysis = { status: 'error', qualityGate: null, issues: null };
       break;
+    case 'budget:updated': {
+      const m = event.metadata as Record<string, unknown>;
+      next.budget = {
+        dailySpent: (m.dailySpent as number) ?? 0,
+        weeklySpent: (m.weeklySpent as number) ?? 0,
+        dailyBudget: (m.dailyBudget as number) ?? 0,
+        weeklyBudget: (m.weeklyBudget as number) ?? 0,
+        paused: prev.budget?.paused ?? false,
+      };
+      break;
+    }
+    case 'budget:exceeded':
+      next.budget = { ...(prev.budget ?? { dailySpent: 0, weeklySpent: 0, dailyBudget: 0, weeklyBudget: 0, paused: false }), paused: true };
+      break;
   }
 
   return next;
@@ -315,6 +329,17 @@ function formatEvent(event: WsEventMessage['data']): DashboardEvent | null {
       return null; // Silent update, don't show in event timeline
     case 'session:auto-resumed':
       message = `Session auto-resumed on ${meta.cli ?? '?'} after ${meta.downtimeMinutes ?? '?'}min downtime`;
+      break;
+    case 'budget:updated':
+      return null; // Silent update — reflected in budget widget
+    case 'budget:warning':
+      message = `Budget warning — daily: $${typeof meta.dailySpent === 'number' ? meta.dailySpent.toFixed(2) : '?'} (${meta.percentDaily ?? '?'}%)`;
+      break;
+    case 'budget:exceeded':
+      message = `Budget exceeded — daemon auto-paused`;
+      break;
+    case 'budget:reset':
+      message = `Budget counters reset for day ${meta.day ?? ''}`;
       break;
     default:
       message = event.type;
