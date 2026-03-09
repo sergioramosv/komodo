@@ -208,6 +208,12 @@ export const config = {
   eventRetentionDays: parseInt(process.env.EVENT_RETENTION_DAYS || '30', 10),
   eventPersistTypes: process.env.EVENT_PERSIST_TYPES || '*', // '*' = all, or comma-separated list
 
+  // API Server (incoming webhooks / REST API)
+  apiServerEnabled: process.env.API_SERVER === 'true', // default: false
+  apiServerPort: parseInt(process.env.API_PORT || '3002', 10),
+  komodoApiKey: process.env.KOMODO_API_KEY || '',
+  apiRateLimitMax: parseInt(process.env.API_RATE_LIMIT_MAX || '60', 10), // requests per minute per IP
+
   // Webhook Outgoing (send events to external URLs)
   webhookUrl: process.env.WEBHOOK_URL || '',
   webhookUrls: (process.env.WEBHOOK_URLS || '')

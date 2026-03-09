@@ -5,6 +5,7 @@ import { logger } from './utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from './events/event-bus.js';
 import { komodoState, PHASES, EXECUTION_STATES } from './state/komodo-state.js';
 import { KomodoWsServer } from './server/ws-server.js';
+import { KomodoApiServer } from './server/api-server.js';
 import { checkpointManager } from './state/checkpoint-manager.js';
 
 import { fallbackManager } from './agents/fallback-manager.js';
@@ -14,7 +15,7 @@ import { shutdownManager } from './shutdown/shutdown-manager.js';
 export { watch } from './daemon/daemon.js';
 
 // Re-export para que consumidores externos puedan suscribirse
-export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES, checkpointManager, fallbackManager, shutdownManager };
+export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, KomodoApiServer, komodoState, PHASES, EXECUTION_STATES, checkpointManager, fallbackManager, shutdownManager };
 
 /**
  * Ejecuta N tareas del backlog de un proyecto.
@@ -86,6 +87,17 @@ export async function run(projectId, options = {}) {
     logger.warn(`No se pudo iniciar WS server: ${err.message}`, 'KOMODO');
   }
 
+  // Start API server for external control (if enabled)
+  let apiServer = null;
+  if (config.apiServerEnabled) {
+    apiServer = new KomodoApiServer();
+    try {
+      await apiServer.start();
+    } catch (err) {
+      logger.warn(`Could not start API server: ${err.message}`, 'KOMODO');
+    }
+  }
+
   // Register graceful shutdown handlers (SIGINT/SIGTERM)
   shutdownManager.register({ wsServer });
 
@@ -154,6 +166,11 @@ export async function run(projectId, options = {}) {
   // Set state to stopped when loop ends (unless already paused by rate limit)
   if (komodoState.executionState !== EXECUTION_STATES.PAUSED) {
     komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
+  }
+
+  // Detener API server
+  if (apiServer) {
+    await apiServer.stop();
   }
 
   // Detener WebSocket server
