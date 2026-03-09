@@ -198,6 +198,12 @@ export const config = {
   releaseOnSprintComplete: process.env.RELEASE_ON_SPRINT_COMPLETE !== 'false', // default: true
   releaseIgnoreBugs: process.env.RELEASE_IGNORE_BUGS === 'true', // default: false — override release gate
 
+  // Budget Manager
+  dailyBudgetUsd: parseFloat(process.env.DAILY_BUDGET_USD || '10'),
+  weeklyBudgetUsd: parseFloat(process.env.WEEKLY_BUDGET_USD || '50'),
+  budgetWarningThreshold: parseFloat(process.env.BUDGET_WARNING_THRESHOLD || '0.8'),
+  estimatedCostPerInvocation: parseFloat(process.env.ESTIMATED_COST_PER_INVOCATION || '0.05'),
+
   // Event Persistence (persist EventBus events to Firebase for analytics)
   eventRetentionDays: parseInt(process.env.EVENT_RETENTION_DAYS || '30', 10),
   eventPersistTypes: process.env.EVENT_PERSIST_TYPES || '*', // '*' = all, or comma-separated list
