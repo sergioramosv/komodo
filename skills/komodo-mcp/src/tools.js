@@ -32,6 +32,7 @@ const { config, validateConfig } = await import('../../../src/config.js');
 const { runAgent } = await import('../../../src/agents/base-agent.js');
 const { eventBus, EVENT_TYPES } = await import('../../../src/events/event-bus.js');
 const { checkpointManager } = await import('../../../src/state/checkpoint-manager.js');
+const { analyzeSonar } = await import('../../../src/sonar/analyzer.js');
 
 let runGh;
 try {
@@ -259,6 +260,30 @@ export const tools = {
         acceptanceCriteria: params.acceptanceCriteria || [],
       };
 
+      // Auto-run SonarQube if no report provided — ensures PR decoration and review context
+      let sonarReport = params.sonarReport || null;
+      if (!sonarReport) {
+        try {
+          // Resolve branch name from PR via gh CLI
+          let branch = null;
+          if (runGh) {
+            const prJson = await runGh(['pr', 'view', String(params.prNumber), '--json', 'headRefName', '--repo', params.repo]);
+            const prData = JSON.parse(prJson);
+            branch = prData.headRefName || null;
+          }
+
+          sonarReport = await analyzeSonar({
+            branch,
+            cwd: params.cwd,
+            prNumber: params.prNumber,
+            baseBranch: 'main',
+          });
+        } catch (err) {
+          // Graceful degradation — continue review without sonar if it fails
+          sonarReport = null;
+        }
+      }
+
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
         agentName: 'REVIEWER',
         previousState: 'idle',
@@ -271,7 +296,7 @@ export const tools = {
         repo: params.repo,
         taskSpec,
         cwd: params.cwd,
-        sonarReport: params.sonarReport,
+        sonarReport,
       });
 
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
