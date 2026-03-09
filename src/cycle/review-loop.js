@@ -33,6 +33,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
   let cycles = 0;
   let lastReview = null;
   let lastReviewSHA = null;
+  let totalCost = 0;
 
   for (let i = 1; i <= maxCycles; i++) {
     cycles = i;
@@ -66,6 +67,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
     });
 
     if (reviewResult.cost) {
+      totalCost += reviewResult.cost;
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
         agentName: 'REVIEWER',
         metadata: { cost: reviewResult.cost },
@@ -93,6 +95,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
         approved: false,
         cycles,
         finalReview: null,
+        cost: totalCost,
         error: `Reviewer error: ${reviewResult.error}`,
       };
     }
@@ -124,6 +127,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
         approved: true,
         cycles,
         finalReview: lastReview,
+        cost: totalCost,
       };
     }
 
@@ -155,7 +159,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
     // Check for rate limit pause before Coder fix
     if (komodoState.isPauseRequested()) {
       logger.warn('Execution paused by rate limit during review loop.', 'KOMODO');
-      return { approved: false, cycles, finalReview: lastReview, error: 'Paused: rate limit detected' };
+      return { approved: false, cycles, finalReview: lastReview, cost: totalCost, error: 'Paused: rate limit detected' };
     }
 
     // Record each review issue as a pattern in memory (for future feedback)
@@ -181,6 +185,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
     const fixResult = await fixReviewIssues(taskSpec, prNumber, lastReview, cwd, { model: coderModel, codingGuidelines });
 
     if (fixResult.cost) {
+      totalCost += fixResult.cost;
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
         agentName: 'CODER',
         metadata: { cost: fixResult.cost },
@@ -202,6 +207,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
         approved: false,
         cycles,
         finalReview: lastReview,
+        cost: totalCost,
         error: `Coder fix error: ${fixResult.error}`,
       };
     }
@@ -213,6 +219,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
     approved: false,
     cycles,
     finalReview: lastReview,
+    cost: totalCost,
     error: `PR no aprobada después de ${maxCycles} ciclos`,
   };
 }

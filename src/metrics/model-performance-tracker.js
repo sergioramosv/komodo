@@ -57,10 +57,11 @@ export async function recordModelPerformance({
 
   const safeReviewCycles = Number.isFinite(reviewCycles) ? reviewCycles : 0;
   const safeDurationSeconds = Number.isFinite(durationSeconds) ? durationSeconds : 0;
+  const safeCost = Number.isFinite(cost) ? cost : 0;
 
-  if (!Number.isFinite(reviewCycles) || !Number.isFinite(durationSeconds)) {
+  if (!Number.isFinite(reviewCycles) || !Number.isFinite(durationSeconds) || !Number.isFinite(cost)) {
     logger.warn(
-      `Non-finite numeric inputs for model performance tracking: reviewCycles=${reviewCycles}, durationSeconds=${durationSeconds}. Using 0 as fallback.`,
+      `Non-finite numeric inputs for model performance tracking: reviewCycles=${reviewCycles}, durationSeconds=${durationSeconds}, cost=${cost}. Using 0 as fallback.`,
       AGENT_TAG,
     );
   }
@@ -76,7 +77,7 @@ export async function recordModelPerformance({
     reviewScore: reviewScore ?? null,
     reviewCycles: safeReviewCycles,
     durationSeconds: safeDurationSeconds,
-    cost,
+    cost: safeCost,
     approved,
     completedAt,
   };
@@ -104,7 +105,7 @@ export async function recordModelPerformance({
             reviewScore,
             reviewCycles: safeReviewCycles,
             durationSeconds: safeDurationSeconds,
-            cost,
+            cost: safeCost,
           }),
         ),
     );

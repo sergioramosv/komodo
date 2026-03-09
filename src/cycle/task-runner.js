@@ -681,6 +681,10 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('REVIEWER', 'idle');
     komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
+    if (reviewResult.cost) {
+      taskCost += reviewResult.cost;
+    }
+
     // Registrar outcome en memoria (best effort)
     try {
       await recordOutcome(reviewResult.approved, reviewResult.cycles);
