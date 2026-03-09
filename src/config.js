@@ -45,6 +45,9 @@ export const config = {
 
   // Komodo
   wsPort: parseInt(process.env.WS_PORT || '3001', 10),
+  apiServer: process.env.API_SERVER === 'true', // default: false
+  apiPort: parseInt(process.env.API_PORT || '3002', 10),
+  komodoApiKey: process.env.KOMODO_API_KEY || '',
   maxReviewCycles: parseInt(process.env.MAX_REVIEW_CYCLES || '5', 10),
   autoMerge: process.env.AUTO_MERGE !== 'false', // default: true
   defaultProjectId: process.env.DEFAULT_PROJECT_ID || '',
