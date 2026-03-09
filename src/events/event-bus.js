@@ -103,6 +103,9 @@ export const EVENT_TYPES = {
   // Estimation tracker events
   ESTIMATION_RECORDED: 'estimation:recorded',
 
+  // Model performance tracker events
+  MODEL_PERFORMANCE_RECORDED: 'metrics:model-performance:recorded',
+
   // Smart ordering / context affinity events
   CONTEXT_AFFINITY_APPLIED: 'smart-ordering:affinity-applied',
 
