@@ -12,6 +12,11 @@ const AGENT = 'API';
 const requestLog = new Map();
 const RATE_WINDOW_MS = 60_000;
 
+/** Clears the rate-limiter request log (for testing). */
+export function clearRequestLog() {
+  requestLog.clear();
+}
+
 /**
  * Checks if an IP has exceeded the rate limit.
  * Cleans up old entries as a side effect.
@@ -47,11 +52,12 @@ export function isRateLimited(ip) {
  * Validates the API key from request headers.
  *
  * @param {import('http').IncomingMessage} req
+ * @param {string} [expectedKey] - Key to validate against (default: config.komodoApiKey)
  * @returns {boolean}
  */
-export function validateApiKey(req) {
+export function validateApiKey(req, expectedKey) {
   const key = req.headers['x-komodo-key'];
-  return key === config.komodoApiKey;
+  return key === (expectedKey ?? config.komodoApiKey);
 }
 
 /**
@@ -100,16 +106,13 @@ function json(res, status, data) {
 }
 
 /**
- * Extracts client IP from request (supports X-Forwarded-For).
+ * Extracts client IP from the socket connection.
+ * Does NOT trust X-Forwarded-For to prevent rate-limit bypass via IP spoofing.
  *
  * @param {import('http').IncomingMessage} req
  * @returns {string}
  */
 function getClientIp(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    return forwarded.split(',')[0].trim();
-  }
   return req.socket.remoteAddress || 'unknown';
 }
 
@@ -128,11 +131,13 @@ async function handleRun(req, res) {
     return json(res, 400, { error: 'projectId is required (body or DEFAULT_PROJECT_ID env)' });
   }
 
-  if (typeof tasks !== 'number' || tasks < 0) {
-    return json(res, 400, { error: 'tasks must be a non-negative number' });
+  if (typeof tasks !== 'number' || !Number.isInteger(tasks) || tasks < 1) {
+    return json(res, 400, { error: 'tasks must be a positive integer' });
   }
 
-  // Signal the orchestrator to start running
+  // Signal the orchestrator to start running with the requested task count
+  komodoState.totalTasks = tasks;
+  komodoState.tasksCompleted = 0;
   komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
 
   logger.info(`API: run requested — ${tasks} task(s), project ${projectId}`, AGENT);
@@ -323,8 +328,7 @@ export class KomodoApiServer {
     }
 
     // Authentication
-    const key = req.headers['x-komodo-key'];
-    if (key !== this.apiKey) {
+    if (!validateApiKey(req, this.apiKey)) {
       json(res, 401, { error: 'Invalid or missing API key' });
       return;
     }

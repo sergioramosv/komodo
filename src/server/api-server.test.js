@@ -28,7 +28,7 @@ vi.mock('../../skills/planning-task-mcp/src/firebase.js', () => ({
 import { config } from '../config.js';
 import { create } from '../../skills/planning-task-mcp/src/firebase.js';
 import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
-import { KomodoApiServer, isRateLimited, validateApiKey } from './api-server.js';
+import { KomodoApiServer, isRateLimited, validateApiKey, clearRequestLog } from './api-server.js';
 
 /** @type {KomodoApiServer} */
 let server;
@@ -61,8 +61,9 @@ beforeEach(async () => {
   config.apiRateLimitMax = 60;
   config.defaultProjectId = 'proj-test';
 
-  // Reset komodoState
+  // Reset komodoState and rate limiter
   komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
+  clearRequestLog();
 
   server = new KomodoApiServer({ port: 0 });
   await server.start();
@@ -157,7 +158,29 @@ describe('POST /api/run', () => {
       body: { tasks: -1 },
     });
     expect(status).toBe(400);
-    expect(data.error).toMatch(/non-negative/);
+    expect(data.error).toMatch(/positive integer/);
+  });
+
+  it('rejects zero tasks', async () => {
+    const { status, data } = await request('POST', '/api/run', {
+      body: { tasks: 0 },
+    });
+    expect(status).toBe(400);
+    expect(data.error).toMatch(/positive integer/);
+  });
+
+  it('rejects non-integer tasks', async () => {
+    const { status, data } = await request('POST', '/api/run', {
+      body: { tasks: 1.5 },
+    });
+    expect(status).toBe(400);
+    expect(data.error).toMatch(/positive integer/);
+  });
+
+  it('sets totalTasks in komodoState', async () => {
+    await request('POST', '/api/run', { body: { tasks: 3 } });
+    expect(komodoState.totalTasks).toBe(3);
+    expect(komodoState.tasksCompleted).toBe(0);
   });
 
   it('requires projectId when not configured', async () => {
