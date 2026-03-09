@@ -632,13 +632,15 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     // PLUGINS: before-review
     // ═══════════════════════════════════════════
+    let beforeReviewPluginResults = [];
     try {
-      await pluginLoader.executePlugins('before-review', {
+      beforeReviewPluginResults = await pluginLoader.executePlugins('before-review', {
         task: { id: taskSpec.taskId, title: taskSpec.title, body: taskSpec.body },
         prNumber: String(prNumber),
         branchName: taskSpec.branchName,
         repoPath: cwd,
         repo,
+        changedFiles: coderResult.pr.filesChanged || [],
       });
     } catch (err) {
       logger.warn(`Plugin before-review error (non-blocking): ${err.message}`, 'KOMODO');
@@ -659,8 +661,10 @@ export async function runTask(projectId, cwd) {
     });
     eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
 
+    const pluginIssues = beforeReviewPluginResults.flatMap(r => r.issues || []);
+
     const reviewResult = await withWatchdog(
-      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines }),
+      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues }),
       { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
     );
 
@@ -719,6 +723,7 @@ export async function runTask(projectId, cwd) {
         branchName: taskSpec.branchName,
         repoPath: cwd,
         repo,
+        changedFiles: coderResult.pr.filesChanged || [],
       });
     } catch (err) {
       logger.warn(`Plugin after-review error (non-blocking): ${err.message}`, 'KOMODO');
@@ -759,6 +764,7 @@ export async function runTask(projectId, cwd) {
             branchName: taskSpec.branchName,
             repoPath: cwd,
             repo,
+            changedFiles: coderResult.pr.filesChanged || [],
           });
         } catch (err) {
           logger.warn(`Plugin after-merge error (non-blocking): ${err.message}`, 'KOMODO');

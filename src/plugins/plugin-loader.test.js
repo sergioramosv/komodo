@@ -145,8 +145,51 @@ describe('PluginLoader', () => {
       const results = await loader.executePlugins('after-review', context);
 
       expect(results).toHaveLength(2);
-      expect(pluginA.execute).toHaveBeenCalledWith(context);
-      expect(pluginB.execute).toHaveBeenCalledWith(context);
+      expect(pluginA.execute).toHaveBeenCalledWith({ ...context, previousPluginOutputs: [] });
+      expect(pluginB.execute).toHaveBeenCalledWith({
+        ...context,
+        previousPluginOutputs: [expect.objectContaining({ success: true })],
+      });
+    });
+
+    it('pasa previousPluginOutputs con resultados acumulados a cada plugin', async () => {
+      const resultA = { success: true, issues: ['issue-a'], suggestions: [], data: {} };
+      const pluginA = makePlugin({
+        name: 'a',
+        position: 'before-review',
+        execute: vi.fn().mockResolvedValue(resultA),
+      });
+      const pluginB = makePlugin({ name: 'b', position: 'before-review' });
+      loader._plugins = [pluginA, pluginB];
+
+      await loader.executePlugins('before-review', {});
+
+      expect(pluginB.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ previousPluginOutputs: [resultA] }),
+      );
+    });
+
+    it('el primer plugin recibe previousPluginOutputs vacío', async () => {
+      const plugin = makePlugin({ name: 'first', position: 'after-merge' });
+      loader._plugins = [plugin];
+
+      await loader.executePlugins('after-merge', { task: { id: 't1', title: 'T' } });
+
+      expect(plugin.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ previousPluginOutputs: [] }),
+      );
+    });
+
+    it('incluye changedFiles en el contexto si se pasa', async () => {
+      const plugin = makePlugin({ name: 'files-plugin', position: 'before-review' });
+      loader._plugins = [plugin];
+
+      const changedFiles = ['src/foo.js', 'src/bar.js'];
+      await loader.executePlugins('before-review', { task: { id: 't1', title: 'T' }, changedFiles });
+
+      expect(plugin.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ changedFiles }),
+      );
     });
 
     it('retorna array vacío si no hay plugins para la position', async () => {

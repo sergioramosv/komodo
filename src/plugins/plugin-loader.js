@@ -108,7 +108,8 @@ export class PluginLoader {
     for (const plugin of plugins) {
       try {
         logger.info(`Running plugin "${plugin.name}"...`, 'PLUGINS');
-        const result = await plugin.execute(context);
+        const pluginContext = { ...context, previousPluginOutputs: [...results] };
+        const result = await plugin.execute(pluginContext);
         results.push(result);
 
         if (result.issues?.length) {
