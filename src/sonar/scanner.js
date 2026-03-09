@@ -42,10 +42,14 @@ export function checkSonarConfig() {
  *
  * Requiere SonarScanner CLI >= 5.0 cuando se usa sonar-project.properties con sintaxis ${env:VAR}.
  *
- * @param {string} [cwd] - Directorio del proyecto a analizar (default: rootDir)
+ * @param {Object} [options] - Opciones del scan
+ * @param {string} [options.cwd] - Directorio del proyecto a analizar (default: rootDir)
+ * @param {number} [options.prNumber] - Número de PR para PR decoration en SonarCloud
+ * @param {string} [options.branch] - Rama source de la PR
+ * @param {string} [options.baseBranch] - Rama base/target de la PR (default: main)
  * @returns {Promise<{ success: boolean, skipped: boolean, reason?: string, output?: string }>}
  */
-export async function runSonarScan(cwd) {
+export async function runSonarScan({ cwd, prNumber, branch, baseBranch = 'main' } = {}) {
   const projectDir = cwd || config.rootDir;
 
   // Degradación elegante — si no está configurado, seguir sin error
@@ -75,6 +79,16 @@ export async function runSonarScan(cwd) {
         `-Dsonar.sources=src`,
         `-Dsonar.sourceEncoding=UTF-8`,
       );
+    }
+
+    // PR decoration: pass PR parameters so SonarCloud posts comments on the PR
+    if (prNumber && branch) {
+      args.push(
+        `-Dsonar.pullrequest.key=${prNumber}`,
+        `-Dsonar.pullrequest.branch=${branch}`,
+        `-Dsonar.pullrequest.base=${baseBranch}`,
+      );
+      logger.info(`PR decoration habilitado (PR #${prNumber}, ${branch} → ${baseBranch})`, AGENT);
     }
 
     const { stdout } = await execFileAsync('sonar-scanner', args, {

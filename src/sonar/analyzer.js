@@ -191,6 +191,8 @@ async function fetchMetrics(branch) {
  * @param {Object} options
  * @param {string} [options.branch] - Nombre del branch a analizar
  * @param {string} [options.cwd] - Directorio del proyecto
+ * @param {number} [options.prNumber] - Número de PR para PR decoration en SonarCloud
+ * @param {string} [options.baseBranch] - Rama base/target de la PR (default: main)
  * @returns {Promise<SonarReport>}
  *
  * @typedef {Object} SonarReport
@@ -202,7 +204,7 @@ async function fetchMetrics(branch) {
  * @property {Array<{ severity: string, file: string, line: number, message: string, rule: string }>} issueDetails - Detalles de issues BLOCKER y CRITICAL
  * @property {{ bugs: number, vulnerabilities: number, code_smells: number, duplicated_lines_density: number, coverage: number }} metrics
  */
-export async function analyzeSonar({ branch, cwd } = {}) {
+export async function analyzeSonar({ branch, cwd, prNumber, baseBranch = 'main' } = {}) {
   // Check config first — graceful degradation
   const check = checkSonarConfig();
   if (!check.ready) {
@@ -217,7 +219,7 @@ export async function analyzeSonar({ branch, cwd } = {}) {
   try {
     // Step 1: Run sonar-scanner
     logger.info(`Ejecutando análisis SonarQube${branch ? ` (branch: ${branch})` : ''}...`, AGENT);
-    const scanResult = await runSonarScan(cwd);
+    const scanResult = await runSonarScan({ cwd, prNumber, branch, baseBranch });
 
     if (!scanResult.success) {
       const reason = scanResult.reason || 'sonar-scanner falló';

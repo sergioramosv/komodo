@@ -213,6 +213,7 @@ describe('analyzeSonar', () => {
       reason: 'disabled',
       qualityGate: null,
       issues: { BLOCKER: 0, CRITICAL: 0, MAJOR: 0, MINOR: 0, INFO: 0, total: 0 },
+      issueDetails: [],
       metrics: { bugs: 0, vulnerabilities: 0, code_smells: 0, duplicated_lines_density: 0, coverage: 0 },
     });
   });

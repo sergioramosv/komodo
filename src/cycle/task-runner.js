@@ -576,6 +576,7 @@ export async function runTask(projectId, cwd) {
     const sonarReport = await analyzeSonar({
       branch: taskSpec.branchName,
       cwd,
+      prNumber,
     });
 
     logger.stopSpinner();
@@ -1024,7 +1025,7 @@ async function _continueFromAnalysis(taskSpec, prNumber, repo, startTime, cwd) {
   komodoState.updatePhase(PHASES.ANALYZING, { currentPR: prNumber });
   komodoState.sonarAnalysis = { status: 'running', qualityGate: null, issues: null };
 
-  const sonarReport = await analyzeSonar({ branch: taskSpec.branchName, cwd });
+  const sonarReport = await analyzeSonar({ branch: taskSpec.branchName, cwd, prNumber });
 
   logger.stopSpinner();
 
