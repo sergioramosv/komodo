@@ -4,7 +4,13 @@ import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { komodoState, PHASES, EXECUTION_STATES } from '../state/komodo-state.js';
 import { KomodoWsServer } from '../server/ws-server.js';
-import { KomodoApiServer } from '../server/api-server.js';
+// Dynamic import — api-server.js may not exist yet (created by task [25.2])
+let KomodoApiServer = null;
+try {
+  ({ KomodoApiServer } = await import('../server/api-server.js'));
+} catch {
+  // API server not available yet — skip
+}
 import { checkpointManager } from '../state/checkpoint-manager.js';
 import { shutdownManager } from '../shutdown/shutdown-manager.js';
 import { budgetManager } from '../cost/budget-manager.js';
@@ -31,7 +37,8 @@ export const MULTI_PROJECT_EVENTS = {
 export async function resolveProjectIds() {
   const raw = config.projects;
 
-  if (raw.length === 1 && raw[0] === '*') {
+  // PROJECTS=* → fetch all projects the user is a member of
+  if (raw === '*' || (Array.isArray(raw) && raw.length === 1 && raw[0] === '*')) {
     const userId = config.defaultUserId;
     if (!userId) {
       throw new Error('PROJECTS=* requires DEFAULT_USER_ID to be set');
@@ -50,6 +57,12 @@ export async function resolveProjectIds() {
     return userProjects.map(p => p.id);
   }
 
+  // PROJECTS=id1,id2,... → parse comma-separated string into array
+  if (typeof raw === 'string') {
+    return raw.split(',').map(id => id.trim()).filter(Boolean);
+  }
+
+  // Already an array (e.g. from tests)
   return raw;
 }
 
@@ -126,7 +139,7 @@ export async function runMultiProject(projectIds, options = {}) {
   }
 
   let apiServer = null;
-  if (config.apiServerEnabled) {
+  if (config.apiServerEnabled && KomodoApiServer) {
     apiServer = new KomodoApiServer();
     try {
       await apiServer.start();
