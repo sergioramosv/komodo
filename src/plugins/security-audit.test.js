@@ -11,6 +11,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { PluginLoader } from './plugin-loader.js';
+import { buildPluginIssuesSection } from '../agents/reviewer.js';
 import securityAuditPlugin from '../../plugins/security-audit/index.js';
 
 // ── Helper ─────────────────────────────────────────────────────────────────────
@@ -373,5 +374,169 @@ describe('E2E: carga del plugin desde el sistema de archivos', () => {
     expect(pluginIssues).toHaveLength(2);
     expect(pluginIssues[0]).toMatch(/eval/);
     expect(pluginIssues[1]).toMatch(/TODO password/);
+  });
+});
+
+// ── E2E: flujo completo con mock plugin → buildPluginIssuesSection ────────────
+
+describe('E2E: mock plugin → carga → ejecución → inyección en reviewer prompt', () => {
+  let tmpDir;
+  let loader;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    loader = new PluginLoader();
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('issues del mock plugin se formatean en markdown para el reviewer', async () => {
+    const mockPlugin = {
+      name: 'mock-audit',
+      role: 'Mock audit plugin for E2E',
+      position: 'before-review',
+      execute: vi.fn().mockResolvedValue({
+        success: true,
+        issues: ['Hardcoded secret in db.js', 'eval() usage in utils.js'],
+        suggestions: ['Use environment variables'],
+        data: {},
+      }),
+    };
+
+    loader._plugins = [mockPlugin];
+    loader._loaded = true;
+
+    // Step 1: Execute plugins (like task-runner does)
+    const pluginResults = await loader.executePlugins('before-review', {
+      task: { id: 'task-e2e', title: 'E2E flow' },
+      changedFiles: ['db.js', 'utils.js'],
+    });
+
+    // Step 2: Flatten issues (like task-runner does)
+    const pluginIssues = pluginResults.flatMap(r => r.issues || []);
+
+    // Step 3: Build reviewer prompt section (like reviewer.js does)
+    const section = buildPluginIssuesSection(pluginIssues);
+
+    // Verify: issues appear as mandatory items in the reviewer prompt
+    expect(section).toContain('Plugin Analysis Issues (MANDATORY');
+    expect(section).toContain('- Hardcoded secret in db.js');
+    expect(section).toContain('- eval() usage in utils.js');
+    expect(section).toContain('MUST include these issues');
+    expect(section).toContain('REQUEST_CHANGES');
+  });
+
+  it('buildPluginIssuesSection retorna cadena vacía si no hay issues', () => {
+    expect(buildPluginIssuesSection([])).toBe('');
+    expect(buildPluginIssuesSection(null)).toBe('');
+    expect(buildPluginIssuesSection(undefined)).toBe('');
+  });
+
+  it('flujo completo: security-audit real → flatMap → buildPluginIssuesSection', async () => {
+    // Create files with real security issues
+    writeFileSync(join(tmpDir, 'app.js'), `
+      const password = 'admin1234';
+      function dangerous(input) { return eval(input); }
+      // TODO: fix credential leak
+    `);
+
+    loader._plugins = [securityAuditPlugin];
+    loader._loaded = true;
+
+    // Step 1: Execute (like task-runner)
+    const pluginResults = await loader.executePlugins('before-review', {
+      task: { id: 'task-real', title: 'Real security scan' },
+      repoPath: tmpDir,
+      changedFiles: ['app.js'],
+    });
+
+    // Step 2: Flatten (like task-runner)
+    const pluginIssues = pluginResults.flatMap(r => r.issues || []);
+
+    // Step 3: Build prompt section (like reviewer.js)
+    const section = buildPluginIssuesSection(pluginIssues);
+
+    // Verify full chain: each detected issue appears in the reviewer prompt
+    expect(pluginIssues.length).toBeGreaterThanOrEqual(2);
+    expect(section).toContain('MANDATORY');
+    expect(section).toContain('app.js');
+    // Each issue is a bullet point in the prompt
+    for (const issue of pluginIssues) {
+      expect(section).toContain(`- ${issue}`);
+    }
+  });
+
+  it('múltiples plugins: issues de todos se combinan en una sola sección', async () => {
+    const pluginA = {
+      name: 'audit-a',
+      role: 'First audit',
+      position: 'before-review',
+      execute: vi.fn().mockResolvedValue({
+        success: true,
+        issues: ['Issue from plugin A'],
+        suggestions: [],
+      }),
+    };
+    const pluginB = {
+      name: 'audit-b',
+      role: 'Second audit',
+      position: 'before-review',
+      execute: vi.fn().mockResolvedValue({
+        success: true,
+        issues: ['Issue from plugin B', 'Another issue from B'],
+        suggestions: [],
+      }),
+    };
+
+    loader._plugins = [pluginA, pluginB];
+    loader._loaded = true;
+
+    const pluginResults = await loader.executePlugins('before-review', {
+      task: { id: 'task-multi', title: 'Multi plugin' },
+    });
+
+    const pluginIssues = pluginResults.flatMap(r => r.issues || []);
+    const section = buildPluginIssuesSection(pluginIssues);
+
+    expect(pluginIssues).toHaveLength(3);
+    expect(section).toContain('- Issue from plugin A');
+    expect(section).toContain('- Issue from plugin B');
+    expect(section).toContain('- Another issue from B');
+  });
+
+  it('plugin que falla no impide que otros issues lleguen al reviewer', async () => {
+    const brokenPlugin = {
+      name: 'broken',
+      role: 'Always fails',
+      position: 'before-review',
+      execute: vi.fn().mockRejectedValue(new Error('boom')),
+    };
+    const goodPlugin = {
+      name: 'good-audit',
+      role: 'Working audit',
+      position: 'before-review',
+      execute: vi.fn().mockResolvedValue({
+        success: true,
+        issues: ['Real issue found'],
+        suggestions: [],
+      }),
+    };
+
+    loader._plugins = [brokenPlugin, goodPlugin];
+    loader._loaded = true;
+
+    const pluginResults = await loader.executePlugins('before-review', {
+      task: { id: 'task-mixed', title: 'Mixed plugins' },
+    });
+
+    const pluginIssues = pluginResults.flatMap(r => r.issues || []);
+    const section = buildPluginIssuesSection(pluginIssues);
+
+    // Both the error message from broken plugin and the real issue appear
+    expect(pluginIssues).toHaveLength(2);
+    expect(section).toContain('- boom');
+    expect(section).toContain('- Real issue found');
   });
 });
