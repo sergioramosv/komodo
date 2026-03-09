@@ -126,6 +126,10 @@ export const EVENT_TYPES = {
   RELEASE_GATE_PASSED: 'release:gate:passed',
   RELEASE_GATE_BLOCKED: 'release:gate:blocked',
 
+  // Webhook outgoing events
+  WEBHOOK_SENT: 'webhook:sent',
+  WEBHOOK_FAILED: 'webhook:failed',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
