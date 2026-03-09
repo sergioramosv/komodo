@@ -198,6 +198,13 @@ export const config = {
   releaseOnSprintComplete: process.env.RELEASE_ON_SPRINT_COMPLETE !== 'false', // default: true
   releaseIgnoreBugs: process.env.RELEASE_IGNORE_BUGS === 'true', // default: false — override release gate
 
+  // Multi-project support
+  projects: (process.env.PROJECTS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean),
+  multiProjectStrategy: process.env.MULTI_PROJECT_STRATEGY || 'round-robin',
+
   // Budget Manager
   dailyBudgetUsd: parseFloat(process.env.DAILY_BUDGET_USD || '10'),
   weeklyBudgetUsd: parseFloat(process.env.WEEKLY_BUDGET_USD || '50'),

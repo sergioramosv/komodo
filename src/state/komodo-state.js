@@ -130,6 +130,12 @@ export class KomodoState {
       weeklyBudget: 0,
       paused: false,
     };
+
+    /**
+     * Multi-project state (null when running single project).
+     * @type {{ enabled: boolean, projects: string[], strategy: string, activeProject: string|null, perProject: Object<string, { tasksCompleted: number, tasksFailed: number, dailySpent: number }> } | null}
+     */
+    this.multiProject = null;
   }
 
   /**
@@ -160,6 +166,15 @@ export class KomodoState {
         blockingBugs: [...this.releaseReadiness.blockingBugs],
       },
       budget: { ...this.budget },
+      multiProject: this.multiProject ? {
+        enabled: this.multiProject.enabled,
+        projects: [...this.multiProject.projects],
+        strategy: this.multiProject.strategy,
+        activeProject: this.multiProject.activeProject,
+        perProject: Object.fromEntries(
+          Object.entries(this.multiProject.perProject).map(([k, v]) => [k, { ...v }]),
+        ),
+      } : null,
     };
   }
 
