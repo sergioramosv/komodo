@@ -14,6 +14,7 @@ import {
   formatStatus,
   formatTaskList,
   formatBacklog,
+  formatWeeklyDigest,
 } from './formatter.js';
 
 describe('escapeMarkdown', () => {
@@ -456,5 +457,118 @@ describe('formatBacklog', () => {
     const result = formatBacklog({ error: 'No project ID configured' });
     expect(result).toContain('Error');
     expect(result).toContain('No project ID configured');
+  });
+});
+
+describe('formatWeeklyDigest', () => {
+  const baseMetrics = {
+    projectId: 'proj-1',
+    weekStart: '2026-03-02T00:00:00.000Z',
+    weekEnd: '2026-03-08T23:59:59.999Z',
+    tasksCompleted: 5,
+    prsMerged: 4,
+    bugsFound: 2,
+    bugsResolved: 1,
+    totalCost: 3.25,
+    velocity: {
+      currentWeekDevPoints: 21,
+      previousWeekDevPoints: 15,
+      trend: 'up',
+      changePercent: 40,
+    },
+    topTasks: [
+      { taskId: 't1', title: 'Auth system', bizPoints: 13, devPoints: 8, completedAt: '2026-03-03T10:00:00Z' },
+      { taskId: 't2', title: 'Dashboard', bizPoints: 8, devPoints: 5, completedAt: '2026-03-04T10:00:00Z' },
+      { taskId: 't3', title: 'CI pipeline', bizPoints: 5, devPoints: 3, completedAt: '2026-03-05T10:00:00Z' },
+    ],
+    criticalBugsOpen: [],
+  };
+
+  it('includes all main sections', () => {
+    const result = formatWeeklyDigest(baseMetrics);
+    expect(result).toContain('*Resumen semanal*');
+    expect(result).toContain('*Resumen*');
+    expect(result).toContain('*Top tareas completadas*');
+    expect(result).toContain('*Costes*');
+    expect(result).toContain('*Velocity*');
+  });
+
+  it('shows correct summary numbers', () => {
+    const result = formatWeeklyDigest(baseMetrics);
+    expect(result).toContain('*Tareas completadas:* 5');
+    expect(result).toContain('*PRs mergeados:* 4');
+    expect(result).toContain('*Bugs encontrados:* 2');
+    expect(result).toContain('*Bugs resueltos:* 1');
+  });
+
+  it('shows top tasks with medals and bizPoints', () => {
+    const result = formatWeeklyDigest(baseMetrics);
+    expect(result).toContain('\u{1F947}');
+    expect(result).toContain('Auth system');
+    expect(result).toContain('13 bizPts');
+    expect(result).toContain('\u{1F948}');
+    expect(result).toContain('Dashboard');
+    expect(result).toContain('\u{1F949}');
+    expect(result).toContain('CI pipeline');
+  });
+
+  it('shows up trend emoji for increasing velocity', () => {
+    const result = formatWeeklyDigest(baseMetrics);
+    expect(result).toContain('\u{1F4C8}');
+    expect(result).toContain('21 devPts');
+    expect(result).toContain('15 devPts');
+    expect(result).toContain('40%');
+  });
+
+  it('shows down trend emoji for decreasing velocity', () => {
+    const metrics = {
+      ...baseMetrics,
+      velocity: { currentWeekDevPoints: 10, previousWeekDevPoints: 20, trend: 'down', changePercent: -50 },
+    };
+    const result = formatWeeklyDigest(metrics);
+    expect(result).toContain('\u{1F4C9}');
+    expect(result).toContain('50%');
+  });
+
+  it('shows stable trend emoji', () => {
+    const metrics = {
+      ...baseMetrics,
+      velocity: { currentWeekDevPoints: 10, previousWeekDevPoints: 10, trend: 'stable', changePercent: 0 },
+    };
+    const result = formatWeeklyDigest(metrics);
+    expect(result).toContain('\u27A1');
+  });
+
+  it('shows critical bugs warning when present', () => {
+    const metrics = {
+      ...baseMetrics,
+      criticalBugsOpen: [
+        { id: 'b1', title: 'Login crash', severity: 'critical', status: 'open', warning: true },
+        { id: 'b2', title: 'Data loss on save', severity: 'critical', status: 'open', warning: true },
+      ],
+    };
+    const result = formatWeeklyDigest(metrics);
+    expect(result).toContain('\u26A0\uFE0F');
+    expect(result).toContain('Bugs critical abiertos');
+    expect(result).toContain('2');
+    expect(result).toContain('Login crash');
+    expect(result).toContain('Data loss on save');
+    expect(result).toContain('\u{1F534}');
+  });
+
+  it('omits critical bugs section when none exist', () => {
+    const result = formatWeeklyDigest(baseMetrics);
+    expect(result).not.toContain('Bugs critical abiertos');
+  });
+
+  it('omits top tasks section when no tasks completed', () => {
+    const metrics = { ...baseMetrics, topTasks: [] };
+    const result = formatWeeklyDigest(metrics);
+    expect(result).not.toContain('Top tareas completadas');
+  });
+
+  it('shows cost', () => {
+    const result = formatWeeklyDigest(baseMetrics);
+    expect(result).toContain('$3\\.25');
   });
 });

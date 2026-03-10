@@ -734,3 +734,94 @@ export function formatAlreadyRunning() {
 export function formatNothingRunning() {
   return `\u2139\uFE0F No hay ninguna ejecuci\u00f3n en curso\\.`;
 }
+
+// --- Weekly digest formatter ---
+
+const TREND_EMOJIS = {
+  up: '\u{1F4C8}',
+  down: '\u{1F4C9}',
+  stable: '\u27A1\uFE0F',
+};
+
+/**
+ * Formats a date range as "DD Mon – DD Mon" for readability.
+ * @param {string} startIso
+ * @param {string} endIso
+ * @returns {string} escaped MarkdownV2 string
+ */
+function formatDateRange(startIso, endIso) {
+  const opts = { day: 'numeric', month: 'short' };
+  const start = new Date(startIso).toLocaleDateString('es-ES', opts);
+  const end = new Date(endIso).toLocaleDateString('es-ES', opts);
+  return escapeMarkdown(`${start} – ${end}`);
+}
+
+/**
+ * Formats the weekly metrics digest for Telegram.
+ *
+ * Sections: summary, completed tasks, PRs, bugs, costs, velocity.
+ * Uses emojis for trends: 📈 up, 📉 down, ➡️ stable.
+ * Highlights top 3 tasks by bizPoints.
+ * Shows ⚠️ warning for open critical bugs.
+ *
+ * @param {import('../metrics/weekly-metrics.js').WeeklyMetrics} metrics
+ * @returns {string} MarkdownV2 formatted message
+ */
+export function formatWeeklyDigest(metrics) {
+  const trendEmoji = TREND_EMOJIS[metrics.velocity.trend] || TREND_EMOJIS.stable;
+  const dateRange = formatDateRange(metrics.weekStart, metrics.weekEnd);
+
+  const lines = [
+    `\u{1F4CA} *Resumen semanal* \\(${dateRange}\\)`,
+    ``,
+  ];
+
+  // --- Summary ---
+  lines.push(`\u{1F4CB} *Resumen*`);
+  lines.push(`  \u2022 *Tareas completadas:* ${escapeMarkdown(String(metrics.tasksCompleted))}`);
+  lines.push(`  \u2022 *PRs mergeados:* ${escapeMarkdown(String(metrics.prsMerged))}`);
+  lines.push(`  \u2022 *Bugs encontrados:* ${escapeMarkdown(String(metrics.bugsFound))}`);
+  lines.push(`  \u2022 *Bugs resueltos:* ${escapeMarkdown(String(metrics.bugsResolved))}`);
+  lines.push(``);
+
+  // --- Top tasks ---
+  if (metrics.topTasks && metrics.topTasks.length > 0) {
+    lines.push(`\u{1F3C6} *Top tareas completadas*`);
+    for (let i = 0; i < metrics.topTasks.length; i++) {
+      const t = metrics.topTasks[i];
+      const medal = i === 0 ? '\u{1F947}' : i === 1 ? '\u{1F948}' : '\u{1F949}';
+      const title = escapeMarkdown(t.title || 'Sin título');
+      const biz = escapeMarkdown(String(t.bizPoints || 0));
+      lines.push(`  ${medal} ${title} \\(${biz} bizPts\\)`);
+    }
+    lines.push(``);
+  }
+
+  // --- Critical bugs warning ---
+  if (metrics.criticalBugsOpen && metrics.criticalBugsOpen.length > 0) {
+    lines.push(`\u26A0\uFE0F *Bugs critical abiertos \\(${escapeMarkdown(String(metrics.criticalBugsOpen.length))}\\)*`);
+    for (const bug of metrics.criticalBugsOpen) {
+      const title = escapeMarkdown(bug.title || 'Sin título');
+      lines.push(`  \u{1F534} ${title}`);
+    }
+    lines.push(``);
+  }
+
+  // --- Costs ---
+  lines.push(`\u{1F4B0} *Costes*`);
+  lines.push(`  \u2022 *Total semana:* $${escapeMarkdown(String(metrics.totalCost))}`);
+  lines.push(``);
+
+  // --- Velocity ---
+  const currentPts = escapeMarkdown(String(metrics.velocity.currentWeekDevPoints));
+  const prevPts = escapeMarkdown(String(metrics.velocity.previousWeekDevPoints));
+  const changePct = escapeMarkdown(String(Math.abs(metrics.velocity.changePercent)));
+  const sign = metrics.velocity.changePercent >= 0 ? '\\+' : '\\-';
+
+  lines.push(`${trendEmoji} *Velocity*`);
+  lines.push(`  \u2022 *Esta semana:* ${currentPts} devPts`);
+  lines.push(`  \u2022 *Semana anterior:* ${prevPts} devPts`);
+  lines.push(`  \u2022 *Cambio:* ${sign}${changePct}%`);
+
+  return lines.join('\n');
+}
