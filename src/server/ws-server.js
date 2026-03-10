@@ -161,6 +161,43 @@ export class KomodoWsServer {
       return;
     }
 
+    // Receive forwarded events from komodo-mcp (separate process)
+    if (req.method === 'POST' && req.url === '/api/event') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', () => {
+        try {
+          const payload = JSON.parse(body);
+
+          // Update komodoState from the event
+          if (payload.type === 'AGENT_STATE_CHANGE' && payload.agentName) {
+            const status = payload.newState || payload.metadata?.newState;
+            if (status) {
+              komodoState.updateAgent(payload.agentName, {
+                status,
+                currentTask: payload.metadata?.taskId || null,
+                cli: payload.metadata?.cli || null,
+                model: payload.metadata?.model || null,
+              });
+            }
+            if (payload.metadata?.phase) {
+              komodoState.updatePhase(payload.metadata.phase);
+            }
+          }
+
+          // Broadcast to all WebSocket clients
+          this._broadcast({ type: 'event', data: payload });
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end('{"ok":true}');
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end('{"error":"Invalid JSON"}');
+        }
+      });
+      return;
+    }
+
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Not found' }));
   }

@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import { getStatus, getTasks, getBacklog } from './data.js';
 import { formatStatus, formatTaskList, formatBacklog } from './formatter.js';
 import { startExecution, stopExecution, runDryRun } from './run-controller.js';
+import { sendWeeklyDigest } from './digest.js';
 
 const AGENT = 'TELEGRAM';
 
@@ -17,6 +18,7 @@ const COMMANDS_LIST = [
   '/run all - Ejecuta todas las tareas del backlog',
   '/dryrun - Muestra qu\u00e9 tarea se ejecutar\u00eda sin hacerlo',
   '/stop - Detiene la ejecuci\u00f3n actual',
+  '/digest - Resumen semanal de métricas',
   '',
   'Texto libre \u2192 se env\u00eda como prompt a Claude Code',
 ];
@@ -76,6 +78,21 @@ export function registerCommands(bot) {
     } catch (err) {
       logger.error(`/backlog error: ${err.message}`, AGENT);
       bot.sendMessage(msg.chat.id, 'Error al obtener el backlog.')
+        .catch(e => logger.error(`sendMessage error: ${e.message}`, AGENT));
+    }
+  }));
+
+  // --- Digest command ---
+
+  bot.onText(/^\/digest(@\w+)?$/, withAuth(async (msg) => {
+    try {
+      const result = await sendWeeklyDigest({ chatId: String(msg.chat.id) });
+      if (!result.success) {
+        await bot.sendMessage(msg.chat.id, `Error: ${result.error}`);
+      }
+    } catch (err) {
+      logger.error(`/digest error: ${err.message}`, AGENT);
+      bot.sendMessage(msg.chat.id, 'Error al generar el digest semanal.')
         .catch(e => logger.error(`sendMessage error: ${e.message}`, AGENT));
     }
   }));

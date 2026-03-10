@@ -139,6 +139,9 @@ export const EVENT_TYPES = {
   WEBHOOK_SENT: 'webhook:sent',
   WEBHOOK_FAILED: 'webhook:failed',
 
+  // Weekly digest events
+  WEEKLY_DIGEST: 'digest:weekly',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 

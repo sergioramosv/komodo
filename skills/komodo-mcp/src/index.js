@@ -30,7 +30,7 @@ const { eventBus } = await import('../../../src/events/event-bus.js');
 
 // ── EventBus Forwarding ───────────────────────────────────────────────
 // Forward any local eventBus events to the standalone ws-server using IPv4
-const WS_SERVER_URL = `http://127.0.0.1:${process.env.WS_PORT || 4681}`;
+const WS_SERVER_URL = `http://127.0.0.1:${process.env.WS_PORT || 3001}`;
 eventBus.onAny((payload) => {
   fetch(`${WS_SERVER_URL}/api/event`, {
     method: 'POST',
