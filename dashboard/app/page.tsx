@@ -133,7 +133,7 @@ export default function DashboardPage() {
                     )}
                     {snapshot.currentPR && (
                       <span className="rounded bg-neutral-800 px-2 py-0.5">
-                        PR: {snapshot.currentPR}
+                        PR: {typeof snapshot.currentPR === 'object' ? `#${snapshot.currentPR.number}` : snapshot.currentPR}
                       </span>
                     )}
                   </div>
