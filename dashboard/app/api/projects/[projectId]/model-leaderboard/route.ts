@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/firebase';
-import { computeLeaderboard } from '@/lib/leaderboard';
+import { computeLeaderboard, computeOptimalModels, computeRecommendations } from '@/lib/leaderboard';
 import type { TaskRecord } from '@/lib/leaderboard';
 
 interface PersistedEvent {
@@ -91,7 +91,9 @@ export async function GET(
     }
 
     const leaderboard = computeLeaderboard(tasks, allowedTaskIds);
-    return NextResponse.json({ leaderboard });
+    const optimalModels = computeOptimalModels(leaderboard);
+    const recommendations = computeRecommendations(leaderboard);
+    return NextResponse.json({ leaderboard, optimalModels, recommendations });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

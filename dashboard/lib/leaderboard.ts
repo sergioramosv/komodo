@@ -29,6 +29,110 @@ function round2(v: number): number {
   return Math.round(v * 100) / 100;
 }
 
+export interface OptimalModel {
+  role: string;
+  model: string;
+  avgScore: number;
+  taskCount: number;
+  label: string;
+}
+
+export interface ModelRecommendation {
+  role: string;
+  currentDefault: string;
+  currentAvgScore: number;
+  currentAvgCost: number;
+  recommended: string;
+  recommendedAvgScore: number;
+  recommendedAvgCost: number;
+  savingsPercent: number;
+  message: string;
+}
+
+const MIN_TASKS_FOR_HIGHLIGHT = 3;
+const RECOMMENDATION_SCORE_THRESHOLD = 8;
+
+const ROLE_LABELS: Record<string, string> = {
+  planner: 'planner tasks',
+  coder: 'coder tasks',
+  reviewer: 'reviewer tasks',
+};
+
+/**
+ * Finds the optimal (highest avg score) model for each role.
+ * Requires at least MIN_TASKS_FOR_HIGHLIGHT scored tasks to qualify.
+ */
+export function computeOptimalModels(leaderboard: LeaderboardRow[]): OptimalModel[] {
+  const bestByRole: Record<string, LeaderboardRow> = {};
+
+  for (const row of leaderboard) {
+    if (row.avgScore === null || row.taskCount < MIN_TASKS_FOR_HIGHLIGHT) continue;
+
+    const current = bestByRole[row.role];
+    if (!current || (row.avgScore > (current.avgScore ?? -1))) {
+      bestByRole[row.role] = row;
+    }
+  }
+
+  return Object.entries(bestByRole).map(([role, row]) => ({
+    role,
+    model: row.model,
+    avgScore: row.avgScore!,
+    taskCount: row.taskCount,
+    label: `Best for ${ROLE_LABELS[role] || role}: ${row.model} (${row.avgScore!.toFixed(1)} avg score)`,
+  }));
+}
+
+/**
+ * Finds cheaper models that consistently score above the threshold.
+ * Compares against the most expensive model per role that also scores well.
+ */
+export function computeRecommendations(leaderboard: LeaderboardRow[]): ModelRecommendation[] {
+  const recommendations: ModelRecommendation[] = [];
+  const byRole: Record<string, LeaderboardRow[]> = {};
+
+  for (const row of leaderboard) {
+    if (row.avgScore === null || row.taskCount < MIN_TASKS_FOR_HIGHLIGHT) continue;
+    if (!byRole[row.role]) byRole[row.role] = [];
+    byRole[row.role].push(row);
+  }
+
+  for (const [role, rows] of Object.entries(byRole)) {
+    if (rows.length < 2) continue;
+
+    // Sort by cost descending to find the most expensive model
+    const sorted = [...rows].sort((a, b) => b.avgCost - a.avgCost);
+    const mostExpensive = sorted[0];
+
+    // Find cheaper models with score > threshold
+    for (const candidate of sorted.slice(1)) {
+      if (
+        candidate.avgScore! >= RECOMMENDATION_SCORE_THRESHOLD &&
+        candidate.avgCost < mostExpensive.avgCost
+      ) {
+        const savingsPercent = mostExpensive.avgCost > 0
+          ? round2(((mostExpensive.avgCost - candidate.avgCost) / mostExpensive.avgCost) * 100)
+          : 0;
+
+        recommendations.push({
+          role,
+          currentDefault: mostExpensive.model,
+          currentAvgScore: mostExpensive.avgScore!,
+          currentAvgCost: mostExpensive.avgCost,
+          recommended: candidate.model,
+          recommendedAvgScore: candidate.avgScore!,
+          recommendedAvgCost: candidate.avgCost,
+          savingsPercent,
+          message: `Consider ${candidate.model} for ${role}: scores ${candidate.avgScore!.toFixed(1)} avg with ${savingsPercent}% lower cost than ${mostExpensive.model}`,
+        });
+        break; // One recommendation per role
+      }
+    }
+  }
+
+  return recommendations;
+}
+
 export function computeLeaderboard(
   tasks: TaskRecord[],
   allowedTaskIds: Set<string> | null,
