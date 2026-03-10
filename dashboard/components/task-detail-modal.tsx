@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Briefcase, Cog, Star, User, Users, GitBranch, GitPullRequest, Hash, Calendar, IterationCw, X, CheckSquare, Loader2 } from 'lucide-react';
 import { TaskDetails } from '@/lib/types';
 
 /* ── Firebase Task shape (from planning-task) ── */
@@ -29,7 +30,9 @@ interface FullTask {
   acceptanceCriteria?: string[];
   userStory?: UserStory | string | null;
   developer?: string;
+  developerName?: string;
   coDeveloper?: string;
+  coDeveloperName?: string;
   startDate?: string;
   endDate?: string;
   bizPoints?: number;
@@ -101,8 +104,8 @@ export function TaskDetailModal({ isOpen, onClose, task, currentPR }: TaskDetail
   const title = fullTask?.title || task.title;
   const devPoints = fullTask?.devPoints ?? task.devPoints;
   const bizPoints = fullTask?.bizPoints ?? task.businessPoints;
-  const developer = fullTask?.developer || task.assignedDeveloper;
-  const coDeveloper = fullTask?.coDeveloper;
+  const developer = fullTask?.developerName || fullTask?.developer || task.assignedDeveloper;
+  const coDeveloper = fullTask?.coDeveloperName || fullTask?.coDeveloper;
   const sprint = fullTask?.sprintName || task.sprint;
   const branchName = fullTask?.branchName ?? task.branchName;
   const acceptanceCriteria = fullTask?.acceptanceCriteria || task.acceptanceCriteria || [];
@@ -149,7 +152,7 @@ export function TaskDetailModal({ isOpen, onClose, task, currentPR }: TaskDetail
             onClick={onClose}
             className="mt-1 rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-white"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+            <X size={16} />
           </button>
         </div>
 
@@ -157,7 +160,7 @@ export function TaskDetailModal({ isOpen, onClose, task, currentPR }: TaskDetail
         <div className="space-y-5 p-5">
           {loading && (
             <div className="flex items-center gap-2 text-sm text-neutral-400">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-600 border-t-blue-400" />
+              <Loader2 size={16} className="animate-spin text-blue-400" />
               Loading task from Firebase...
             </div>
           )}
@@ -194,7 +197,7 @@ export function TaskDetailModal({ isOpen, onClose, task, currentPR }: TaskDetail
           <div className="flex flex-wrap gap-3">
             {bizPoints != null && bizPoints > 0 && (
               <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2">
-                <span className="text-amber-400 text-lg">&#128188;</span>
+                <Briefcase size={20} className="text-amber-400" />
                 <div>
                   <p className="text-xs text-amber-400/70">Business Points</p>
                   <p className="text-lg font-bold text-amber-400">{bizPoints}</p>
@@ -203,7 +206,7 @@ export function TaskDetailModal({ isOpen, onClose, task, currentPR }: TaskDetail
             )}
             {devPoints != null && devPoints > 0 && (
               <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 px-3 py-2">
-                <span className="text-blue-400 text-lg">&#9881;</span>
+                <Cog size={20} className="text-blue-400" />
                 <div>
                   <p className="text-xs text-blue-400/70">Dev Points</p>
                   <p className="text-lg font-bold text-blue-400">{devPoints}</p>
@@ -212,7 +215,7 @@ export function TaskDetailModal({ isOpen, onClose, task, currentPR }: TaskDetail
             )}
             {priority != null && (
               <div className="flex items-center gap-2 rounded-lg bg-purple-500/10 px-3 py-2">
-                <span className="text-purple-400 text-lg">&#9733;</span>
+                <Star size={20} className="text-purple-400" />
                 <div>
                   <p className="text-xs text-purple-400/70">Priority</p>
                   <p className="text-lg font-bold text-purple-400">{priority}</p>
@@ -286,7 +289,7 @@ export function TaskDetailModal({ isOpen, onClose, task, currentPR }: TaskDetail
               <ul className="space-y-1.5">
                 {acceptanceCriteria.map((criterion, i) => (
                   <li key={i} className="flex items-start gap-2 text-sm text-neutral-300">
-                    <span className="mt-0.5 text-neutral-600">&#9744;</span>
+                    <CheckSquare size={14} className="mt-0.5 text-neutral-600 shrink-0" />
                     {criterion}
                   </li>
                 ))}
