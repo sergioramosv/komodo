@@ -35,6 +35,15 @@ const { checkpointManager } = await import('../../../src/state/checkpoint-manage
 const { komodoState, EXECUTION_STATES } = await import('../../../src/state/komodo-state.js');
 const { heartbeatMonitor } = await import('../../../src/heartbeat/heartbeat-monitor.js');
 const { analyzeSonar } = await import('../../../src/sonar/analyzer.js');
+const { recordTaskMetrics } = await import('../../../src/estimation/estimation-tracker.js');
+const { recordModelPerformance } = await import('../../../src/metrics/model-performance-tracker.js');
+const { startEventPersistence } = await import('../../../src/events/event-persistence.js');
+
+// Start event persistence so MCP events get saved to Firebase
+const _projectId = config.defaultProjectId;
+if (_projectId) {
+  startEventPersistence(_projectId);
+}
 
 let runGh;
 try {
@@ -108,6 +117,51 @@ async function changeTaskStatus(taskId, newStatus) {
     mcpServerNames: ['planning-task-mcp'],
     maxTurns: 5,
   });
+}
+
+/**
+ * Records task metrics and model performance to Firebase after finalization.
+ * Best-effort: failures are logged but don't block the response.
+ */
+async function _recordFinalizationMetrics(params, approved, merged) {
+  const projectId = _projectId || config.defaultProjectId;
+  if (!projectId) return;
+
+  const duration = params.durationSeconds || 0;
+  const reviewCycles = params.reviewCycles || 0;
+
+  try {
+    await recordTaskMetrics({
+      taskId: params.taskId,
+      projectId,
+      estimatedDevPoints: params.devPoints || 0,
+      totalDuration: duration,
+      reviewCycles,
+      approved,
+      merged,
+      filesChanged: [],
+      model: config.forceModel_CODER || config.cliCoder || '',
+    });
+  } catch (err) {
+    // Non-blocking
+  }
+
+  try {
+    await recordModelPerformance({
+      taskId: params.taskId,
+      projectId,
+      plannerModel: config.forceModel_PLANNER || config.cliPlanner || '',
+      coderModel: config.forceModel_CODER || config.cliCoder || '',
+      reviewerModel: config.forceModel_REVIEWER || config.cliReviewer || '',
+      reviewScore: params.reviewScore ?? null,
+      reviewCycles,
+      durationSeconds: duration,
+      cost: 0,
+      approved,
+    });
+  } catch (err) {
+    // Non-blocking
+  }
 }
 
 // ─── Tools ────────────────────────────────────────────────────────────
@@ -258,6 +312,21 @@ export const tools = {
         if (pausedResponse) return pausedResponse;
 
         return { success: false, error: result.error, duration: result.duration };
+      }
+
+      // Emit PR_CREATED event
+      if (result.pr?.prNumber) {
+        const repoName = extractOwnerRepo(params.repoUrl);
+        komodoState.currentPR = { number: result.pr.prNumber, repo: repoName };
+
+        eventBus.emitEvent(EVENT_TYPES.PR_CREATED, {
+          metadata: {
+            prNumber: result.pr.prNumber,
+            repo: repoName,
+            taskId: params.taskId,
+            taskTitle: params.title,
+          },
+        });
       }
 
       return {
@@ -500,10 +569,17 @@ export const tools = {
       prNumber: z.number().describe('Número de la Pull Request'),
       repo: z.string().describe('Repositorio en formato owner/repo'),
       approved: z.boolean().describe('true si la PR fue aprobada, false si no'),
+      reviewScore: z.number().optional().describe('Score del review (0-10)'),
+      reviewCycles: z.number().optional().describe('Número de ciclos de review'),
+      taskTitle: z.string().optional().describe('Título de la tarea (para métricas)'),
+      devPoints: z.number().optional().describe('Dev points de la tarea'),
+      durationSeconds: z.number().optional().describe('Duración total en segundos'),
     },
 
     handler: async (params) => {
       const { taskId, prNumber, repo, approved } = params;
+
+      komodoState.updatePhase('merging');
 
       if (!approved) {
         // Close PR + rollback task
@@ -528,6 +604,11 @@ export const tools = {
             error: `PR cerrada pero no se pudo revertir tarea: ${err.message}`,
           };
         }
+
+        komodoState.updatePhase('idle');
+        komodoState.currentTask = null;
+        komodoState.taskDetails = null;
+        komodoState.currentPR = null;
 
         return {
           success: true,
@@ -570,6 +651,30 @@ export const tools = {
           // Non-fatal: PR merged but task status might not update
         }
 
+        // Emit PR_MERGED and TASK_COMPLETED events
+        eventBus.emitEvent(EVENT_TYPES.PR_MERGED, {
+          metadata: { prNumber, repo, taskId },
+        });
+
+        komodoState.tasksCompleted = (komodoState.tasksCompleted || 0) + 1;
+        komodoState.currentTask = null;
+        komodoState.taskDetails = null;
+        komodoState.currentPR = null;
+        komodoState.reviewCycle = 0;
+        komodoState.updatePhase('idle');
+
+        eventBus.emitEvent(EVENT_TYPES.TASK_COMPLETED, {
+          metadata: {
+            taskId, prNumber, repo, action: 'merged',
+            title: params.taskTitle || taskId,
+            reviewCycles: params.reviewCycles || 0,
+            totalDuration: params.durationSeconds || 0,
+          },
+        });
+
+        // Record metrics to Firebase (best effort)
+        await _recordFinalizationMetrics(params, true, true);
+
         return {
           success: true,
           action: 'merged',
@@ -585,6 +690,25 @@ export const tools = {
       } catch (err) {
         // Non-fatal
       }
+
+      komodoState.tasksCompleted = (komodoState.tasksCompleted || 0) + 1;
+      komodoState.currentTask = null;
+      komodoState.taskDetails = null;
+      komodoState.currentPR = null;
+      komodoState.reviewCycle = 0;
+      komodoState.updatePhase('idle');
+
+      eventBus.emitEvent(EVENT_TYPES.TASK_COMPLETED, {
+        metadata: {
+          taskId, prNumber, repo, action: 'pending-merge',
+          title: params.taskTitle || taskId,
+          reviewCycles: params.reviewCycles || 0,
+          totalDuration: params.durationSeconds || 0,
+        },
+      });
+
+      // Record metrics to Firebase (best effort)
+      await _recordFinalizationMetrics(params, true, false);
 
       return {
         success: true,
