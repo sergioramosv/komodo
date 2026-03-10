@@ -5,6 +5,7 @@ import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { komodoState, PHASES, EXECUTION_STATES } from '../state/komodo-state.js';
 import { KomodoWsServer } from '../server/ws-server.js';
+import { startApiServerIfEnabled } from '../server/api-server.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
 import { checkForPendingCheckpoints } from '../orchestrator.js';
 import { checkSchedule, formatMinutes } from '../scheduler/scheduler.js';
@@ -71,11 +72,14 @@ export async function watch(projectId, options = {}) {
     logger.warn(`No se pudo iniciar WS server: ${err.message}`, AGENT);
   }
 
+  // Iniciar API server
+  const apiServer = await startApiServerIfEnabled();
+
   // Start webhook outgoing (forwards events to external URLs if configured)
   startWebhookOutgoing();
 
   // Register graceful shutdown handlers (SIGINT/SIGTERM)
-  shutdownManager.register({ wsServer });
+  shutdownManager.register({ wsServer, apiServer });
 
   // Emit daemon:started
   eventBus.emitEvent(EVENT_TYPES.DAEMON_STARTED, {
@@ -220,6 +224,7 @@ export async function watch(projectId, options = {}) {
     metadata: { tasksCompleted, tasksFailed },
   });
 
+  if (apiServer) await apiServer.stop();
   await wsServer.stop();
 
   logger.taskHeader('DAEMON STOPPED');

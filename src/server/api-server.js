@@ -189,9 +189,15 @@ export class KomodoApiServer {
       return;
     }
 
-    if (komodoState.executionState === EXECUTION_STATES.RUNNING) {
+    const isRunning = [
+      EXECUTION_STATES.RUNNING,
+      EXECUTION_STATES.DAEMON_RUNNING,
+      EXECUTION_STATES.DAEMON_IDLE
+    ].includes(komodoState.executionState);
+
+    if (isRunning) {
       res.writeHead(409);
-      res.end(JSON.stringify({ error: 'Komodo is already running' }));
+      res.end(JSON.stringify({ error: `Komodo is already active (state: ${komodoState.executionState})` }));
       return;
     }
 
