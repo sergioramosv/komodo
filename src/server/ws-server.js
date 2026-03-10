@@ -169,24 +169,74 @@ export class KomodoWsServer {
         try {
           const payload = JSON.parse(body);
 
-          // Update komodoState from the event
-          if (payload.type === 'AGENT_STATE_CHANGE' && payload.agentName) {
+          // Handle task lifecycle events
+          if (payload.type === 'task:started') {
+            komodoState.totalTasks = (komodoState.totalTasks || 0) + 1;
+            if (payload.metadata?.taskTitle) {
+              komodoState.currentTask = payload.metadata.taskTitle;
+              komodoState.taskDetails = payload.metadata.taskDetails || null;
+            }
+            komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+          }
+          if (payload.type === 'task:completed') {
+            komodoState.tasksCompleted = (komodoState.tasksCompleted || 0) + 1;
+            komodoState.currentTask = null;
+            komodoState.taskDetails = null;
+            komodoState.currentPR = null;
+            komodoState.reviewCycle = 0;
+          }
+          if (payload.type === 'pr:created') {
+            komodoState.currentPR = payload.metadata?.prNumber
+              ? { number: payload.metadata.prNumber, repo: payload.metadata.repo }
+              : null;
+          }
+          if (payload.type === 'pr:merged') {
+            komodoState.currentPR = null;
+          }
+          if (payload.type === 'execution:state-change') {
+            const newState = payload.metadata?.current;
+            if (newState) {
+              komodoState.setExecutionState(newState);
+            }
+          }
+
+          // Update komodoState from agent state change events
+          if (payload.type === 'agent:state-change' && payload.agentName) {
             const status = payload.newState || payload.metadata?.newState;
             if (status) {
               komodoState.updateAgent(payload.agentName, {
                 status,
-                currentTask: payload.metadata?.taskId || null,
+                currentTask: payload.metadata?.taskTitle || payload.metadata?.taskId || null,
                 cli: payload.metadata?.cli || null,
                 model: payload.metadata?.model || null,
               });
             }
             if (payload.metadata?.phase) {
               komodoState.updatePhase(payload.metadata.phase);
+              if (payload.metadata.phase !== 'idle') {
+                komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+              }
+            }
+            // Update current task info
+            if (payload.metadata?.taskTitle) {
+              komodoState.currentTask = payload.metadata.taskTitle;
+              komodoState.taskDetails = {
+                id: payload.metadata.taskId || null,
+                title: payload.metadata.taskTitle,
+                devPoints: payload.metadata.devPoints || 0,
+                branchName: payload.metadata.branchName || null,
+              };
+            }
+            // Clear task when phase goes idle
+            if (payload.metadata?.phase === 'idle' && payload.newState === 'idle') {
+              komodoState.currentTask = null;
+              komodoState.taskDetails = null;
             }
           }
 
-          // Broadcast to all WebSocket clients
+          // Broadcast event + updated snapshot to all WebSocket clients
           this._broadcast({ type: 'event', data: payload });
+          this._broadcast({ type: 'snapshot', data: komodoState.getSnapshot() });
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end('{"ok":true}');
