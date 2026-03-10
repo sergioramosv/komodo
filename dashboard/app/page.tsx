@@ -122,7 +122,7 @@ export default function DashboardPage() {
                       )}
                       {snapshot.taskDetails?.devPoints != null && (
                         <div className="flex items-center gap-1.5 rounded bg-blue-500/10 px-2.5 py-1">
-                          <span className="text-blue-400"><Code size={16} /></span>
+                          <span className="text-blue-400"><Settings size={16} /></span>
                           <span className="text-sm font-medium text-blue-400">
                             {snapshot.taskDetails.devPoints} DP
                           </span>
