@@ -269,6 +269,7 @@ export const tools = {
       acceptanceCriteria: z.array(z.string()).optional().describe('Criterios de aceptación (array de strings)'),
       devPoints: z.number().optional().describe('Puntos de desarrollo'),
       bizPoints: z.number().optional().describe('Puntos de negocio'),
+      sprint: z.string().optional().describe('Nombre del sprint (de komodo_plan)'),
       cwd: z.string().optional().describe(
         'Directorio del repositorio donde el Coder trabaja. Si no se pasa, usa el rootDir de Komodo.'
       ),
@@ -294,24 +295,30 @@ export const tools = {
       komodoState.updatePhase('coding');
       komodoState.updateAgent('CODER', { status: 'working', currentTask: params.title });
       komodoState.currentTask = params.title;
-      komodoState.taskDetails = {
+
+      const userStory = (params.userStoryWho && params.userStoryWhat)
+        ? `Como ${params.userStoryWho}, quiero ${params.userStoryWhat}${params.userStoryWhy ? `, para ${params.userStoryWhy}` : ''}`
+        : null;
+
+      const fullTaskDetails = {
         id: params.taskId,
         title: params.title,
         devPoints: params.devPoints || 0,
+        businessPoints: params.bizPoints || 0,
         branchName: params.branchName,
+        userStory,
+        assignedDeveloper: `CODER (${config.forceModel_CODER || config.cliCoder || 'claude'})`,
+        sprint: params.sprint || null,
       };
+
+      komodoState.taskDetails = fullTaskDetails;
       komodoState.totalTasks = (komodoState.totalTasks || 0) + 1;
 
       eventBus.emitEvent(EVENT_TYPES.TASK_STARTED, {
         metadata: {
           taskId: params.taskId,
           taskTitle: params.title,
-          taskDetails: {
-            id: params.taskId,
-            title: params.title,
-            devPoints: params.devPoints || 0,
-            branchName: params.branchName,
-          },
+          taskDetails: fullTaskDetails,
         },
       });
 
@@ -609,7 +616,7 @@ export const tools = {
   komodo_finalize: {
     description: [
       'Finaliza una tarea: mergea o cierra la PR y actualiza el estado de la tarea.',
-      'Si approved=true y AUTO_MERGE=true: mergea la PR (squash) y marca tarea como "done".',
+      'Si approved=true y AUTO_MERGE=true: mergea la PR (squash) y marca tarea como "to-validate".',
       'Si approved=true y AUTO_MERGE=false: marca tarea como "to-validate" (merge manual).',
       'Si approved=false: cierra la PR y devuelve la tarea a "to-do".',
     ].join(' '),
@@ -696,7 +703,7 @@ export const tools = {
         }
 
         try {
-          await changeTaskStatus(taskId, 'done');
+          await changeTaskStatus(taskId, 'to-validate');
         } catch (err) {
           // Non-fatal: PR merged but task status might not update
         }
@@ -729,8 +736,8 @@ export const tools = {
           success: true,
           action: 'merged',
           merged: true,
-          taskStatus: 'done',
-          message: `PR #${prNumber} mergeada (squash). Tarea marcada como done.`,
+          taskStatus: 'to-validate',
+          message: `PR #${prNumber} mergeada (squash). Tarea marcada como to-validate.`,
         };
       }
 

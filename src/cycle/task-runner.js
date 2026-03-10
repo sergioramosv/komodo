@@ -768,9 +768,9 @@ export async function runTask(projectId, cwd) {
       }
 
       try {
-        await changeTaskStatus(taskSpec.taskId, 'done');
+        await changeTaskStatus(taskSpec.taskId, 'to-validate');
       } catch (err) {
-        logger.warn(`No se pudo actualizar tarea a done: ${err.message}`, 'KOMODO');
+        logger.warn(`No se pudo actualizar tarea a to-validate: ${err.message}`, 'KOMODO');
       }
 
       // Plugins: after-merge
@@ -1234,7 +1234,7 @@ async function _continueFromMerge(taskSpec, prNumber, repo, startTime, reviewCyc
       logger.error(`Error al mergear PR #${prNumber}: ${err.message}`, 'KOMODO');
     }
 
-    try { await changeTaskStatus(taskSpec.taskId, 'done'); } catch { /* noop */ }
+    try { await changeTaskStatus(taskSpec.taskId, 'to-validate'); } catch { /* noop */ }
 
     // CI Monitor: watch GitHub Actions after merge
     if (merged) {
