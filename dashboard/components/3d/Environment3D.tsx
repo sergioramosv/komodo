@@ -132,7 +132,7 @@ function Sofa({ position, rotation, color }: { position: [number, number, number
   );
 }
 
-function MiniSofa({ position, rotation, color = "#3378d1ff" }: { position: [number, number, number], rotation: [number, number, number], color?: string }) {
+function MiniSofa({ position, rotation, color = "#000000" }: { position: [number, number, number], rotation: [number, number, number], color?: string }) {
   return (
     <group position={position} rotation={rotation}>
       <Box args={[1.5, 0.4, 1]} position={[0, 0.2, 0]} castShadow receiveShadow>
@@ -283,7 +283,7 @@ export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) 
       </Plane>
 
       {/* Floor Labels */}
-      <Text position={[-4.5, 0.03, -2.8]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1} color="#7f8c8d" fillOpacity={0.6}>
+      <Text position={[-2.5, 0.03, -4]} rotation={[-Math.PI / 2, 0, Math.PI / 2]} fontSize={1} color="#7f8c8d" fillOpacity={0.6}>
         PLANNER
       </Text>
       <Text position={[-5, 0.03, 3]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1} color="#7f8c8d" fillOpacity={0.6}>
@@ -355,7 +355,7 @@ export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) 
       {/* -- ROOM 3: CODER (Abajo Izquierda: X=-5, Z=4) -- */}
       <WindowProps position={[-7.9, 1.5, 4]} rotation={[0, Math.PI / 2, 0]} />
       <LDesk position={[-6, 0, 4.5]} rotation={[0, Math.PI, 0]} />
-      <MiniSofa position={[-5.8, 0, 1.7]} rotation={[0, 0, 0]} color="#21578aff" />
+      <MiniSofa position={[-5.8, 0, 1.7]} rotation={[0, 0, 0]} color="#c72222" />
       <PottedPlant position={[-7.2, 0, 1.7]} />
 
       {/* -- ROOM 4: REVIEWER (Abajo Derecha: X=5, Z=4) -- */}

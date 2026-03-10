@@ -112,7 +112,7 @@ export function SonarScanner3D({ position, isAnalyzing }: SonarScanner3DProps) {
       <Text
         position={[0, 1.65, 0.34]}
         fontSize={0.12}
-        color={isAnalyzing ? '#00e5ff' : '#444'}
+        color={isAnalyzing ? '#00e5ff' : '#ffffffff'}
         anchorX="center"
         anchorY="middle"
       >
