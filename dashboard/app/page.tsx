@@ -12,7 +12,7 @@ import { BudgetWidget } from '@/components/budget-widget';
 import { ProjectSelector } from '@/components/project-selector';
 import { MultiProjectOverview } from '@/components/multi-project-overview';
 import { TaskDetailModal } from '@/components/task-detail-modal';
-import { Code, Ear } from 'lucide-react';
+import { Code, Ear, Settings } from 'lucide-react';
 
 const OfficeScene3D = dynamic(() => import('@/components/office-scene-3d').then(mod => mod.OfficeScene3D), { ssr: false });
 import type { Phase, AgentStatus, DashboardEvent, SonarAnalysisState } from '@/lib/types';
