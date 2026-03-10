@@ -142,6 +142,17 @@ export const EVENT_TYPES = {
   // Weekly digest events
   WEEKLY_DIGEST: 'digest:weekly',
 
+  // Circuit breaker events
+  CIRCUIT_OPEN: 'circuit:open',
+  CIRCUIT_HALF_OPEN: 'circuit:half-open',
+  CIRCUIT_CLOSED: 'circuit:closed',
+
+  // Error budget events
+  ERROR_BUDGET_EXHAUSTED: 'error-budget:exhausted',
+
+  // Dead letter queue events
+  DEAD_LETTER_QUEUED: 'dead-letter:queued',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
