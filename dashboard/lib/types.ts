@@ -38,6 +38,8 @@ export interface TaskDetails {
   devPoints: number | null;
   businessPoints: number | null;
   assignedDeveloper: string | null;
+  branchName?: string | null;
+  acceptanceCriteria?: string[];
 }
 
 export interface SonarAnalysisState {
@@ -67,6 +69,20 @@ export interface BudgetState {
   paused: boolean;
 }
 
+export interface PerProjectStats {
+  tasksCompleted: number;
+  tasksFailed: number;
+  dailySpent: number;
+}
+
+export interface MultiProjectState {
+  enabled: boolean;
+  projects: string[];
+  strategy: string;
+  activeProject: string | null;
+  perProject: Record<string, PerProjectStats>;
+}
+
 export interface KomodoSnapshot {
   agents: Record<AgentName, AgentState>;
   phase: Phase;
@@ -80,6 +96,7 @@ export interface KomodoSnapshot {
   executionState?: ExecutionState;
   sonarAnalysis?: SonarAnalysisState;
   budget?: BudgetState;
+  multiProject?: MultiProjectState | null;
 }
 
 export interface DashboardEvent {

@@ -309,6 +309,7 @@ export const tools = {
         userStory,
         assignedDeveloper: `CODER (${config.forceModel_CODER || config.cliCoder || 'claude'})`,
         sprint: params.sprint || null,
+        acceptanceCriteria: params.acceptanceCriteria || [],
       };
 
       komodoState.taskDetails = fullTaskDetails;

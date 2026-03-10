@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from 'react';
 import { useKomodoSocket } from '@/hooks/useKomodoSocket';
 import { useAgentStates } from '@/hooks/useAgentStates';
 import { useOfficeFeedback } from '@/hooks/useOfficeFeedback';
@@ -8,6 +9,10 @@ import dynamic from 'next/dynamic';
 import { ExecutionControls } from '@/components/execution-controls';
 import { CliHealthStatus } from '@/components/cli-health-status';
 import { BudgetWidget } from '@/components/budget-widget';
+import { ProjectSelector } from '@/components/project-selector';
+import { MultiProjectOverview } from '@/components/multi-project-overview';
+import { TaskDetailModal } from '@/components/task-detail-modal';
+import { Code, Ear } from 'lucide-react';
 
 const OfficeScene3D = dynamic(() => import('@/components/office-scene-3d').then(mod => mod.OfficeScene3D), { ssr: false });
 import type { Phase, AgentStatus, DashboardEvent, SonarAnalysisState } from '@/lib/types';
@@ -63,6 +68,11 @@ const EVENT_COLORS: Record<string, string> = {
   'budget:warning': 'text-amber-400',
   'budget:exceeded': 'text-red-400',
   'budget:reset': 'text-emerald-400',
+  'multi-project:run-started': 'text-violet-400',
+  'multi-project:project-selected': 'text-violet-400',
+  'multi-project:project-switch': 'text-violet-400',
+  'multi-project:run-completed': 'text-green-400',
+  'multi-project:all-backlogs-empty': 'text-neutral-400',
 };
 
 /* ── Page ── */
@@ -71,6 +81,8 @@ export default function DashboardPage() {
   const { snapshot, connected, events, cliHealth, sendCommand } = useKomodoSocket();
   const agentStates = useAgentStates(snapshot, connected);
   const feedback = useOfficeFeedback(events, snapshot);
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
 
   return (
     <div className="space-y-6">
@@ -110,7 +122,7 @@ export default function DashboardPage() {
                       )}
                       {snapshot.taskDetails?.devPoints != null && (
                         <div className="flex items-center gap-1.5 rounded bg-blue-500/10 px-2.5 py-1">
-                          <span className="text-blue-400">⚙</span>
+                          <span className="text-blue-400"><Code size={16} /></span>
                           <span className="text-sm font-medium text-blue-400">
                             {snapshot.taskDetails.devPoints} DP
                           </span>
@@ -123,12 +135,12 @@ export default function DashboardPage() {
                   <div className="flex flex-wrap gap-2 text-xs text-neutral-500">
                     {snapshot.taskDetails?.assignedDeveloper && (
                       <span className="flex items-center gap-1 rounded bg-neutral-800 px-2 py-0.5">
-                        <span>👤</span> {snapshot.taskDetails.assignedDeveloper}
+                        <span>&#128100;</span> {snapshot.taskDetails.assignedDeveloper}
                       </span>
                     )}
                     {snapshot.taskDetails?.sprint && (
                       <span className="rounded bg-neutral-800 px-2 py-0.5">
-                        🏃 {snapshot.taskDetails.sprint}
+                        &#127939; {snapshot.taskDetails.sprint}
                       </span>
                     )}
                     {snapshot.currentPR && (
@@ -137,6 +149,16 @@ export default function DashboardPage() {
                       </span>
                     )}
                   </div>
+
+                  {/* View Task button */}
+                  {snapshot.taskDetails && (
+                    <button
+                      onClick={() => setTaskModalOpen(true)}
+                      className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-800/50 px-3 py-2 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-white"
+                    >
+                      View Task Details
+                    </button>
+                  )}
                 </div>
               ) : (
                 <p className="text-neutral-500">No task running</p>
@@ -152,7 +174,22 @@ export default function DashboardPage() {
               onStop={() => sendCommand('stop')}
             />
 
-
+            {/* Multi-Project Selector & Overview */}
+            {snapshot.multiProject?.enabled && (
+              <>
+                <ProjectSelector
+                  multiProject={snapshot.multiProject}
+                  selectedProject={selectedProject}
+                  onSelectProject={setSelectedProject}
+                />
+                <MultiProjectOverview
+                  multiProject={snapshot.multiProject}
+                  selectedProject={selectedProject}
+                  budget={snapshot.budget}
+                  totalCost={snapshot.totalCost}
+                />
+              </>
+            )}
 
 
             {/* Agent Cards */}
@@ -267,6 +304,16 @@ export default function DashboardPage() {
             <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
           </div>
         </div>
+      )}
+
+      {/* Task Detail Modal */}
+      {snapshot?.taskDetails && (
+        <TaskDetailModal
+          isOpen={taskModalOpen}
+          onClose={() => setTaskModalOpen(false)}
+          task={snapshot.taskDetails}
+          currentPR={snapshot.currentPR}
+        />
       )}
     </div>
   );

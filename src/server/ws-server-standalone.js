@@ -41,6 +41,7 @@ function createInitialState() {
     tasksCompleted: 0,
     totalTasks: 0,
     executionState: 'stopped',
+    multiProject: null,
   };
 }
 
@@ -65,7 +66,8 @@ function applyEvent(state, event) {
       }
       if (event.metadata?.taskTitle) {
         state.currentTask = event.metadata.taskTitle;
-        if (event.metadata.taskId) {
+        // Only set taskDetails if not already set (task:started sends the full object)
+        if (!state.taskDetails && event.metadata.taskId) {
           state.taskDetails = {
             id: event.metadata.taskId,
             title: event.metadata.taskTitle,
@@ -127,6 +129,37 @@ function applyEvent(state, event) {
         state.executionState = event.metadata.current;
       }
       break;
+
+    case 'multi-project:run-started':
+      state.multiProject = {
+        enabled: true,
+        projects: event.metadata?.projects || [],
+        strategy: event.metadata?.strategy || 'round-robin',
+        activeProject: null,
+        perProject: {},
+      };
+      break;
+
+    case 'multi-project:project-selected':
+    case 'multi-project:project-switch':
+      if (state.multiProject) {
+        state.multiProject.activeProject = event.metadata?.projectId || null;
+      }
+      break;
+
+    case 'multi-project:run-completed':
+      if (state.multiProject) {
+        state.multiProject.activeProject = null;
+        if (event.metadata?.perProject) {
+          state.multiProject.perProject = event.metadata.perProject;
+        }
+      }
+      break;
+  }
+
+  // Update multi-project perProject stats if present in metadata
+  if (state.multiProject && event.metadata?.perProject && typeof event.metadata.perProject === 'object') {
+    state.multiProject.perProject = event.metadata.perProject;
   }
 
   // Actualizar fase si viene en metadata
