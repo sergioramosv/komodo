@@ -4,6 +4,8 @@ import { eventBus } from '../events/event-bus.js';
 import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { readJsonBody, stopHttpServer, setCorsHeaders, sendJson } from '../utils/http-utils.js';
+import { requestPause, requestStop } from '../utils/execution-utils.js';
 
 /** Valid command types from dashboard. */
 const VALID_COMMANDS = new Set(['pause', 'stop']);
@@ -89,29 +91,23 @@ export class KomodoWsServer {
    *
    * @returns {Promise<void>}
    */
-  stop() {
-    return new Promise((resolve) => {
-      if (this._unsubscribe) {
-        this._unsubscribe();
-        this._unsubscribe = null;
-      }
+  async stop() {
+    if (this._unsubscribe) {
+      this._unsubscribe();
+      this._unsubscribe = null;
+    }
 
-      // Cerrar todas las conexiones WebSocket
-      if (this._wss) {
-        for (const client of this._wss.clients) {
-          client.close(1001, 'Server shutting down');
-        }
-        this._wss.close();
-        this._wss = null;
+    // Cerrar todas las conexiones WebSocket
+    if (this._wss) {
+      for (const client of this._wss.clients) {
+        client.close(1001, 'Server shutting down');
       }
+      this._wss.close();
+      this._wss = null;
+    }
 
-      if (this._httpServer) {
-        this._httpServer.close(() => resolve());
-        this._httpServer = null;
-      } else {
-        resolve();
-      }
-    });
+    await stopHttpServer(this._httpServer);
+    this._httpServer = null;
   }
 
   /**
@@ -121,16 +117,8 @@ export class KomodoWsServer {
    * @param {import('ws').WebSocket} ws - The client that sent the command
    */
   _handleCommand(command, ws) {
-    switch (command) {
-      case 'pause':
-        logger.info('Pause command received from dashboard', 'WS');
-        komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
-        break;
-      case 'stop':
-        logger.info('Stop command received from dashboard', 'WS');
-        komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
-        break;
-    }
+    if (command === 'pause') requestPause('WS');
+    if (command === 'stop') requestStop('WS');
 
     // Acknowledge the command
     this._send(ws, { type: 'command:ack', command });
@@ -142,11 +130,8 @@ export class KomodoWsServer {
    * @param {import('http').IncomingMessage} req
    * @param {import('http').ServerResponse} res
    */
-  _handleHttp(req, res) {
-    // CORS headers para el dashboard
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  async _handleHttp(req, res) {
+    setCorsHeaders(res);
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -156,93 +141,86 @@ export class KomodoWsServer {
 
     if (req.method === 'GET' && req.url === '/api/state') {
       const snapshot = komodoState.getSnapshot();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(snapshot));
+      sendJson(res, 200, snapshot);
       return;
     }
 
     // Receive forwarded events from komodo-mcp (separate process)
     if (req.method === 'POST' && req.url === '/api/event') {
-      let body = '';
-      req.on('data', (chunk) => { body += chunk; });
-      req.on('end', () => {
-        try {
-          const payload = JSON.parse(body);
+      try {
+        const payload = await readJsonBody(req);
 
-          // Handle task lifecycle events
-          if (payload.type === 'TASK_STARTED') {
-            komodoState.totalTasks = (komodoState.totalTasks || 0) + 1;
-            if (payload.metadata?.taskTitle) {
-              komodoState.currentTask = payload.metadata.taskTitle;
-              komodoState.taskDetails = payload.metadata.taskDetails || null;
-            }
-            komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+        // Handle task lifecycle events (use EVENT_TYPES values, not keys)
+        if (payload.type === 'task:started') {
+          komodoState.totalTasks = (komodoState.totalTasks || 0) + 1;
+          if (payload.metadata?.taskTitle) {
+            komodoState.currentTask = payload.metadata.taskTitle;
+            komodoState.taskDetails = payload.metadata.taskDetails || null;
           }
-          if (payload.type === 'TASK_COMPLETED') {
-            komodoState.tasksCompleted = (komodoState.tasksCompleted || 0) + 1;
+          komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+        }
+        if (payload.type === 'task:completed') {
+          komodoState.tasksCompleted = (komodoState.tasksCompleted || 0) + 1;
+          komodoState.currentTask = null;
+          komodoState.taskDetails = null;
+          komodoState.currentPR = null;
+          komodoState.reviewCycle = 0;
+        }
+        if (payload.type === 'pr:created') {
+          komodoState.currentPR = payload.metadata?.prNumber
+            ? { number: payload.metadata.prNumber, repo: payload.metadata.repo }
+            : null;
+        }
+        if (payload.type === 'pr:merged') {
+          komodoState.currentPR = null;
+        }
+
+        // Update komodoState from the event
+        if (payload.type === 'agent:state-change' && payload.agentName) {
+          const status = payload.newState || payload.metadata?.newState;
+          if (status) {
+            komodoState.updateAgent(payload.agentName, {
+              status,
+              currentTask: payload.metadata?.taskTitle || payload.metadata?.taskId || null,
+              cli: payload.metadata?.cli || null,
+              model: payload.metadata?.model || null,
+            });
+          }
+          if (payload.metadata?.phase) {
+            komodoState.updatePhase(payload.metadata.phase);
+            if (payload.metadata.phase !== 'idle') {
+              komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+            }
+          }
+          // Update current task info
+          if (payload.metadata?.taskTitle) {
+            komodoState.currentTask = payload.metadata.taskTitle;
+            komodoState.taskDetails = {
+              id: payload.metadata.taskId || null,
+              title: payload.metadata.taskTitle,
+              devPoints: payload.metadata.devPoints || 0,
+              branchName: payload.metadata.branchName || null,
+            };
+          }
+          // Clear task when phase goes idle
+          if (payload.metadata?.phase === 'idle' && payload.newState === 'idle') {
             komodoState.currentTask = null;
             komodoState.taskDetails = null;
-            komodoState.currentPR = null;
-            komodoState.reviewCycle = 0;
           }
-          if (payload.type === 'PR_CREATED') {
-            komodoState.currentPR = payload.metadata?.prNumber
-              ? { number: payload.metadata.prNumber, repo: payload.metadata.repo }
-              : null;
-          }
-          if (payload.type === 'PR_MERGED') {
-            komodoState.currentPR = null;
-          }
-
-          // Update komodoState from the event
-          if (payload.type === 'AGENT_STATE_CHANGE' && payload.agentName) {
-            const status = payload.newState || payload.metadata?.newState;
-            if (status) {
-              komodoState.updateAgent(payload.agentName, {
-                status,
-                currentTask: payload.metadata?.taskTitle || payload.metadata?.taskId || null,
-                cli: payload.metadata?.cli || null,
-                model: payload.metadata?.model || null,
-              });
-            }
-            if (payload.metadata?.phase) {
-              komodoState.updatePhase(payload.metadata.phase);
-              if (payload.metadata.phase !== 'idle') {
-                komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
-              }
-            }
-            // Update current task info
-            if (payload.metadata?.taskTitle) {
-              komodoState.currentTask = payload.metadata.taskTitle;
-              komodoState.taskDetails = {
-                id: payload.metadata.taskId || null,
-                title: payload.metadata.taskTitle,
-                devPoints: payload.metadata.devPoints || 0,
-                branchName: payload.metadata.branchName || null,
-              };
-            }
-            // Clear task when phase goes idle
-            if (payload.metadata?.phase === 'idle' && payload.newState === 'idle') {
-              komodoState.currentTask = null;
-              komodoState.taskDetails = null;
-            }
-          }
-
-          // Broadcast to all WebSocket clients
-          this._broadcast({ type: 'event', data: payload });
-
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end('{"ok":true}');
-        } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end('{"error":"Invalid JSON"}');
         }
-      });
+
+        // Broadcast event + updated snapshot to all WebSocket clients
+        this._broadcast({ type: 'event', data: payload });
+        this._broadcast({ type: 'snapshot', data: komodoState.getSnapshot() });
+
+        sendJson(res, 200, { ok: true });
+      } catch {
+        sendJson(res, 400, { error: 'Invalid JSON' });
+      }
       return;
     }
 
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Not found' }));
+    sendJson(res, 404, { error: 'Not found' });
   }
 
   /**

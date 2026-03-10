@@ -2,7 +2,9 @@ import { createServer } from 'http';
 import { timingSafeEqual } from 'crypto';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
-import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
+import { komodoState } from '../state/komodo-state.js';
+import { readJsonBody, stopHttpServer, setCorsHeaders, sendJson } from '../utils/http-utils.js';
+import { requestPause, requestStop, isKomodoActive } from '../utils/execution-utils.js';
 
 /**
  * Servidor HTTP REST para control externo de Komodo via API key.
@@ -52,15 +54,9 @@ export class KomodoApiServer {
    *
    * @returns {Promise<void>}
    */
-  stop() {
-    return new Promise((resolve) => {
-      if (this._httpServer) {
-        this._httpServer.close(() => resolve());
-        this._httpServer = null;
-      } else {
-        resolve();
-      }
-    });
+  async stop() {
+    await stopHttpServer(this._httpServer);
+    this._httpServer = null;
   }
 
   /**
@@ -70,11 +66,8 @@ export class KomodoApiServer {
    * @param {import('http').ServerResponse} res
    */
   _handleRequest(req, res) {
-    res.setHeader('Content-Type', 'application/json');
-
     if (req.method === 'OPTIONS') {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Headers', 'X-Komodo-Key, Content-Type');
+      setCorsHeaders(res);
       res.writeHead(204);
       res.end();
       return;
@@ -100,8 +93,7 @@ export class KomodoApiServer {
       return;
     }
 
-    res.writeHead(404);
-    res.end(JSON.stringify({ error: 'Not found' }));
+    sendJson(res, 404, { error: 'Not found' });
   }
 
   /**
@@ -116,8 +108,7 @@ export class KomodoApiServer {
     const provided = req.headers['x-komodo-key'];
 
     if (!provided) {
-      res.writeHead(401);
-      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      sendJson(res, 401, { error: 'Unauthorized' });
       return false;
     }
 
@@ -129,33 +120,11 @@ export class KomodoApiServer {
       timingSafeEqual(expectedBuf, providedBuf);
 
     if (!valid) {
-      res.writeHead(401);
-      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      sendJson(res, 401, { error: 'Unauthorized' });
       return false;
     }
 
     return true;
-  }
-
-  /**
-   * Lee el body JSON de una petición.
-   *
-   * @param {import('http').IncomingMessage} req
-   * @returns {Promise<Object>} Body parseado (o {} si vacío o inválido)
-   */
-  _readBody(req) {
-    return new Promise((resolve, reject) => {
-      let data = '';
-      req.on('data', (chunk) => { data += chunk; });
-      req.on('end', () => {
-        try {
-          resolve(data ? JSON.parse(data) : {});
-        } catch {
-          resolve({});
-        }
-      });
-      req.on('error', reject);
-    });
   }
 
   /**
@@ -168,36 +137,26 @@ export class KomodoApiServer {
   async _handleRun(req, res) {
     let body;
     try {
-      body = await this._readBody(req);
+      body = await readJsonBody(req);
     } catch {
-      res.writeHead(400);
-      res.end(JSON.stringify({ error: 'Invalid request body' }));
+      sendJson(res, 400, { error: 'Invalid request body' });
       return;
     }
 
     const tasks = body.tasks !== undefined ? Number(body.tasks) : 1;
 
     if (!Number.isInteger(tasks) || tasks < 1) {
-      res.writeHead(400);
-      res.end(JSON.stringify({ error: 'tasks must be a positive integer' }));
+      sendJson(res, 400, { error: 'tasks must be a positive integer' });
       return;
     }
 
     if (!this._onRun) {
-      res.writeHead(503);
-      res.end(JSON.stringify({ error: 'Runner not configured' }));
+      sendJson(res, 503, { error: 'Runner not configured' });
       return;
     }
 
-    const isRunning = [
-      EXECUTION_STATES.RUNNING,
-      EXECUTION_STATES.DAEMON_RUNNING,
-      EXECUTION_STATES.DAEMON_IDLE
-    ].includes(komodoState.executionState);
-
-    if (isRunning) {
-      res.writeHead(409);
-      res.end(JSON.stringify({ error: `Komodo is already active (state: ${komodoState.executionState})` }));
+    if (isKomodoActive()) {
+      sendJson(res, 409, { error: `Komodo is already active (state: ${komodoState.executionState})` });
       return;
     }
 
@@ -208,8 +167,7 @@ export class KomodoApiServer {
       logger.error(`API run error: ${err.message}`, 'API');
     });
 
-    res.writeHead(200);
-    res.end(JSON.stringify({ status: 'started', tasks }));
+    sendJson(res, 200, { status: 'started', tasks });
   }
 
   /**
@@ -218,10 +176,8 @@ export class KomodoApiServer {
    * @param {import('http').ServerResponse} res
    */
   _handleStop(res) {
-    logger.info('Stop requested via API', 'API');
-    komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
-    res.writeHead(200);
-    res.end(JSON.stringify({ status: 'stopping' }));
+    requestStop('API');
+    sendJson(res, 200, { status: 'stopping' });
   }
 
   /**
@@ -230,10 +186,8 @@ export class KomodoApiServer {
    * @param {import('http').ServerResponse} res
    */
   _handlePause(res) {
-    logger.info('Pause requested via API', 'API');
-    komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
-    res.writeHead(200);
-    res.end(JSON.stringify({ status: 'pausing' }));
+    requestPause('API');
+    sendJson(res, 200, { status: 'pausing' });
   }
 }
 

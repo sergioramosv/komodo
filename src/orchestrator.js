@@ -4,8 +4,7 @@ import { validateConfig, config } from './config.js';
 import { logger } from './utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from './events/event-bus.js';
 import { komodoState, PHASES, EXECUTION_STATES } from './state/komodo-state.js';
-import { KomodoWsServer } from './server/ws-server.js';
-import { startApiServerIfEnabled } from './server/api-server.js';
+import { startServers, stopServers } from './server/server-manager.js';
 import { checkpointManager } from './state/checkpoint-manager.js';
 
 import { fallbackManager } from './agents/fallback-manager.js';
@@ -17,7 +16,7 @@ import { heartbeatMonitor } from './heartbeat/heartbeat-monitor.js';
 export { watch } from './daemon/daemon.js';
 
 // Re-export para que consumidores externos puedan suscribirse
-export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES, checkpointManager, fallbackManager, shutdownManager };
+export { eventBus, EVENT_TYPES, AGENT_STATES, komodoState, PHASES, EXECUTION_STATES, checkpointManager, fallbackManager, shutdownManager };
 
 /**
  * Ejecuta N tareas del backlog de un proyecto.
@@ -91,21 +90,10 @@ export async function run(projectId, options = {}) {
   // Start heartbeat monitor for auto-recovery from rate limits
   heartbeatMonitor.start();
 
-  // Iniciar WebSocket server para dashboard en tiempo real
-  const wsServer = new KomodoWsServer();
-  try {
-    await wsServer.start();
-  } catch (err) {
-    logger.warn(`No se pudo iniciar WS server: ${err.message}`, 'KOMODO');
-  }
-
-  // Iniciar API server
-  const apiServer = await startApiServerIfEnabled({
+  // Iniciar servidores (WS y API)
+  const servers = await startServers({
     onRun: (tasks) => run(projectId, { ...options, tasks })
   });
-
-  // Register graceful shutdown handlers (SIGINT/SIGTERM)
-  shutdownManager.register({ wsServer, apiServer });
 
   const results = [];
   let tasksCompleted = 0;
@@ -163,9 +151,6 @@ export async function run(projectId, options = {}) {
     }
   }
 
-  // Unregister shutdown handlers (cleanup handled manually below)
-  shutdownManager.unregister();
-
   // Stop checkpoint manager and heartbeat monitor
   checkpointManager.stop();
   heartbeatMonitor.stop();
@@ -176,8 +161,7 @@ export async function run(projectId, options = {}) {
   }
 
   // Detener servidores
-  if (apiServer) await apiServer.stop();
-  await wsServer.stop();
+  await stopServers(servers);
 
   // Resumen final
   logger.taskHeader('RESUMEN FINAL');
@@ -338,19 +322,8 @@ async function _executeResume(checkpoint, filepath, cwd) {
   checkpointManager.start();
   heartbeatMonitor.start();
 
-  // Start WebSocket server
-  const wsServer = new KomodoWsServer();
-  try {
-    await wsServer.start();
-  } catch (err) {
-    logger.warn(`No se pudo iniciar WS server: ${err.message}`, 'KOMODO');
-  }
-
-  // Iniciar API server
-  const apiServer = await startApiServerIfEnabled();
-
-  // Register graceful shutdown handlers (SIGINT/SIGTERM)
-  shutdownManager.register({ wsServer, apiServer });
+  // Iniciar servidores
+  const servers = await startServers({ source: 'RESUME' });
 
   try {
     const result = await resumeTask(checkpoint, cwd);
@@ -371,7 +344,6 @@ async function _executeResume(checkpoint, filepath, cwd) {
 
     return result;
   } finally {
-    shutdownManager.unregister();
     checkpointManager.stop();
     heartbeatMonitor.stop();
 
@@ -379,8 +351,7 @@ async function _executeResume(checkpoint, filepath, cwd) {
       komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
     }
 
-    if (apiServer) await apiServer.stop();
-    await wsServer.stop();
+    await stopServers(servers);
 
     logger.taskHeader('RESUMEN FINAL');
   }

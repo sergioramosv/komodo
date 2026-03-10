@@ -4,8 +4,7 @@ import { validateConfig, config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { komodoState, PHASES, EXECUTION_STATES } from '../state/komodo-state.js';
-import { KomodoWsServer } from '../server/ws-server.js';
-import { startApiServerIfEnabled } from '../server/api-server.js';
+import { startServers, stopServers } from '../server/server-manager.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
 import { checkForPendingCheckpoints } from '../orchestrator.js';
 import { checkSchedule, formatMinutes } from '../scheduler/scheduler.js';
@@ -64,22 +63,11 @@ export async function watch(projectId, options = {}) {
   // Start budget manager
   budgetManager.start({ projectId });
 
-  // Start WebSocket server
-  const wsServer = new KomodoWsServer();
-  try {
-    await wsServer.start();
-  } catch (err) {
-    logger.warn(`No se pudo iniciar WS server: ${err.message}`, AGENT);
-  }
-
-  // Iniciar API server
-  const apiServer = await startApiServerIfEnabled();
+  // Iniciar servidores (WS y API)
+  const servers = await startServers({ source: AGENT });
 
   // Start webhook outgoing (forwards events to external URLs if configured)
   startWebhookOutgoing();
-
-  // Register graceful shutdown handlers (SIGINT/SIGTERM)
-  shutdownManager.register({ wsServer, apiServer });
 
   // Emit daemon:started
   eventBus.emitEvent(EVENT_TYPES.DAEMON_STARTED, {
@@ -215,7 +203,6 @@ export async function watch(projectId, options = {}) {
 
   // Cleanup
   stopWebhookOutgoing();
-  shutdownManager.unregister();
   checkpointManager.stop();
   budgetManager.stop();
   komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
@@ -224,8 +211,7 @@ export async function watch(projectId, options = {}) {
     metadata: { tasksCompleted, tasksFailed },
   });
 
-  if (apiServer) await apiServer.stop();
-  await wsServer.stop();
+  await stopServers(servers);
 
   logger.taskHeader('DAEMON STOPPED');
   logger.info(`Tareas completadas: ${tasksCompleted}`, AGENT);
