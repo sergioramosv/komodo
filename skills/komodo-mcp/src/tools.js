@@ -41,8 +41,13 @@ const { startEventPersistence } = await import('../../../src/events/event-persis
 
 // Start event persistence so MCP events get saved to Firebase
 const _projectId = config.defaultProjectId;
+let _eventPersistenceUnsubscribe = null;
 if (_projectId) {
-  startEventPersistence(_projectId);
+  try {
+    _eventPersistenceUnsubscribe = startEventPersistence(_projectId);
+  } catch (err) {
+    // Non-fatal: if Firebase fails, don't crash the MCP server
+  }
 }
 
 let runGh;
@@ -865,6 +870,7 @@ export const tools = {
         tasks: params.tasks ?? 1,
         cwd: params.cwd,
         dryRun: params.dryRun ?? false,
+        skipServers: true,
       });
 
       return result;

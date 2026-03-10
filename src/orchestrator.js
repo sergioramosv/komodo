@@ -34,7 +34,7 @@ export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASE
  * }>}
  */
 export async function run(projectId, options = {}) {
-  const { tasks: maxTasks = 1, cwd, dryRun = false } = options;
+  const { tasks: maxTasks = 1, cwd, dryRun = false, skipServers = false } = options;
   const continuous = maxTasks === 0;
 
   // Validar configuración
@@ -91,33 +91,35 @@ export async function run(projectId, options = {}) {
   // Start heartbeat monitor for auto-recovery from rate limits
   heartbeatMonitor.start();
 
-  // Iniciar WebSocket server para dashboard en tiempo real
-  const wsServer = new KomodoWsServer();
-  try {
-    await wsServer.start();
-  } catch (err) {
-    logger.warn(`No se pudo iniciar WS server: ${err.message}`, 'KOMODO');
-  }
-
+  let wsServer = null;
+  let apiServer = null;
   let tasksToRun = maxTasks;
 
-  // Start API server for external control (POST /api/run, /api/stop, /api/pause)
-  const apiServer = await startApiServerIfEnabled({
-    onRun: (tasks) => {
-      if (komodoState.executionState === EXECUTION_STATES.RUNNING || komodoState.executionState === EXECUTION_STATES.PAUSED) {
-        tasksToRun += tasks;
-        logger.info(`API: añadidas ${tasks} tareas. Nuevo total: ${tasksToRun}`, 'KOMODO');
-      } else {
-        // Si no está corriendo, lanzamos una nueva ejecución pero sin re-inicializar servidores
-        // (Aunque en este diseño, si apiServer está vivo es porque run() sigue activo)
-        tasksToRun = tasks;
-        komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
-      }
-    },
-  });
+  if (!skipServers) {
+    // Iniciar WebSocket server para dashboard en tiempo real
+    wsServer = new KomodoWsServer();
+    try {
+      await wsServer.start();
+    } catch (err) {
+      logger.warn(`No se pudo iniciar WS server: ${err.message}`, 'KOMODO');
+    }
 
-  // Register graceful shutdown handlers (SIGINT/SIGTERM)
-  shutdownManager.register({ wsServer, apiServer });
+    // Start API server for external control (POST /api/run, /api/stop, /api/pause)
+    apiServer = await startApiServerIfEnabled({
+      onRun: (tasks) => {
+        if (komodoState.executionState === EXECUTION_STATES.RUNNING || komodoState.executionState === EXECUTION_STATES.PAUSED) {
+          tasksToRun += tasks;
+          logger.info(`API: añadidas ${tasks} tareas. Nuevo total: ${tasksToRun}`, 'KOMODO');
+        } else {
+          tasksToRun = tasks;
+          komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+        }
+      },
+    });
+
+    // Register graceful shutdown handlers (SIGINT/SIGTERM)
+    shutdownManager.register({ wsServer, apiServer });
+  }
 
   const results = [];
   let tasksCompleted = 0;
@@ -176,7 +178,7 @@ export async function run(projectId, options = {}) {
   }
 
   // Unregister shutdown handlers (cleanup handled manually below)
-  shutdownManager.unregister();
+  if (!skipServers) shutdownManager.unregister();
 
   // Stop checkpoint manager and heartbeat monitor
   checkpointManager.stop();
@@ -187,8 +189,8 @@ export async function run(projectId, options = {}) {
     komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
   }
 
-  // Detener servidores
-  await wsServer.stop();
+  // Detener servidores (solo si los iniciamos)
+  if (wsServer) await wsServer.stop();
   if (apiServer) await apiServer.stop();
 
   // Resumen final

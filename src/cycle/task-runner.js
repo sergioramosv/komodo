@@ -244,6 +244,7 @@ export async function runTask(projectId, cwd) {
       agentName: 'PLANNER',
       previousState: AGENT_STATES.IDLE,
       newState: AGENT_STATES.WORKING,
+      metadata: { phase: 'planning' },
     });
     eventBus.emitAgentEvent('PLANNER', 'working');
 
@@ -268,6 +269,7 @@ export async function runTask(projectId, cwd) {
       agentName: 'PLANNER',
       previousState: AGENT_STATES.WORKING,
       newState: AGENT_STATES.IDLE,
+      metadata: { phase: 'idle' },
     });
     eventBus.emitAgentEvent('PLANNER', 'idle');
     komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
@@ -371,6 +373,13 @@ export async function runTask(projectId, cwd) {
       agentName: 'CODER',
       previousState: AGENT_STATES.IDLE,
       newState: AGENT_STATES.WORKING,
+      metadata: {
+        phase: 'coding',
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
+        branchName: taskSpec.branchName,
+        devPoints: taskSpec.devPoints,
+      },
     });
     eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
 
@@ -419,6 +428,7 @@ export async function runTask(projectId, cwd) {
       agentName: 'CODER',
       previousState: AGENT_STATES.WORKING,
       newState: AGENT_STATES.IDLE,
+      metadata: { phase: 'idle' },
     });
     eventBus.emitAgentEvent('CODER', 'idle');
     komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
@@ -472,6 +482,11 @@ export async function runTask(projectId, cwd) {
         agentName: 'QA',
         previousState: AGENT_STATES.IDLE,
         newState: AGENT_STATES.WORKING,
+        metadata: {
+          phase: 'testing',
+          taskId: taskSpec.taskId,
+          taskTitle: taskSpec.title,
+        },
       });
       eventBus.emitAgentEvent('QA', 'working', { prNumber });
 
@@ -502,6 +517,7 @@ export async function runTask(projectId, cwd) {
         agentName: 'QA',
         previousState: AGENT_STATES.WORKING,
         newState: AGENT_STATES.IDLE,
+        metadata: { phase: 'idle' },
       });
       eventBus.emitAgentEvent('QA', 'idle');
       komodoState.updateAgent('QA', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
@@ -672,6 +688,12 @@ export async function runTask(projectId, cwd) {
       agentName: 'REVIEWER',
       previousState: AGENT_STATES.IDLE,
       newState: AGENT_STATES.WORKING,
+      metadata: {
+        phase: 'reviewing',
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
+        prNumber,
+      },
     });
     eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
 
@@ -687,6 +709,7 @@ export async function runTask(projectId, cwd) {
       agentName: 'REVIEWER',
       previousState: AGENT_STATES.WAITING,
       newState: AGENT_STATES.IDLE,
+      metadata: { phase: 'idle' },
     });
     eventBus.emitAgentEvent('REVIEWER', 'idle');
     komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
@@ -753,6 +776,18 @@ export async function runTask(projectId, cwd) {
     logger.logStep(6, 6, 'Finalizando...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.MERGING, { currentPR: prNumber });
+
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'KOMODO',
+      previousState: AGENT_STATES.IDLE,
+      newState: AGENT_STATES.WORKING,
+      metadata: {
+        phase: 'merging',
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
+        prNumber,
+      },
+    });
 
     // Use the latest sonarReport from the review loop (may have been refreshed after fixes)
     const finalSonarReport = reviewResult.sonarReport || sonarReport;
