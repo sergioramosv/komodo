@@ -91,7 +91,7 @@ function applyEvent(state, event) {
       break;
 
     case 'task:completed':
-      state.tasksCompleted = (state.tasksCompleted || 0) + 1;
+      state.tasksCompleted = event.metadata?.tasksCompleted ?? ((state.tasksCompleted || 0) + 1);
       state.currentTask = null;
       state.taskDetails = null;
       state.currentPR = null;
@@ -101,9 +101,7 @@ function applyEvent(state, event) {
 
     case 'pr:created':
       if (event.metadata) {
-        state.currentPR = event.metadata.prNumber
-          ? { number: event.metadata.prNumber, repo: event.metadata.repo }
-          : (event.metadata.prUrl || null);
+        state.currentPR = event.metadata.prNumber ?? (event.metadata.prUrl || null);
       }
       break;
 
