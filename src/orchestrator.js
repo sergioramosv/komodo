@@ -99,9 +99,21 @@ export async function run(projectId, options = {}) {
     logger.warn(`No se pudo iniciar WS server: ${err.message}`, 'KOMODO');
   }
 
+  let tasksToRun = maxTasks;
+
   // Start API server for external control (POST /api/run, /api/stop, /api/pause)
   const apiServer = await startApiServerIfEnabled({
-    onRun: (tasks) => run(projectId, { ...options, tasks }),
+    onRun: (tasks) => {
+      if (komodoState.executionState === EXECUTION_STATES.RUNNING || komodoState.executionState === EXECUTION_STATES.PAUSED) {
+        tasksToRun += tasks;
+        logger.info(`API: añadidas ${tasks} tareas. Nuevo total: ${tasksToRun}`, 'KOMODO');
+      } else {
+        // Si no está corriendo, lanzamos una nueva ejecución pero sin re-inicializar servidores
+        // (Aunque en este diseño, si apiServer está vivo es porque run() sigue activo)
+        tasksToRun = tasks;
+        komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+      }
+    },
   });
 
   // Register graceful shutdown handlers (SIGINT/SIGTERM)
@@ -128,7 +140,7 @@ export async function run(projectId, options = {}) {
     }
 
     // ¿Hemos llegado al límite de tareas?
-    if (!continuous && taskNumber > maxTasks) break;
+    if (!continuous && taskNumber > tasksToRun) break;
 
     logger.taskHeader(`TAREA ${taskNumber}${continuous ? '' : `/${maxTasks}`}`);
 

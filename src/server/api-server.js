@@ -277,9 +277,12 @@ export class KomodoApiServer {
     }
 
     if (komodoState.executionState === EXECUTION_STATES.RUNNING) {
-      res.writeHead(409);
-      res.end(JSON.stringify({ error: 'Komodo is already running' }));
-      return;
+      if (!this._onRun) {
+        res.writeHead(409);
+        res.end(JSON.stringify({ error: 'Komodo is already running' }));
+        return;
+      }
+      // If onRun is present, we proceed (orchestrator handles adding tasks)
     }
 
     logger.info(`Run requested via API: ${tasks} task(s)`, 'API');
