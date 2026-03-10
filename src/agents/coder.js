@@ -102,6 +102,7 @@ ${(taskSpec.acceptanceCriteria || []).map((c, i) => `${i + 1}. ${c}`).join('\n')
 2. Implementa el código necesario
 3. Commitea y haz push a la branch
 4. Abre una PR con create_pr
+5. **NO MERGEES LA PR**. Solo ábrela y devuelve el resultado. El merge lo hace otro agente después del review.
 ${codebaseSection}${styleSection}${feedbackSection}${guidelinesSection}
 Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, summary.`;
 
