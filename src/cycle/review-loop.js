@@ -1,5 +1,6 @@
 import { reviewPR } from '../agents/reviewer.js';
 import { fixReviewIssues } from '../agents/coder.js';
+import { analyzeSonar } from '../sonar/analyzer.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
@@ -28,7 +29,8 @@ import { recordReviewIssues, recordAvoidedPatterns } from './review-feedback-rec
  *   error?: string
  * }>}
  */
-export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues }) {
+export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: initialSonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues }) {
+  let sonarReport = initialSonarReport;
   const maxCycles = config.maxReviewCycles;
   let cycles = 0;
   let lastReview = null;
@@ -96,6 +98,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
         cycles,
         finalReview: null,
         cost: totalCost,
+        sonarReport,
         error: `Reviewer error: ${reviewResult.error}`,
       };
     }
@@ -128,6 +131,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
         cycles,
         finalReview: lastReview,
         cost: totalCost,
+        sonarReport,
       };
     }
 
@@ -159,7 +163,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
     // Check for rate limit pause before Coder fix
     if (komodoState.isPauseRequested()) {
       logger.warn('Execution paused by rate limit during review loop.', 'KOMODO');
-      return { approved: false, cycles, finalReview: lastReview, cost: totalCost, error: 'Paused: rate limit detected' };
+      return { approved: false, cycles, finalReview: lastReview, cost: totalCost, sonarReport, error: 'Paused: rate limit detected' };
     }
 
     // Record each review issue as a pattern in memory (for future feedback)
@@ -208,11 +212,44 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
         cycles,
         finalReview: lastReview,
         cost: totalCost,
+        sonarReport,
         error: `Coder fix error: ${fixResult.error}`,
       };
     }
 
-    logger.success('Fixes pusheados. Relanzando review...', 'KOMODO');
+    logger.success('Fixes pusheados.', 'KOMODO');
+
+    // Re-run SonarQube on the updated branch so the next review uses fresh data
+    if (sonarReport && !sonarReport.skipped) {
+      logger.info(`Re-ejecutando SonarQube tras fix (ciclo ${i})...`, 'KOMODO');
+      komodoState.sonarAnalysis = { status: 'running', qualityGate: null, issues: null };
+
+      try {
+        const freshSonar = await analyzeSonar({
+          branch: taskSpec.branchName,
+          cwd,
+          prNumber,
+          repo,
+        });
+
+        if (freshSonar.success) {
+          // Update the sonarReport reference so the next review cycle gets fresh data
+          sonarReport = freshSonar;
+          komodoState.sonarAnalysis = {
+            status: 'done',
+            qualityGate: freshSonar.qualityGate,
+            issues: freshSonar.issues,
+          };
+          logger.info(`SonarQube post-fix: Quality Gate ${freshSonar.qualityGate}`, 'KOMODO');
+        } else {
+          logger.warn('SonarQube post-fix falló, continuando con reporte anterior...', 'KOMODO');
+        }
+      } catch (err) {
+        logger.warn(`SonarQube post-fix error (non-blocking): ${err.message}`, 'KOMODO');
+      }
+    }
+
+    logger.info('Relanzando review...', 'KOMODO');
   }
 
   return {
@@ -220,6 +257,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, c
     cycles,
     finalReview: lastReview,
     cost: totalCost,
+    sonarReport,
     error: `PR no aprobada después de ${maxCycles} ciclos`,
   };
 }

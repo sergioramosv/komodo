@@ -601,10 +601,33 @@ export const tools = {
         return { success: false, error: result.error, duration: result.duration };
       }
 
+      // Re-run SonarQube after fix to get fresh quality gate
+      let sonarReport = null;
+      try {
+        sonarReport = await analyzeSonar({
+          branch: params.branchName,
+          cwd: params.cwd,
+          prNumber: params.prNumber,
+        });
+        if (sonarReport?.success) {
+          komodoState.sonarAnalysis = {
+            status: 'done',
+            qualityGate: sonarReport.qualityGate,
+            issues: sonarReport.issues,
+          };
+        }
+      } catch {
+        // Non-blocking: continue even if Sonar fails
+      }
+
       return {
         success: true,
         fix: result.fix,
         duration: result.duration,
+        sonarReport: sonarReport?.success ? {
+          qualityGate: sonarReport.qualityGate,
+          issues: sonarReport.issues,
+        } : null,
         nextStep: `Fixes pusheados. Usa komodo_review de nuevo con prNumber=${params.prNumber} para re-revisar.`,
       };
     },
@@ -677,7 +700,43 @@ export const tools = {
         };
       }
 
-      // Approved
+      // Approved — check SonarQube quality gate before merge
+      // Run a fresh Sonar analysis to ensure the final state passes
+      let finalSonarReport = null;
+      try {
+        let branch = null;
+        if (runGh) {
+          const prJson = runGh(['pr', 'view', String(prNumber), '--json', 'headRefName', '--repo', repo]);
+          const prData = JSON.parse(prJson);
+          branch = prData.headRefName || null;
+        }
+        finalSonarReport = await analyzeSonar({ branch, prNumber, repo });
+      } catch {
+        // Non-blocking: if Sonar fails to run, don't block merge
+      }
+
+      if (finalSonarReport?.success && finalSonarReport.qualityGate === 'ERROR') {
+        const blockerCount = finalSonarReport.issues?.BLOCKER || 0;
+        const criticalCount = finalSonarReport.issues?.CRITICAL || 0;
+
+        komodoState.sonarAnalysis = {
+          status: 'done',
+          qualityGate: 'ERROR',
+          issues: finalSonarReport.issues,
+        };
+
+        return {
+          success: false,
+          merged: false,
+          error: `Merge bloqueado: SonarQube Quality Gate FAILED (${blockerCount} blocker, ${criticalCount} critical issues). Arregla los issues y vuelve a intentar.`,
+          sonarReport: {
+            qualityGate: finalSonarReport.qualityGate,
+            issues: finalSonarReport.issues,
+            issueDetails: finalSonarReport.issueDetails,
+          },
+        };
+      }
+
       let merged = false;
 
       if (config.autoMerge) {

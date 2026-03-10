@@ -754,6 +754,32 @@ export async function runTask(projectId, cwd) {
 
     komodoState.updatePhase(PHASES.MERGING, { currentPR: prNumber });
 
+    // Use the latest sonarReport from the review loop (may have been refreshed after fixes)
+    const finalSonarReport = reviewResult.sonarReport || sonarReport;
+
+    // Block merge if SonarQube quality gate failed
+    if (finalSonarReport?.success && finalSonarReport.qualityGate === 'ERROR') {
+      const blockerCount = finalSonarReport.issues?.BLOCKER || 0;
+      const criticalCount = finalSonarReport.issues?.CRITICAL || 0;
+      logger.error(
+        `Merge bloqueado: SonarQube Quality Gate FAILED (${blockerCount} blocker, ${criticalCount} critical)`,
+        'KOMODO',
+      );
+
+      // Close PR and rollback task
+      closePR(repo, prNumber, `Merge bloqueado por SonarQube Quality Gate FAILED (${blockerCount} blocker, ${criticalCount} critical issues)`);
+      await rollbackTask(taskSpec.taskId);
+
+      return makeResult({
+        success: false,
+        taskSpec,
+        prNumber,
+        startTime,
+        error: `SonarQube Quality Gate FAILED: ${blockerCount} blocker, ${criticalCount} critical issues. Merge bloqueado.`,
+        reviewResult,
+      });
+    }
+
     let merged = false;
 
     if (config.autoMerge) {
