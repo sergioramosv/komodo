@@ -171,6 +171,53 @@ describe('security-audit plugin — detección de patrones', () => {
 
     expect(result.suggestions.length).toBeGreaterThan(0);
   });
+
+  it('detecta secretos en archivos YAML', async () => {
+    writeFileSync(join(tmpDir, 'config.yml'), `
+database:
+  password: "super_secret_db_pass"
+  host: localhost
+`);
+
+    const result = await runPlugin(['config.yml']);
+
+    expect(result.success).toBe(true);
+    expect(result.issues.some(i => /hardcoded secret/i.test(i))).toBe(true);
+    expect(result.data.scannedFiles).toContain('config.yml');
+  });
+
+  it('detecta patrones inseguros en archivos Python', async () => {
+    writeFileSync(join(tmpDir, 'app.py'), `
+import os
+api_key = "sk-live-1234567890abcdef"
+user_input = input()
+result = eval(user_input)
+`);
+
+    const result = await runPlugin(['app.py']);
+
+    expect(result.success).toBe(true);
+    expect(result.issues.some(i => /hardcoded secret/i.test(i))).toBe(true);
+    expect(result.issues.some(i => /eval\(\)/i.test(i))).toBe(true);
+    expect(result.data.scannedFiles).toContain('app.py');
+  });
+
+  it('detecta múltiples tipos de issues en un solo archivo', async () => {
+    writeFileSync(join(tmpDir, 'dangerous.js'), `
+      const token = 'ghp_abc123def456ghi789';
+      const result = eval(userInput);
+      // TODO: remove hardcoded password before release
+    `);
+
+    const result = await runPlugin(['dangerous.js']);
+
+    expect(result.success).toBe(true);
+    // Should detect all three: hardcoded secret, eval, and TODO password
+    expect(result.issues.some(i => /hardcoded secret/i.test(i))).toBe(true);
+    expect(result.issues.some(i => /eval\(\)/i.test(i))).toBe(true);
+    expect(result.issues.some(i => /TODO/i.test(i))).toBe(true);
+    expect(result.issues.length).toBeGreaterThanOrEqual(3);
+  });
 });
 
 // ── E2E: integración PluginLoader → security-audit → issues en review ──────────
