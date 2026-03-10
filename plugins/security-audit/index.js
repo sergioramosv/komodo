@@ -9,6 +9,35 @@
  *
  * Position: before-review
  * The issues surface in the Reviewer prompt as mandatory items to address.
+ *
+ * ─── Plugin Authoring Guide ─────────────────────────────────────────────────
+ *
+ * Use this plugin as a reference to create new Komodo plugins.
+ *
+ * 1. Create a directory under `plugins/` with your plugin name (e.g. `plugins/my-plugin/`).
+ * 2. Add an `index.js` that default-exports an object with the Plugin interface:
+ *
+ *    export default {
+ *      name: 'my-plugin',                    // unique identifier
+ *      role: 'What the plugin does',         // human-readable description
+ *      position: 'before-review',            // 'before-review' | 'after-review' | 'after-merge'
+ *      async execute(context) {              // main entry point
+ *        // context: { task, prNumber, branchName, repoPath, repo, changedFiles, previousPluginOutputs }
+ *        return {
+ *          success: true,
+ *          issues: [],       // strings — shown as mandatory items in Reviewer prompt
+ *          suggestions: [],  // strings — non-blocking improvement hints
+ *          data: {},         // arbitrary payload for downstream plugins
+ *        };
+ *      },
+ *    };
+ *
+ * 3. Enable it in `.env`:  ENABLED_PLUGINS=security-audit,my-plugin
+ * 4. Plugins at 'before-review' feed issues into the Reviewer; errors are caught
+ *    so a failing plugin never blocks the pipeline.
+ *
+ * See `src/plugins/plugin-interface.js` for the full type definitions.
+ * ────────────────────────────────────────────────────────────────────────────
  */
 
 import { readFileSync, existsSync } from 'fs';
