@@ -30,6 +30,9 @@ export class KomodoApiServer {
 
     /** @type {import('http').Server|null} */
     this._httpServer = null;
+
+    /** @type {Map<string, { count: number, resetTime: number }>} */
+    this._rateLimits = new Map();
   }
 
   /**
@@ -49,6 +52,9 @@ export class KomodoApiServer {
         logger.info(`API server escuchando en puerto ${this.port}`, 'API');
         resolve();
       });
+
+      // Cleanup rate limits every minute
+      this._rateLimitInterval = setInterval(() => this._cleanupRateLimits(), 60000);
     });
   }
 
@@ -59,6 +65,9 @@ export class KomodoApiServer {
    */
   stop() {
     return new Promise((resolve) => {
+      if (this._rateLimitInterval) {
+        clearInterval(this._rateLimitInterval);
+      }
       if (this._httpServer) {
         this._httpServer.close(() => resolve());
         this._httpServer = null;
@@ -86,6 +95,7 @@ export class KomodoApiServer {
     }
 
     if (!this._authenticate(req, res)) return;
+    if (!this._checkRateLimit(req, res)) return;
 
     const path = (req.url || '').split('?')[0];
     const method = req.method;
@@ -117,6 +127,47 @@ export class KomodoApiServer {
 
     res.writeHead(404);
     res.end(JSON.stringify({ error: 'Not found' }));
+  }
+
+  /**
+   * Verifica el rate limit por IP (60 req/min).
+   *
+   * @param {import('http').IncomingMessage} req
+   * @param {import('http').ServerResponse} res
+   * @returns {boolean} true si la petición puede proceder
+   */
+  _checkRateLimit(req, res) {
+    const ip = (req.socket && req.socket.remoteAddress) || 'unknown';
+    const now = Date.now();
+    const limit = this._rateLimits.get(ip);
+
+    if (limit && now < limit.resetTime) {
+      if (limit.count >= 60) {
+        res.writeHead(429);
+        res.end(JSON.stringify({ error: 'Too Many Requests', retryAfter: Math.ceil((limit.resetTime - now) / 1000) }));
+        return false;
+      }
+      limit.count++;
+    } else {
+      this._rateLimits.set(ip, {
+        count: 1,
+        resetTime: now + 60000,
+      });
+    }
+
+    return true;
+  }
+
+  /**
+   * Limpia registros de rate limit expirados.
+   */
+  _cleanupRateLimits() {
+    const now = Date.now();
+    for (const [ip, limit] of this._rateLimits.entries()) {
+      if (now >= limit.resetTime) {
+        this._rateLimits.delete(ip);
+      }
+    }
   }
 
   /**

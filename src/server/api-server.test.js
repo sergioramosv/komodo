@@ -50,7 +50,7 @@ function makeReqRes(headers = {}, method = 'GET', url = '/') {
     writeHead(status) { this._status = status; },
     end(body) { this._body = body ?? null; },
   };
-  const req = { method, headers, url };
+  const req = { method, headers, url, socket: { remoteAddress: '127.0.0.1' } };
   return { req, res };
 }
 
@@ -62,6 +62,7 @@ function makeStreamReq(headers = {}, method = 'POST', url = '/', bodyObj = {}) {
   req.method = method;
   req.headers = headers;
   req.url = url;
+  req.socket = { remoteAddress: '127.0.0.1' };
 
   // Emit data and end asynchronously so handlers are attached first
   process.nextTick(() => {
@@ -442,6 +443,87 @@ describe('GET /api/status', () => {
     expect(body.agents).toBeDefined();
     expect(body.agents.PLANNER).toBeDefined();
     expect(komodoState.getSnapshot).toHaveBeenCalled();
+  });
+});
+
+// --- Rate Limiting ---
+
+describe('KomodoApiServer Rate Limiting', () => {
+  let server;
+
+  beforeEach(() => {
+    config.komodoApiKey = 'test-secret';
+    server = new KomodoApiServer({ port: 3099 });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('allows up to 60 requests per minute', () => {
+    const { req } = makeReqRes({ 'x-komodo-key': 'test-secret' });
+    req.socket = { remoteAddress: '127.0.0.1' };
+
+    for (let i = 0; i < 60; i++) {
+      const { res: currentRes } = makeReqRes({ 'x-komodo-key': 'test-secret' });
+      const allowed = server._checkRateLimit(req, currentRes);
+      expect(allowed).toBe(true);
+      expect(currentRes._status).toBeNull();
+    }
+  });
+
+  it('returns 429 when exceeding 60 requests per minute', () => {
+    const { req } = makeReqRes({ 'x-komodo-key': 'test-secret' });
+    req.socket = { remoteAddress: '127.0.0.1' };
+
+    // Fill the bucket
+    for (let i = 0; i < 60; i++) {
+      server._checkRateLimit(req, makeReqRes().res);
+    }
+
+    // 61st request
+    const { res: limitRes } = makeReqRes({ 'x-komodo-key': 'test-secret' });
+    const allowed = server._checkRateLimit(req, limitRes);
+    
+    expect(allowed).toBe(false);
+    expect(limitRes._status).toBe(429);
+    const body = JSON.parse(limitRes._body);
+    expect(body.error).toBe('Too Many Requests');
+    expect(body.retryAfter).toBeGreaterThan(0);
+  });
+
+  it('resets limit after one minute', () => {
+    const { req } = makeReqRes({ 'x-komodo-key': 'test-secret' });
+    req.socket = { remoteAddress: '127.0.0.1' };
+
+    // Fill the bucket
+    for (let i = 0; i < 60; i++) {
+      server._checkRateLimit(req, makeReqRes().res);
+    }
+
+    // Advance time by 61 seconds
+    vi.advanceTimersByTime(61000);
+
+    const { res: resetRes } = makeReqRes({ 'x-komodo-key': 'test-secret' });
+    const allowed = server._checkRateLimit(req, resetRes);
+    
+    expect(allowed).toBe(true);
+    expect(resetRes._status).toBeNull();
+  });
+
+  it('tracks different IPs separately', () => {
+    const req1 = { socket: { remoteAddress: '1.1.1.1' } };
+    const req2 = { socket: { remoteAddress: '2.2.2.2' } };
+
+    // IP 1 exceeds limit
+    for (let i = 0; i < 60; i++) {
+      server._checkRateLimit(req1, makeReqRes().res);
+    }
+    expect(server._checkRateLimit(req1, makeReqRes().res)).toBe(false);
+
+    // IP 2 is still allowed
+    expect(server._checkRateLimit(req2, makeReqRes().res)).toBe(true);
   });
 });
 
