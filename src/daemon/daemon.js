@@ -12,6 +12,7 @@ import { shutdownManager } from '../shutdown/shutdown-manager.js';
 import { runDependencyCheck } from '../auto-improve/dependency-checker.js';
 import { startWebhookOutgoing, stopWebhookOutgoing } from '../integrations/webhook-outgoing.js';
 import { budgetManager } from '../cost/budget-manager.js';
+import { startApiServerIfEnabled } from '../server/api-server.js';
 
 const AGENT = 'DAEMON';
 
@@ -74,8 +75,17 @@ export async function watch(projectId, options = {}) {
   // Start webhook outgoing (forwards events to external URLs if configured)
   startWebhookOutgoing();
 
+  // Start API server for external control (POST /api/run, /api/stop, /api/pause)
+  const apiServer = await startApiServerIfEnabled({
+    onRun: (tasks) => {
+      // In daemon mode, the daemon loop handles task execution.
+      // Set state to DAEMON_RUNNING so the loop picks up new tasks.
+      komodoState.setExecutionState(EXECUTION_STATES.DAEMON_RUNNING);
+    },
+  });
+
   // Register graceful shutdown handlers (SIGINT/SIGTERM)
-  shutdownManager.register({ wsServer });
+  shutdownManager.register({ wsServer, apiServer });
 
   // Emit daemon:started
   eventBus.emitEvent(EVENT_TYPES.DAEMON_STARTED, {
@@ -221,6 +231,7 @@ export async function watch(projectId, options = {}) {
   });
 
   await wsServer.stop();
+  if (apiServer) await apiServer.stop();
 
   logger.taskHeader('DAEMON STOPPED');
   logger.info(`Tareas completadas: ${tasksCompleted}`, AGENT);

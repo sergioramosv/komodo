@@ -23,6 +23,9 @@ class ShutdownManager {
     /** @type {import('../server/ws-server.js').KomodoWsServer|null} */
     this._wsServer = null;
 
+    /** @type {import('../server/api-server.js').KomodoApiServer|null} */
+    this._apiServer = null;
+
     /** @type {boolean} */
     this._shuttingDown = false;
 
@@ -41,12 +44,14 @@ class ShutdownManager {
    *
    * @param {Object} options
    * @param {import('../server/ws-server.js').KomodoWsServer} [options.wsServer] - WS server to close on shutdown
+   * @param {import('../server/api-server.js').KomodoApiServer} [options.apiServer] - API server to close on shutdown
    * @param {number} [options.timeoutMs=30000] - Max time to wait for agent before force stop
    */
   register(options = {}) {
     if (this._registered) return;
 
     this._wsServer = options.wsServer || null;
+    this._apiServer = options.apiServer || null;
     this._timeoutMs = options.timeoutMs ?? DEFAULT_SHUTDOWN_TIMEOUT_MS;
 
     this._handlers.sigint = () => this._onSignal('SIGINT');
@@ -73,6 +78,7 @@ class ShutdownManager {
 
     this._handlers = {};
     this._wsServer = null;
+    this._apiServer = null;
     this._shuttingDown = false;
     this._registered = false;
   }
@@ -148,7 +154,13 @@ class ShutdownManager {
       await this._saveShutdownCheckpoint(snapshot);
     }
 
-    // 4. Close WebSocket server
+    // 4. Close servers
+    if (this._apiServer) {
+      logger.info('Closing API server...', 'SHUTDOWN');
+      await this._apiServer.stop();
+      this._apiServer = null;
+    }
+
     if (this._wsServer) {
       logger.info('Closing WebSocket connections...', 'SHUTDOWN');
       await this._wsServer.stop();
