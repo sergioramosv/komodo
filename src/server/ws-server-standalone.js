@@ -55,29 +55,53 @@ function applyEvent(state, event) {
     case 'agent:state-change':
       if (event.agentName && state.agents[event.agentName]) {
         state.agents[event.agentName].status = event.newState || 'idle';
+        if (event.metadata?.taskTitle) {
+          state.agents[event.agentName].currentTask = event.metadata.taskTitle;
+        } else if (event.newState === 'idle') {
+          state.agents[event.agentName].currentTask = null;
+        }
+        if (event.metadata?.cli) state.agents[event.agentName].cli = event.metadata.cli;
+        if (event.metadata?.model) state.agents[event.agentName].model = event.metadata.model;
+      }
+      if (event.metadata?.taskTitle) {
+        state.currentTask = event.metadata.taskTitle;
+        if (event.metadata.taskId) {
+          state.taskDetails = {
+            id: event.metadata.taskId,
+            title: event.metadata.taskTitle,
+            devPoints: event.metadata.devPoints || 0,
+            branchName: event.metadata.branchName || null,
+          };
+        }
+      }
+      if (event.newState === 'working') {
+        state.executionState = 'running';
       }
       break;
 
     case 'task:started':
       if (event.metadata) {
-        state.currentTask = event.metadata.taskId || null;
+        state.currentTask = event.metadata.taskTitle || event.metadata.taskId || null;
         state.taskDetails = event.metadata.taskDetails || null;
+        state.totalTasks = (state.totalTasks || 0) + 1;
+        state.executionState = 'running';
       }
       break;
 
     case 'task:completed':
+      state.tasksCompleted = (state.tasksCompleted || 0) + 1;
       state.currentTask = null;
       state.taskDetails = null;
       state.currentPR = null;
+      state.reviewCycle = 0;
       state.phase = 'idle';
-      if (event.metadata?.tasksCompleted !== undefined) {
-        state.tasksCompleted = event.metadata.tasksCompleted;
-      }
       break;
 
     case 'pr:created':
       if (event.metadata) {
-        state.currentPR = event.metadata.prUrl || event.metadata.prNumber || null;
+        state.currentPR = event.metadata.prNumber
+          ? { number: event.metadata.prNumber, repo: event.metadata.repo }
+          : (event.metadata.prUrl || null);
       }
       break;
 
@@ -206,6 +230,7 @@ export function createStandaloneServer() {
 
         applyEvent(state, event);
         broadcast({ type: 'event', data: event });
+        broadcast({ type: 'snapshot', data: { ...state, agents: { ...state.agents } } });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
