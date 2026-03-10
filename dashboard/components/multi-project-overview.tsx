@@ -75,7 +75,7 @@ export function MultiProjectOverview({ multiProject, selectedProject, budget, to
         {budget && budget.dailyBudget > 0 && (
           <div className="mt-4 space-y-1">
             <div className="flex justify-between text-xs text-neutral-400">
-              <span>Budget usage</span>
+              <span>Project share of daily budget</span>
               <span>${stats.dailySpent.toFixed(2)} / ${budget.dailyBudget.toFixed(2)}</span>
             </div>
             <ProgressBar

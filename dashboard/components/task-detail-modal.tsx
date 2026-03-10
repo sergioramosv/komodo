@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { TaskDetails } from '@/lib/types';
 
 interface TaskDetailModalProps {
@@ -10,6 +11,15 @@ interface TaskDetailModalProps {
 }
 
 export function TaskDetailModal({ isOpen, onClose, task, currentPR }: TaskDetailModalProps) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const prLabel = currentPR
