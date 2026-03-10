@@ -7,6 +7,7 @@ import { config } from './config.js';
 import { logger } from './utils/logger.js';
 import { doctor } from './doctor/doctor.js';
 import { loadProjects, parseProjectsEnv, resolveProjectIdByName } from './multi-project/project-loader.js';
+import { spawn } from 'child_process';
 
 /**
  * Loads projects from PROJECTS env and returns the first projectId.
@@ -263,6 +264,83 @@ program
   .action(() => {
     const ok = doctor();
     process.exit(ok ? 0 : 1);
+  });
+
+// ============================================
+// komodo dashboard
+// ============================================
+program
+  .command('dashboard')
+  .alias('d')
+  .description('Inicia el WS server y el dashboard de Next.js en paralelo')
+  .option('--ws-port <port>', 'Puerto del WebSocket server (default: WS_PORT o 3001)')
+  .action(async (opts) => {
+    const komodoRoot = new URL('..', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
+    const dashboardDir = `${komodoRoot}/dashboard`;
+    const wsPort = opts.wsPort || process.env.WS_PORT || '3001';
+
+    logger.info('Iniciando Komodo Dashboard...', 'DASHBOARD');
+
+    // 1. Start WS server standalone
+    const wsProcess = spawn('node', ['src/server/ws-server-standalone.js'], {
+      cwd: komodoRoot,
+      stdio: 'pipe',
+      env: { ...process.env, WS_PORT: wsPort },
+      shell: true,
+    });
+
+    wsProcess.stdout.on('data', (data) => {
+      const msg = data.toString().trim();
+      if (msg) logger.info(msg, 'WS-SERVER');
+    });
+    wsProcess.stderr.on('data', (data) => {
+      const msg = data.toString().trim();
+      if (msg) logger.error(msg, 'WS-SERVER');
+    });
+
+    // 2. Start Next.js dashboard
+    const dashProcess = spawn('npm', ['run', 'dev'], {
+      cwd: dashboardDir,
+      stdio: 'pipe',
+      env: { ...process.env, NEXT_PUBLIC_WS_PORT: wsPort },
+      shell: true,
+    });
+
+    dashProcess.stdout.on('data', (data) => {
+      const msg = data.toString().trim();
+      if (msg) logger.info(msg, 'DASHBOARD');
+    });
+    dashProcess.stderr.on('data', (data) => {
+      const msg = data.toString().trim();
+      if (msg) logger.error(msg, 'DASHBOARD');
+    });
+
+    logger.info(`WS Server en puerto ${wsPort}`, 'DASHBOARD');
+    logger.info('Next.js dashboard arrancando...', 'DASHBOARD');
+
+    // Graceful shutdown: kill both on exit
+    const cleanup = () => {
+      logger.info('Cerrando procesos...', 'DASHBOARD');
+      wsProcess.kill();
+      dashProcess.kill();
+      process.exit(0);
+    };
+
+    process.on('SIGINT', cleanup);
+    process.on('SIGTERM', cleanup);
+
+    // If either process exits, kill the other
+    wsProcess.on('exit', (code) => {
+      logger.warn(`WS Server terminó con código ${code}`, 'DASHBOARD');
+      dashProcess.kill();
+      process.exit(code || 0);
+    });
+
+    dashProcess.on('exit', (code) => {
+      logger.warn(`Dashboard terminó con código ${code}`, 'DASHBOARD');
+      wsProcess.kill();
+      process.exit(code || 0);
+    });
   });
 
 program.parse();
