@@ -89,22 +89,46 @@ export default function DashboardPage() {
             <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
               <h2 className="mb-3 text-sm font-medium text-neutral-400">Current Task</h2>
               {snapshot.currentTask ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <p className="text-lg font-semibold">
                     {snapshot.taskDetails?.title ?? snapshot.currentTask}
                   </p>
                   {snapshot.taskDetails?.userStory && (
                     <p className="text-sm text-neutral-400">{snapshot.taskDetails.userStory}</p>
                   )}
-                  <div className="flex gap-4 text-xs text-neutral-500">
-                    {snapshot.taskDetails?.sprint && (
-                      <span className="rounded bg-neutral-800 px-2 py-0.5">
-                        {snapshot.taskDetails.sprint}
+
+                  {/* Points */}
+                  {(snapshot.taskDetails?.devPoints != null || snapshot.taskDetails?.businessPoints != null) && (
+                    <div className="flex gap-3">
+                      {snapshot.taskDetails?.businessPoints != null && (
+                        <div className="flex items-center gap-1.5 rounded bg-amber-500/10 px-2.5 py-1">
+                          <span className="text-amber-400">💼</span>
+                          <span className="text-sm font-medium text-amber-400">
+                            {snapshot.taskDetails.businessPoints} BP
+                          </span>
+                        </div>
+                      )}
+                      {snapshot.taskDetails?.devPoints != null && (
+                        <div className="flex items-center gap-1.5 rounded bg-blue-500/10 px-2.5 py-1">
+                          <span className="text-blue-400">⚙</span>
+                          <span className="text-sm font-medium text-blue-400">
+                            {snapshot.taskDetails.devPoints} DP
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Developer & Sprint */}
+                  <div className="flex flex-wrap gap-2 text-xs text-neutral-500">
+                    {snapshot.taskDetails?.assignedDeveloper && (
+                      <span className="flex items-center gap-1 rounded bg-neutral-800 px-2 py-0.5">
+                        <span>👤</span> {snapshot.taskDetails.assignedDeveloper}
                       </span>
                     )}
-                    {snapshot.taskDetails?.devPoints != null && (
+                    {snapshot.taskDetails?.sprint && (
                       <span className="rounded bg-neutral-800 px-2 py-0.5">
-                        {snapshot.taskDetails.devPoints} pts
+                        🏃 {snapshot.taskDetails.sprint}
                       </span>
                     )}
                     {snapshot.currentPR && (
@@ -128,57 +152,8 @@ export default function DashboardPage() {
               onStop={() => sendCommand('stop')}
             />
 
-            {/* CLI Health Status */}
-            <CliHealthStatus cliHealth={cliHealth} />
 
-            {/* Phase Indicator */}
-            <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <h2 className="mb-4 text-sm font-medium text-neutral-400">Phase</h2>
-              {snapshot.phase === 'idle' ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-lg text-neutral-500">○</span>
-                  <span className="text-neutral-500">Idle — waiting for next task</span>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    {PHASE_ORDER.map((phase, i) => {
-                      const cfg = PHASE_CONFIG[phase];
-                      const isActive = snapshot.phase === phase;
-                      const isPast = PHASE_ORDER.indexOf(snapshot.phase as Phase) > i;
 
-                      return (
-                        <div key={phase} className="flex items-center">
-                          {i > 0 && (
-                            <div
-                              className={`mx-1 h-px w-2 sm:w-4 ${
-                                isPast ? 'bg-green-500' : 'bg-neutral-700'
-                              }`}
-                            />
-                          )}
-                          <div
-                            className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm font-medium transition-all ${
-                              isActive
-                                ? `${cfg.color} bg-neutral-800 ring-1 ring-neutral-700`
-                                : isPast
-                                  ? 'text-green-500 bg-green-500/10'
-                                  : 'text-neutral-600'
-                            }`}
-                          >
-                            <span className="text-base">{isActive ? cfg.icon : isPast ? '✓' : cfg.icon}</span>
-                            {cfg.label}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {/* SonarQube Analysis inline status */}
-                  {snapshot.sonarAnalysis && snapshot.sonarAnalysis.status !== 'idle' && (
-                    <SonarStatus sonar={snapshot.sonarAnalysis} />
-                  )}
-                </div>
-              )}
-            </section>
 
             {/* Agent Cards */}
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-1">
@@ -194,11 +169,10 @@ export default function DashboardPage() {
                     <div className="flex items-center gap-3">
                       <span className={`inline-block h-3 w-3 rounded-full ${dotColor} ${ring}`} />
                       <h3 className="text-sm font-semibold">{agent.name}</h3>
-                      <span className={`ml-auto rounded px-2 py-0.5 text-xs font-medium capitalize ${
-                        agent.status === 'working' ? 'bg-blue-500/20 text-blue-400'
+                      <span className={`ml-auto rounded px-2 py-0.5 text-xs font-medium capitalize ${agent.status === 'working' ? 'bg-blue-500/20 text-blue-400'
                         : agent.status === 'done' ? 'bg-green-500/20 text-green-400'
-                        : 'bg-neutral-800 text-neutral-400'
-                      }`}>
+                          : 'bg-neutral-800 text-neutral-400'
+                        }`}>
                         {agent.status}
                       </span>
                     </div>
@@ -214,19 +188,6 @@ export default function DashboardPage() {
                 );
               })}
             </section>
-
-            {/* Budget Widget */}
-            {snapshot.budget ? (
-              <BudgetWidget budget={snapshot.budget} totalCost={snapshot.totalCost} />
-            ) : (
-              <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-                <h3 className="mb-1 text-sm font-medium text-neutral-400">Total Cost</h3>
-                <p className="text-2xl font-bold tabular-nums">
-                  ${snapshot.totalCost.toFixed(2)}
-                  <span className="ml-1 text-xs font-normal text-neutral-500">USD</span>
-                </p>
-              </section>
-            )}
 
             {/* Tasks */}
             <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
@@ -255,18 +216,55 @@ export default function DashboardPage() {
           </div>
 
           <div className="xl:col-span-2 flex flex-col min-h-[600px] h-[calc(100vh-8rem)] rounded-lg border border-neutral-800 bg-neutral-900 overflow-hidden relative">
-            {/* Title / Info Overlay */}
-            <div className="absolute z-10 p-4 w-full bg-gradient-to-b from-neutral-950/80 to-transparent flex justify-between pointer-events-none">
-               <h2 className="font-medium text-neutral-300">Komodo Office Inc.</h2>
-               {snapshot.reviewCycle > 0 && (
-                <span className="rounded bg-orange-500/20 px-2 py-0.5 text-xs font-medium text-orange-400">
-                  Review Cycle {snapshot.reviewCycle}
-                </span>
+            {/* Phase Indicator */}
+            <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+              <h2 className="mb-4 text-sm font-medium text-neutral-400">Phase</h2>
+              {snapshot.phase === 'idle' ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-lg text-neutral-500">○</span>
+                  <span className="text-neutral-500">Idle — waiting for next task</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {PHASE_ORDER.map((phase, i) => {
+                      const cfg = PHASE_CONFIG[phase];
+                      const isActive = snapshot.phase === phase;
+                      const isPast = PHASE_ORDER.indexOf(snapshot.phase as Phase) > i;
+
+                      return (
+                        <div key={phase} className="flex items-center">
+                          {i > 0 && (
+                            <div
+                              className={`mx-1 h-px w-2 sm:w-4 ${isPast ? 'bg-green-500' : 'bg-neutral-700'
+                                }`}
+                            />
+                          )}
+                          <div
+                            className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm font-medium transition-all ${isActive
+                              ? `${cfg.color} bg-neutral-800 ring-1 ring-neutral-700`
+                              : isPast
+                                ? 'text-green-500 bg-green-500/10'
+                                : 'text-neutral-600'
+                              }`}
+                          >
+                            <span className="text-base">{isActive ? cfg.icon : isPast ? '✓' : cfg.icon}</span>
+                            {cfg.label}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* SonarQube Analysis inline status */}
+                  {snapshot.sonarAnalysis && snapshot.sonarAnalysis.status !== 'idle' && (
+                    <SonarStatus sonar={snapshot.sonarAnalysis} />
+                  )}
+                </div>
               )}
-            </div>
-            
+            </section>
+
             {/* Office Scene — real-time agent visualization */}
-             <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
+            <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
           </div>
         </div>
       )}

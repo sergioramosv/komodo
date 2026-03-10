@@ -36,6 +36,8 @@ export interface TaskDetails {
   userStory: string | null;
   sprint: string | null;
   devPoints: number | null;
+  businessPoints: number | null;
+  assignedDeveloper: string | null;
 }
 
 export interface SonarAnalysisState {

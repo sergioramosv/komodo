@@ -3,10 +3,27 @@ import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { execFileSync } from 'child_process';
+import { readFileSync, existsSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT_DIR = resolve(__dirname, '..');
+
+/**
+ * Loads dashboard config from komodo.config.json (written by the dashboard UI).
+ * Returns agent CLI/model overrides if present.
+ */
+function loadDashboardConfig() {
+  const configPath = resolve(ROOT_DIR, 'komodo.config.json');
+  try {
+    if (!existsSync(configPath)) return null;
+    return JSON.parse(readFileSync(configPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+const _dashboardConfig = loadDashboardConfig();
 
 /**
  * Detecta si un CLI está instalado en el sistema.
@@ -28,9 +45,10 @@ export function cliExists(command) {
 export const config = {
   // CLIs de agentes IA (terminales, NO APIs)
   // Cada agente usa un CLI real: claude, codex, gemini, etc.
-  cliPlanner: process.env.CLI_PLANNER || 'claude',
-  cliCoder: process.env.CLI_CODER || 'claude',
-  cliReviewer: process.env.CLI_REVIEWER || 'claude',
+  // Dashboard overrides (komodo.config.json) > .env > defaults
+  cliPlanner: _dashboardConfig?.agents?.planner?.cli || process.env.CLI_PLANNER || 'claude',
+  cliCoder: _dashboardConfig?.agents?.coder?.cli || process.env.CLI_CODER || 'claude',
+  cliReviewer: _dashboardConfig?.agents?.reviewer?.cli || process.env.CLI_REVIEWER || 'claude',
 
   // Firebase (para planning-task-mcp)
   googleCredentials: process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
@@ -48,7 +66,7 @@ export const config = {
   apiServer: process.env.API_SERVER === 'true', // default: false
   apiPort: parseInt(process.env.API_PORT || '3002', 10),
   komodoApiKey: process.env.KOMODO_API_KEY || '',
-  maxReviewCycles: parseInt(process.env.MAX_REVIEW_CYCLES || '5', 10),
+  maxReviewCycles: _dashboardConfig?.maxReviewCycles || parseInt(process.env.MAX_REVIEW_CYCLES || '5', 10),
   autoMerge: process.env.AUTO_MERGE !== 'false', // default: true
   defaultProjectId: process.env.DEFAULT_PROJECT_ID || '',
 
@@ -90,9 +108,10 @@ export const config = {
   modelMap_gemini_QA: process.env.MODEL_MAP_GEMINI_QA || '',
 
   // Force model override per role (overrides complexity-based selection)
-  forceModel_PLANNER: process.env.FORCE_MODEL_PLANNER || '',
-  forceModel_CODER: process.env.FORCE_MODEL_CODER || '',
-  forceModel_REVIEWER: process.env.FORCE_MODEL_REVIEWER || '',
+  // Dashboard model selection takes priority over .env FORCE_MODEL_*
+  forceModel_PLANNER: _dashboardConfig?.agents?.planner?.model || process.env.FORCE_MODEL_PLANNER || '',
+  forceModel_CODER: _dashboardConfig?.agents?.coder?.model || process.env.FORCE_MODEL_CODER || '',
+  forceModel_REVIEWER: _dashboardConfig?.agents?.reviewer?.model || process.env.FORCE_MODEL_REVIEWER || '',
   forceModel_QA: process.env.FORCE_MODEL_QA || '',
 
   // Rate limit fallback

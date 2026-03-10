@@ -21,6 +21,7 @@ const c = {
   red: '\x1b[31m',
   yellow: '\x1b[33m',
   cyan: '\x1b[36m',
+  magenta: '\x1b[35m',
 };
 
 function log(msg = '') { console.log(msg); }
@@ -29,6 +30,7 @@ function fail(msg) { log(`  ${c.red}✗${c.reset} ${msg}`); }
 function warn(msg) { log(`  ${c.yellow}⚠${c.reset} ${msg}`); }
 function step(n, total, msg) { log(`\n${c.bold}[${n}/${total}]${c.reset} ${c.cyan}${msg}${c.reset}`); }
 function header(msg) { log(`\n${c.bold}${c.cyan}${msg}${c.reset}`); }
+function section(msg) { log(`\n  ${c.magenta}── ${msg} ──${c.reset}`); }
 
 // ═══════════════════════════════════════════
 // Helpers
@@ -39,11 +41,17 @@ function cliVersion(cmd) {
     return execSync(`${cmd} --version`, {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 10000,
+      timeout: 3000,
       shell: true,
     }).trim().split('\n')[0];
   } catch {
-    return null;
+    try {
+      const checkCmd = process.platform === 'win32' ? 'where' : 'which';
+      execSync(`${checkCmd} ${cmd}`, { stdio: 'pipe', encoding: 'utf-8', timeout: 3000 });
+      return `${cmd} (installed)`;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -84,11 +92,22 @@ async function askYesNo(rl, question, defaultYes = true) {
   return val === 'y' || val === 'yes' || val === 'si' || val === 'sí';
 }
 
+async function askNumber(rl, question, defaultValue, min = 0, max = Infinity) {
+  const suffix = ` ${c.dim}(${defaultValue})${c.reset}`;
+  while (true) {
+    const answer = await rl.question(`  ${question}${suffix}: `);
+    const val = answer.trim() || String(defaultValue);
+    const num = parseFloat(val);
+    if (!isNaN(num) && num >= min && num <= max) return num;
+    log(`  ${c.red}Debe ser un número entre ${min} y ${max}${c.reset}`);
+  }
+}
+
 // ═══════════════════════════════════════════
 // Wizard
 // ═══════════════════════════════════════════
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 12;
 
 async function main() {
   const rl = createInterface({ input: stdin, output: stdout });
@@ -97,8 +116,11 @@ async function main() {
   // Banner
   log(`\n${c.bold}${c.green}  🦎 Komodo Setup Wizard${c.reset}`);
   log(`${c.dim}  ─────────────────────────${c.reset}`);
+  log(`${c.dim}  Configura tu orquestador de agentes IA${c.reset}`);
 
-  // ─── Step 1: Prerequisites ───────────────
+  // ═══════════════════════════════════════════
+  // Step 1: Prerequisites
+  // ═══════════════════════════════════════════
   step(1, TOTAL_STEPS, 'Verificando requisitos...');
 
   const nodeVer = cliVersion('node');
@@ -130,7 +152,9 @@ async function main() {
     process.exit(1);
   }
 
-  // ─── Step 2: Agent CLIs ──────────────────
+  // ═══════════════════════════════════════════
+  // Step 2: Agent CLIs
+  // ═══════════════════════════════════════════
   step(2, TOTAL_STEPS, 'Configurando agentes...');
   log(`${c.dim}  CLIs disponibles: ${availableClis.join(', ')}${c.reset}`);
 
@@ -138,10 +162,12 @@ async function main() {
   const cliCoder = await askChoice(rl, 'CLI para Coder', availableClis, existing.CLI_CODER || availableClis[0]);
   const cliReviewer = await askChoice(rl, 'CLI para Reviewer', availableClis, existing.CLI_REVIEWER || availableClis[0]);
 
-  // ─── Step 3: Firebase ────────────────────
+  // ═══════════════════════════════════════════
+  // Step 3: Firebase
+  // ═══════════════════════════════════════════
   step(3, TOTAL_STEPS, 'Configurando Firebase...');
 
-  const defaultCreds = existing.GOOGLE_APPLICATION_CREDENTIALS || './skills/planning-task-mcp/serviceAccountKey.json';
+  const defaultCreds = existing.GOOGLE_APPLICATION_CREDENTIALS || './serviceAccountKey.json';
   const googleCreds = await ask(rl, 'Ruta a serviceAccountKey.json', defaultCreds);
 
   if (!existsSync(resolve(ROOT, googleCreds))) {
@@ -153,7 +179,9 @@ async function main() {
   const defaultDbUrl = existing.FIREBASE_DATABASE_URL || '';
   const firebaseUrl = await ask(rl, 'Firebase Database URL', defaultDbUrl);
 
-  // ─── Step 4: User identity ───────────────
+  // ═══════════════════════════════════════════
+  // Step 4: User identity
+  // ═══════════════════════════════════════════
   step(4, TOTAL_STEPS, 'Configurando identidad...');
 
   const userId = await ask(rl, 'Tu User ID (Firebase UID)', existing.DEFAULT_USER_ID || '');
@@ -161,7 +189,9 @@ async function main() {
 
   if (!userId) warn('Sin User ID — algunas operaciones no funcionarán');
 
-  // ─── Step 5: GitHub ──────────────────────
+  // ═══════════════════════════════════════════
+  // Step 5: GitHub
+  // ═══════════════════════════════════════════
   step(5, TOTAL_STEPS, 'Configurando GitHub...');
 
   let ghAuthed = false;
@@ -180,24 +210,133 @@ async function main() {
     log(`${c.dim}  Token opcional (gh CLI ya autenticado)${c.reset}`);
   }
 
-  // ─── Step 6: Preferences ─────────────────
-  step(6, TOTAL_STEPS, 'Preferencias...');
+  // GitHub Issue Sync
+  section('GitHub Issue Sync');
+  const githubIssueSync = await askYesNo(rl, 'Sincronizar GitHub Issues al backlog?', existing.GITHUB_ISSUE_SYNC === 'true');
+  let githubIssueRepo = '';
+  let githubIssuePollMinutes = '5';
+  let githubIssueLabel = 'komodo';
 
-  const autoMerge = await askYesNo(rl, 'Auto-merge PRs aprobadas?', existing.AUTO_MERGE !== 'false');
-  const maxCycles = await ask(rl, 'Máximo rondas de review (1-10)', existing.MAX_REVIEW_CYCLES || '5');
+  if (githubIssueSync) {
+    githubIssueRepo = await ask(rl, 'Repositorio (owner/repo)', existing.GITHUB_ISSUE_REPO || '');
+    githubIssuePollMinutes = await ask(rl, 'Intervalo de polling (minutos)', existing.GITHUB_ISSUE_POLL_MINUTES || '5');
+    githubIssueLabel = await ask(rl, 'Label que activa sync', existing.GITHUB_ISSUE_LABEL || 'komodo');
+  }
 
-  // ─── Step 7: Project ─────────────────────
-  step(7, TOTAL_STEPS, 'Proyecto...');
+  // ═══════════════════════════════════════════
+  // Step 6: Basic Preferences
+  // ═══════════════════════════════════════════
+  step(6, TOTAL_STEPS, 'Preferencias básicas...');
 
   const projectId = await ask(rl, 'Project ID del backlog', existing.DEFAULT_PROJECT_ID || '');
+  const autoMerge = await askYesNo(rl, 'Auto-merge PRs aprobadas?', existing.AUTO_MERGE !== 'false');
+  const maxCycles = await askNumber(rl, 'Máximo rondas de review', existing.MAX_REVIEW_CYCLES || 5, 1, 10);
 
-  // ─── Step 8: SonarQube (opcional) ─────────
-  step(8, TOTAL_STEPS, 'SonarQube (opcional)...');
+  section('Tests y CI');
+  const prePrTests = await askYesNo(rl, 'Ejecutar tests antes de abrir PRs?', existing.PRE_PR_TESTS !== 'false');
+  let prePrTestCmd = 'auto';
+  if (prePrTests) {
+    prePrTestCmd = await ask(rl, 'Comando de tests (auto = detectar)', existing.PRE_PR_TEST_CMD || 'auto');
+  }
+
+  const ciMonitor = await askYesNo(rl, 'Monitorear GitHub Actions después de merge?', existing.CI_MONITOR === 'true');
+  let ciMonitorTimeout = '15';
+  let autoRevert = false;
+  if (ciMonitor) {
+    ciMonitorTimeout = await ask(rl, 'Timeout CI (minutos)', existing.CI_MONITOR_TIMEOUT_MINUTES || '15');
+    autoRevert = await askYesNo(rl, 'Auto-revert si CI falla?', existing.AUTO_REVERT === 'true');
+  }
+
+  // ═══════════════════════════════════════════
+  // Step 7: Budget
+  // ═══════════════════════════════════════════
+  step(7, TOTAL_STEPS, 'Configurando presupuesto...');
+  log(`${c.dim}  Limita el gasto de API para evitar sorpresas${c.reset}`);
+
+  const dailyBudget = await askNumber(rl, 'Presupuesto diario USD (0 = sin límite)', existing.DAILY_BUDGET_USD || 10, 0);
+  const weeklyBudget = await askNumber(rl, 'Presupuesto semanal USD (0 = sin límite)', existing.WEEKLY_BUDGET_USD || 50, 0);
+  const budgetWarning = await askNumber(rl, 'Umbral de aviso (0-1, ej: 0.8 = 80%)', existing.BUDGET_WARNING_THRESHOLD || 0.8, 0, 1);
+
+  // ═══════════════════════════════════════════
+  // Step 8: Rate Limit & Fallback
+  // ═══════════════════════════════════════════
+  step(8, TOTAL_STEPS, 'Rate limit y fallback...');
+
+  const rateLimitFallback = await askYesNo(rl, 'Auto-fallback a otro CLI si hay rate limit?', existing.RATE_LIMIT_FALLBACK !== 'false');
+  let fallbackOrder = 'claude,codex,gemini';
+  let cooldownMinutes = '15';
+
+  if (rateLimitFallback) {
+    fallbackOrder = await ask(rl, 'Orden de fallback (separado por coma)', existing.FALLBACK_CLI_ORDER || 'claude,codex,gemini');
+    cooldownMinutes = await ask(rl, 'Cooldown antes de reintentar (minutos)', existing.RATE_LIMIT_COOLDOWN_MINUTES || '15');
+  }
+
+  // Complexity thresholds
+  section('Clasificación de complejidad');
+  log(`${c.dim}  Score 1-10: trivial, standard, complex${c.reset}`);
+  const trivialMax = await askNumber(rl, 'Score máximo para "trivial"', existing.COMPLEXITY_TRIVIAL_MAX || 3, 1, 9);
+  const standardMax = await askNumber(rl, 'Score máximo para "standard"', existing.COMPLEXITY_STANDARD_MAX || 6, trivialMax + 1, 9);
+
+  // ═══════════════════════════════════════════
+  // Step 9: WebSocket & API Server
+  // ═══════════════════════════════════════════
+  step(9, TOTAL_STEPS, 'Servidores...');
+
+  const wsPort = await ask(rl, 'Puerto WebSocket (dashboard)', existing.WS_PORT || '3001');
+
+  section('API Server (control externo)');
+  const apiServer = await askYesNo(rl, 'Habilitar API HTTP REST?', existing.API_SERVER === 'true');
+  let apiPort = '3002';
+  let komodoApiKey = '';
+
+  if (apiServer) {
+    apiPort = await ask(rl, 'Puerto API', existing.API_PORT || '3002');
+    komodoApiKey = await ask(rl, 'API Key (header X-Komodo-Key)', existing.KOMODO_API_KEY || '');
+    if (!komodoApiKey) warn('Sin API Key — cualquiera puede controlar Komodo');
+  }
+
+  // ═══════════════════════════════════════════
+  // Step 10: Browser MCP
+  // ═══════════════════════════════════════════
+  step(10, TOTAL_STEPS, 'Browser MCP (Chrome DevTools)...');
+  log(`${c.dim}  Permite a los agentes inspeccionar el navegador${c.reset}`);
+
+  const enableBrowser = await askYesNo(rl, 'Habilitar Chrome DevTools MCP?', existing.ENABLE_BROWSER_MCP === 'true');
+  let chromePort = '9222';
+
+  if (enableBrowser) {
+    chromePort = await ask(rl, 'Puerto Chrome debugging', existing.CHROME_DEBUGGER_PORT || '9222');
+    log(`${c.dim}  Lanza Chrome con: --remote-debugging-port=${chromePort}${c.reset}`);
+  }
+
+  // ═══════════════════════════════════════════
+  // Step 11: Telegram
+  // ═══════════════════════════════════════════
+  step(11, TOTAL_STEPS, 'Telegram Bot...');
+
+  const enableTelegram = await askYesNo(rl, 'Habilitar notificaciones por Telegram?', existing.ENABLE_TELEGRAM === 'true');
+  let telegramToken = '';
+  let telegramChatId = '';
+  let telegramAllowedUsers = '';
+  let telegramTimeout = '120000';
+
+  if (enableTelegram) {
+    telegramToken = await ask(rl, 'Bot Token (de @BotFather)', existing.TELEGRAM_BOT_TOKEN || '');
+    telegramChatId = await ask(rl, 'Chat ID principal', existing.TELEGRAM_CHAT_ID || '');
+    telegramAllowedUsers = await ask(rl, 'User IDs autorizados (separados por coma)', existing.TELEGRAM_ALLOWED_USERS || '');
+    telegramTimeout = await ask(rl, 'Timeout Claude (ms)', existing.TELEGRAM_CLAUDE_TIMEOUT || '120000');
+  }
+
+  // ═══════════════════════════════════════════
+  // Step 12: SonarQube & Plugins
+  // ═══════════════════════════════════════════
+  step(12, TOTAL_STEPS, 'SonarQube y Plugins...');
 
   let enableSonar = false;
   let sonarToken = '';
   let sonarHostUrl = '';
   let sonarProjectKey = '';
+  let sonarOrganization = '';
 
   const wantsSonar = await askYesNo(rl, 'Configurar análisis estático con SonarQube?', existing.ENABLE_SONAR === 'true');
 
@@ -206,15 +345,21 @@ async function main() {
     sonarProjectKey = await ask(rl, 'Project key', existing.SONAR_PROJECT_KEY || '');
     sonarToken = await ask(rl, 'Token de autenticación', existing.SONAR_TOKEN || '');
 
+    if (sonarHostUrl.includes('sonarcloud.io')) {
+      sonarOrganization = await ask(rl, 'Organización (requerido para SonarCloud)', existing.SONAR_ORGANIZATION || '');
+    }
+
     if (sonarToken && sonarHostUrl && sonarProjectKey) {
       enableSonar = true;
       ok('SonarQube configurado');
     } else {
       warn('Configuración incompleta — SonarQube deshabilitado');
     }
-  } else {
-    log(`${c.dim}  SonarQube omitido (puedes configurarlo después en .env)${c.reset}`);
   }
+
+  section('Plugins');
+  const pluginsDir = await ask(rl, 'Directorio de plugins', existing.PLUGINS_DIR || './plugins');
+  const enabledPlugins = await ask(rl, 'Plugins habilitados (separados por coma, vacío = ninguno)', existing.ENABLED_PLUGINS || '');
 
   rl.close();
 
@@ -225,41 +370,139 @@ async function main() {
   header('Generando configuración...');
 
   // .env
-  const envContent = [
-    '# ═══════════════════════════════════════════',
-    '# Komodo - Generado por setup wizard',
-    '# ═══════════════════════════════════════════',
-    '',
-    '# CLIs de agentes (claude, codex, gemini)',
-    `CLI_PLANNER=${cliPlanner}`,
-    `CLI_CODER=${cliCoder}`,
-    `CLI_REVIEWER=${cliReviewer}`,
-    '',
-    '# Firebase',
-    `GOOGLE_APPLICATION_CREDENTIALS=${googleCreds}`,
-    `FIREBASE_DATABASE_URL=${firebaseUrl}`,
-    '',
-    '# Usuario',
-    `DEFAULT_USER_ID=${userId}`,
-    `DEFAULT_USER_NAME=${userName}`,
-    '',
-    '# GitHub',
-    `GITHUB_TOKEN=${githubToken}`,
-    '',
-    '# Komodo',
-    `AUTO_MERGE=${autoMerge}`,
-    `MAX_REVIEW_CYCLES=${maxCycles}`,
-    `DEFAULT_PROJECT_ID=${projectId}`,
-    '# Multi-project: comma-separated project IDs or * for all user projects',
-    '# Example: PROJECTS=id1,id2,id3  or  PROJECTS=*',
-    'PROJECTS=',
-    '',
-    '# SonarQube',
-    `ENABLE_SONAR=${enableSonar}`,
-    `SONAR_TOKEN=${sonarToken}`,
-    `SONAR_HOST_URL=${sonarHostUrl}`,
-    `SONAR_PROJECT_KEY=${sonarProjectKey}`,
-  ].join('\n');
+  const envContent = `# ═══════════════════════════════════════════
+# Komodo - Generado por setup wizard
+# ═══════════════════════════════════════════
+
+# ═══════════════════════════════════════════
+# CLIs de Agentes
+# ═══════════════════════════════════════════
+CLI_PLANNER=${cliPlanner}
+CLI_CODER=${cliCoder}
+CLI_REVIEWER=${cliReviewer}
+
+# ═══════════════════════════════════════════
+# Firebase
+# ═══════════════════════════════════════════
+GOOGLE_APPLICATION_CREDENTIALS=${googleCreds}
+FIREBASE_DATABASE_URL=${firebaseUrl}
+
+# ═══════════════════════════════════════════
+# Usuario
+# ═══════════════════════════════════════════
+DEFAULT_USER_ID=${userId}
+DEFAULT_USER_NAME=${userName}
+
+# ═══════════════════════════════════════════
+# GitHub
+# ═══════════════════════════════════════════
+GITHUB_TOKEN=${githubToken}
+GITHUB_ISSUE_SYNC=${githubIssueSync}
+GITHUB_ISSUE_REPO=${githubIssueRepo}
+GITHUB_ISSUE_POLL_MINUTES=${githubIssuePollMinutes}
+GITHUB_ISSUE_LABEL=${githubIssueLabel}
+
+# ═══════════════════════════════════════════
+# Komodo Config
+# ═══════════════════════════════════════════
+DEFAULT_PROJECT_ID=${projectId}
+AUTO_MERGE=${autoMerge}
+MAX_REVIEW_CYCLES=${maxCycles}
+
+# Tests y CI
+PRE_PR_TESTS=${prePrTests}
+PRE_PR_TEST_CMD=${prePrTestCmd}
+CI_MONITOR=${ciMonitor}
+CI_MONITOR_TIMEOUT_MINUTES=${ciMonitorTimeout}
+AUTO_REVERT=${autoRevert}
+
+# Context affinity (boost para tareas relacionadas, 0-1)
+CONTEXT_AFFINITY_BOOST=0.2
+
+# ═══════════════════════════════════════════
+# Budget Manager
+# ═══════════════════════════════════════════
+DAILY_BUDGET_USD=${dailyBudget}
+WEEKLY_BUDGET_USD=${weeklyBudget}
+BUDGET_WARNING_THRESHOLD=${budgetWarning}
+ESTIMATED_COST_PER_INVOCATION=0.05
+
+# ═══════════════════════════════════════════
+# Rate Limit & Fallback
+# ═══════════════════════════════════════════
+RATE_LIMIT_FALLBACK=${rateLimitFallback}
+FALLBACK_CLI_ORDER=${fallbackOrder}
+RATE_LIMIT_COOLDOWN_MINUTES=${cooldownMinutes}
+
+# Complexity classification (score 1-10)
+COMPLEXITY_TRIVIAL_MAX=${trivialMax}
+COMPLEXITY_STANDARD_MAX=${standardMax}
+
+# ═══════════════════════════════════════════
+# Servidores
+# ═══════════════════════════════════════════
+WS_PORT=${wsPort}
+API_SERVER=${apiServer}
+API_PORT=${apiPort}
+KOMODO_API_KEY=${komodoApiKey}
+
+# ═══════════════════════════════════════════
+# Browser MCP
+# ═══════════════════════════════════════════
+ENABLE_BROWSER_MCP=${enableBrowser}
+CHROME_DEBUGGER_PORT=${chromePort}
+
+# ═══════════════════════════════════════════
+# Telegram
+# ═══════════════════════════════════════════
+ENABLE_TELEGRAM=${enableTelegram}
+TELEGRAM_BOT_TOKEN=${telegramToken}
+TELEGRAM_CHAT_ID=${telegramChatId}
+TELEGRAM_ALLOWED_USERS=${telegramAllowedUsers}
+TELEGRAM_CLAUDE_TIMEOUT=${telegramTimeout}
+
+# ═══════════════════════════════════════════
+# SonarQube
+# ═══════════════════════════════════════════
+ENABLE_SONAR=${enableSonar}
+SONAR_TOKEN=${sonarToken}
+SONAR_HOST_URL=${sonarHostUrl}
+SONAR_PROJECT_KEY=${sonarProjectKey}
+SONAR_ORGANIZATION=${sonarOrganization}
+
+# ═══════════════════════════════════════════
+# Plugins
+# ═══════════════════════════════════════════
+PLUGINS_DIR=${pluginsDir}
+ENABLED_PLUGINS=${enabledPlugins}
+
+# ═══════════════════════════════════════════
+# Model Selection (opcional - descomentar para personalizar)
+# ═══════════════════════════════════════════
+# Formato: trivialModel,standardModel,complexModel
+#MODEL_MAP_CLAUDE_PLANNER=sonnet,sonnet,opus
+#MODEL_MAP_CLAUDE_CODER=sonnet,sonnet,opus
+#MODEL_MAP_CLAUDE_REVIEWER=haiku,sonnet,sonnet
+#MODEL_MAP_CODEX_PLANNER=codex-mini,o4-mini,o3
+#MODEL_MAP_CODEX_CODER=codex-mini,o4-mini,o3
+#MODEL_MAP_CODEX_REVIEWER=codex-mini,o4-mini,o3
+#MODEL_MAP_GEMINI_PLANNER=gemini-2.0-flash,gemini-2.5-pro,gemini-2.5-pro
+#MODEL_MAP_GEMINI_CODER=gemini-2.0-flash,gemini-2.5-pro,gemini-2.5-pro
+#MODEL_MAP_GEMINI_REVIEWER=gemini-2.0-flash,gemini-2.5-pro,gemini-2.5-pro
+
+# Override global (fuerza modelo específico ignorando complejidad)
+#FORCE_MODEL_PLANNER=
+#FORCE_MODEL_CODER=
+#FORCE_MODEL_REVIEWER=
+
+# ═══════════════════════════════════════════
+# Scheduler (ventanas de ejecución)
+# ═══════════════════════════════════════════
+# Formato: HH:MM-HH:MM (soporta cruce de medianoche)
+# Vacío = ejecución 24/7
+#SCHEDULE=02:00-06:00,14:00-18:00
+#SCHEDULE_TIMEZONE=Europe/Madrid
+`;
 
   writeFileSync(resolve(ROOT, '.env'), envContent);
   ok('.env creado');
@@ -322,35 +565,69 @@ async function main() {
   // ═══════════════════════════════════════════
 
   if (availableClis.includes('claude')) {
-    const mcpConfigPath = resolve(ROOT, 'skills', 'komodo-mcp', 'src', 'index.js');
+    const mcpConfigPath = resolve(ROOT, 'skills', 'komodo-mcp', 'src', 'index.js').replace(/\\/g, '/');
     if (existsSync(mcpConfigPath)) {
-      // Registrar komodo-mcp en settings.local.json del proyecto
-      const settingsDir = resolve(ROOT, '.claude');
-      mkdirSync(settingsDir, { recursive: true });
-      const settingsPath = resolve(settingsDir, 'settings.local.json');
-
-      let settings = {};
-      if (existsSync(settingsPath)) {
+      // Registrar komodo-mcp globalmente via claude mcp add (scope user → ~/.claude.json)
+      try {
+        execSync(
+          `claude mcp add -s user -e KOMODO_ROOT="${ROOT.replace(/\\/g, '/')}" -- komodo-mcp node "${mcpConfigPath}"`,
+          { stdio: 'pipe' }
+        );
+        ok('komodo-mcp registrado globalmente (claude mcp add -s user)');
+      } catch (err) {
+        // Si ya existe, intentar remover y re-agregar
         try {
-          settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
-        } catch {
-          settings = {};
+          execSync('claude mcp remove -s user komodo-mcp', { stdio: 'pipe' });
+          execSync(
+            `claude mcp add -s user -e KOMODO_ROOT="${ROOT.replace(/\\/g, '/')}" -- komodo-mcp node "${mcpConfigPath}"`,
+            { stdio: 'pipe' }
+          );
+          ok('komodo-mcp actualizado globalmente (claude mcp add -s user)');
+        } catch (err2) {
+          warn(`No se pudo registrar komodo-mcp: ${err2.message}`);
         }
       }
-
-      // Add komodo-mcp to MCP servers
-      if (!settings.mcpServers) settings.mcpServers = {};
-      settings.mcpServers['komodo-mcp'] = {
-        command: 'node',
-        args: [mcpConfigPath],
-        env: {
-          KOMODO_ROOT: ROOT,
-        },
-      };
-
-      writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-      ok('komodo-mcp registrado en Claude Code (.claude/settings.local.json)');
     }
+
+    // ═══════════════════════════════════════════
+    // Auto-approve komodo-mcp tools (no permission prompts)
+    // ═══════════════════════════════════════════
+    const settingsDir = resolve(ROOT, '.claude');
+    mkdirSync(settingsDir, { recursive: true });
+    const settingsPath = resolve(settingsDir, 'settings.local.json');
+
+    let settings = {};
+    if (existsSync(settingsPath)) {
+      try {
+        settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+      } catch {
+        settings = {};
+      }
+    }
+
+    if (!settings.permissions) settings.permissions = {};
+    if (!Array.isArray(settings.permissions.allow)) settings.permissions.allow = [];
+
+    // All komodo-mcp tool permissions
+    const komodoPermissions = [
+      'mcp__komodo-mcp__komodo_plan',
+      'mcp__komodo-mcp__komodo_code',
+      'mcp__komodo-mcp__komodo_review',
+      'mcp__komodo-mcp__komodo_fix',
+      'mcp__komodo-mcp__komodo_finalize',
+      'mcp__komodo-mcp__komodo_run',
+      'mcp__komodo-mcp__komodo_resume',
+      'mcp__komodo-mcp__komodo_status',
+    ];
+
+    for (const perm of komodoPermissions) {
+      if (!settings.permissions.allow.includes(perm)) {
+        settings.permissions.allow.push(perm);
+      }
+    }
+
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    ok('Permisos de komodo-mcp auto-aprobados (sin prompts)');
   }
 
   // ═══════════════════════════════════════════
@@ -358,12 +635,21 @@ async function main() {
   // ═══════════════════════════════════════════
 
   log(`\n${c.bold}${c.green}  🦎 Komodo configurado!${c.reset}\n`);
-  log(`  Proyecto:  ${projectId || c.dim + '(no configurado)' + c.reset}`);
-  log(`  Planner:   ${cliPlanner}`);
-  log(`  Coder:     ${cliCoder}`);
-  log(`  Reviewer:  ${cliReviewer}`);
-  log(`  Auto-merge: ${autoMerge ? 'sí' : 'no'}`);
-  log(`  Max cycles: ${maxCycles}`);
+  log(`  ${c.bold}Configuración:${c.reset}`);
+  log(`    Proyecto:     ${projectId || c.dim + '(no configurado)' + c.reset}`);
+  log(`    Planner:      ${cliPlanner}`);
+  log(`    Coder:        ${cliCoder}`);
+  log(`    Reviewer:     ${cliReviewer}`);
+  log(`    Auto-merge:   ${autoMerge ? 'sí' : 'no'}`);
+  log(`    Max cycles:   ${maxCycles}`);
+  log(`    Budget:       $${dailyBudget}/día, $${weeklyBudget}/semana`);
+  log('');
+  log(`  ${c.bold}Servicios:${c.reset}`);
+  log(`    WebSocket:    puerto ${wsPort}`);
+  if (apiServer) log(`    API Server:   puerto ${apiPort}`);
+  if (enableBrowser) log(`    Browser MCP:  puerto ${chromePort}`);
+  if (enableTelegram) log(`    Telegram:     habilitado`);
+  if (enableSonar) log(`    SonarQube:    ${sonarHostUrl}`);
   log('');
   log(`  ${c.bold}Para ejecutar:${c.reset}`);
   log(`  ${c.cyan}node src/index.js run${projectId ? '' : ' -p <PROJECT_ID>'}${c.reset}`);

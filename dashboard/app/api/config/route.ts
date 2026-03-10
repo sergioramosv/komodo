@@ -1,15 +1,37 @@
 import { NextResponse } from 'next/server';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
-import type { KomodoConfig } from '@/lib/config-types';
-import { DEFAULT_CONFIG } from '@/lib/config-types';
+import { execSync } from 'child_process';
+import type { KomodoConfig, CliProvider } from '@/lib/config-types';
+import { DEFAULT_CONFIG, CLI_MODELS } from '@/lib/config-types';
 
 const CONFIG_FILE = resolve(process.cwd(), '..', 'komodo.config.json');
+
+const VALID_CLIS: CliProvider[] = ['claude', 'codex', 'gemini'];
+
+function detectInstalledClis(): CliProvider[] {
+  const installed: CliProvider[] = [];
+  const checkCmd = process.platform === 'win32' ? 'where' : 'which';
+  for (const cli of VALID_CLIS) {
+    try {
+      execSync(`${checkCmd} ${cli}`, {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 3000,
+      });
+      installed.push(cli);
+    } catch {
+      // CLI not installed or not in PATH
+    }
+  }
+  return installed;
+}
 
 export async function GET() {
   try {
     if (!existsSync(CONFIG_FILE)) {
-      return NextResponse.json(DEFAULT_CONFIG);
+      const availableClis = detectInstalledClis();
+      return NextResponse.json({ ...DEFAULT_CONFIG, availableClis });
     }
 
     const raw = readFileSync(CONFIG_FILE, 'utf-8');
@@ -26,9 +48,12 @@ export async function GET() {
       },
     };
 
-    return NextResponse.json(config);
+    const availableClis = detectInstalledClis();
+
+    return NextResponse.json({ ...config, availableClis });
   } catch {
-    return NextResponse.json(DEFAULT_CONFIG);
+    const availableClis = detectInstalledClis();
+    return NextResponse.json({ ...DEFAULT_CONFIG, availableClis });
   }
 }
 
@@ -48,15 +73,27 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'budgetLimit must be >= 0' }, { status: 400 });
     }
 
-    const validModels = ['sonnet', 'opus', 'haiku'];
     for (const agent of ['planner', 'coder', 'reviewer'] as const) {
-      if (!validModels.includes(body.agents[agent].model)) {
+      const agentCfg = body.agents[agent];
+
+      // Validate CLI provider
+      if (!VALID_CLIS.includes(agentCfg.cli)) {
         return NextResponse.json(
-          { error: `Invalid model for ${agent}: ${body.agents[agent].model}` },
+          { error: `Invalid CLI for ${agent}: ${agentCfg.cli}` },
           { status: 400 },
         );
       }
-      if (body.agents[agent].maxTurns < 1 || body.agents[agent].maxTurns > 100) {
+
+      // Validate model belongs to the selected CLI
+      const validModels = CLI_MODELS[agentCfg.cli].map((m) => m.value);
+      if (!validModels.includes(agentCfg.model)) {
+        return NextResponse.json(
+          { error: `Invalid model "${agentCfg.model}" for CLI "${agentCfg.cli}" on ${agent}` },
+          { status: 400 },
+        );
+      }
+
+      if (agentCfg.maxTurns < 1 || agentCfg.maxTurns > 100) {
         return NextResponse.json(
           { error: `maxTurns for ${agent} must be between 1 and 100` },
           { status: 400 },

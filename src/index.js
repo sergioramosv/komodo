@@ -6,7 +6,7 @@ import { runMultiProject, resolveProjectIds } from './multi-project/multi-projec
 import { config } from './config.js';
 import { logger } from './utils/logger.js';
 import { doctor } from './doctor/doctor.js';
-import { loadProjects, parseProjectsEnv } from './multi-project/project-loader.js';
+import { loadProjects, parseProjectsEnv, resolveProjectIdByName } from './multi-project/project-loader.js';
 
 /**
  * Loads projects from PROJECTS env and returns the first projectId.
@@ -46,19 +46,29 @@ program
 program
   .command('run')
   .description('Ejecuta tareas del backlog de un proyecto')
-  .option('-p, --project <id>', 'ID del proyecto (default: DEFAULT_PROJECT_ID o PROJECTS en .env)')
+  .option('-p, --project <id-or-name>', 'ID o nombre del proyecto (default: DEFAULT_PROJECT_ID o PROJECTS en .env)')
   .option('-t, --tasks <number>', 'Número de tareas a ejecutar (default: 1)', '1')
   .option('-c, --continuous', 'Ejecutar hasta vaciar el backlog')
   .option('--cwd <path>', 'Directorio del repositorio')
   .option('--dry-run', 'Simular: muestra qué tarea elegiría sin ejecutar nada')
   .action(async (opts) => {
-    // -p flag takes priority; then PROJECTS env; then DEFAULT_PROJECT_ID
+    // -p flag takes priority; then DEFAULT_PROJECT_ID; then PROJECTS env
     let projectId = opts.project || config.defaultProjectId;
 
     if (!projectId) {
       const { wildcard, projectIds } = parseProjectsEnv();
       if (!wildcard && projectIds.length === 0) {
-        logger.error('Project ID requerido. Usa -p <id>, configura DEFAULT_PROJECT_ID o PROJECTS en .env', 'KOMODO');
+        logger.error('Project ID requerido. Usa -p <id-o-nombre>, configura DEFAULT_PROJECT_ID o PROJECTS en .env', 'KOMODO');
+        process.exit(1);
+      }
+    }
+
+    // Resolve project name to ID if needed (for -p flag or DEFAULT_PROJECT_ID)
+    if (projectId) {
+      try {
+        projectId = await resolveProjectIdByName(projectId);
+      } catch (err) {
+        logger.error(err.message, 'KOMODO');
         process.exit(1);
       }
     }
@@ -136,7 +146,7 @@ program
 program
   .command('watch')
   .description('Modo daemon: escucha el backlog y ejecuta tareas automáticamente')
-  .option('-p, --project <id>', 'ID del proyecto (default: DEFAULT_PROJECT_ID o PROJECTS en .env)')
+  .option('-p, --project <id-or-name>', 'ID o nombre del proyecto (default: DEFAULT_PROJECT_ID o PROJECTS en .env)')
   .option('--cwd <path>', 'Directorio del repositorio')
   .action(async (opts) => {
     let projectId = opts.project || config.defaultProjectId;
@@ -144,7 +154,17 @@ program
     if (!projectId) {
       const { wildcard, projectIds } = parseProjectsEnv();
       if (!wildcard && projectIds.length === 0) {
-        logger.error('Project ID requerido. Usa -p <id>, configura DEFAULT_PROJECT_ID o PROJECTS en .env', 'KOMODO');
+        logger.error('Project ID requerido. Usa -p <id-o-nombre>, configura DEFAULT_PROJECT_ID o PROJECTS en .env', 'KOMODO');
+        process.exit(1);
+      }
+    }
+
+    // Resolve project name to ID if needed
+    if (projectId) {
+      try {
+        projectId = await resolveProjectIdByName(projectId);
+      } catch (err) {
+        logger.error(err.message, 'KOMODO');
         process.exit(1);
       }
     }

@@ -4,6 +4,7 @@ import type { CliHealth, CliName } from '@/lib/types';
 
 interface CliHealthStatusProps {
   cliHealth: Record<CliName, CliHealth>;
+  availableClis?: CliName[];
 }
 
 const STATUS_CONFIG: Record<string, { dot: string; ring: string; label: string; labelColor: string }> = {
@@ -30,13 +31,15 @@ function formatTimestamp(ts: string | null): string {
   return new Date(ts).toLocaleTimeString();
 }
 
-export function CliHealthStatus({ cliHealth }: CliHealthStatusProps) {
+export function CliHealthStatus({ cliHealth, availableClis }: CliHealthStatusProps) {
+  const clisToShow = availableClis ?? (Object.keys(cliHealth) as CliName[]);
+
   return (
     <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
       <h2 className="mb-4 text-sm font-medium text-neutral-400">CLI Health</h2>
-      <div className="space-y-3">
-        {(Object.keys(cliHealth) as CliName[]).map((cli) => {
-          const health = cliHealth[cli];
+      <div className="space-y-3 flex justify-between">
+        {clisToShow.map((cli) => {
+          const health = cliHealth[cli] ?? { cli, status: 'available', lastHeartbeat: null, rateLimitedAt: null, cooldownMinutes: null };
           const cfg = STATUS_CONFIG[health.status] ?? STATUS_CONFIG.down;
           const remaining = getRemainingMinutes(health.rateLimitedAt, health.cooldownMinutes);
           const lastBeat = health.lastHeartbeat ?? health.rateLimitedAt;
@@ -44,7 +47,7 @@ export function CliHealthStatus({ cliHealth }: CliHealthStatusProps) {
           return (
             <div
               key={cli}
-              className="flex items-center gap-3 rounded-md border border-neutral-800 bg-neutral-950/50 px-3 py-2.5"
+              className="w-full h-20 flex items-center gap-3 rounded-md border border-neutral-800 bg-neutral-950/50 px-3 py-2.5"
             >
               <span className={`inline-block h-3 w-3 shrink-0 rounded-full ${cfg.dot} ${cfg.ring}`} />
               <div className="min-w-0 flex-1">

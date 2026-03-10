@@ -67,7 +67,7 @@ export function filterBlockedTasks(todoTasks, allTasks) {
  * @param {string} projectId - ID del proyecto en planning-task-mcp
  * @returns {Promise<{
  *   success: boolean,
- *   task: {taskId, title, userStory, acceptanceCriteria, branchName, repoUrl, sprintId, devPoints, bizPoints} | null,
+ *   task: {taskId, title, userStory, acceptanceCriteria, branchName, repoUrl, sprintId, devPoints, bizPoints, assignedTo} | null,
  *   cost: number | null,
  *   duration: number,
  *   error?: string
@@ -196,6 +196,7 @@ export async function pickNextTask(projectId, { model } = {}) {
       sprintId: data.sprintId || '',
       devPoints: data.devPoints || 0,
       bizPoints: data.bizPoints || 0,
+      assignedTo: data.assignedTo || null,
     },
     cost: result.cost,
     duration: result.duration,

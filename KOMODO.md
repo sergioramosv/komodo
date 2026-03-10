@@ -19,8 +19,8 @@ node src/index.js run -t 3
 # Todas las tareas (hasta vaciar backlog)
 node src/index.js run -c
 
-# Proyecto especifico (override del default)
-node src/index.js run -p <project-id>
+# Proyecto especifico por ID o nombre (override del default)
+node src/index.js run -p <project-id-o-nombre>
 
 # Directorio del repositorio target
 node src/index.js run --cwd /path/to/repo
@@ -39,6 +39,7 @@ Cuando el usuario pida ejecutar tareas de Komodo, mapea a los comandos:
 | "ejecuta N tareas" / "haz N tareas" | `node src/index.js run -t N` |
 | "haz todas las tareas" / "vacia el backlog" | `node src/index.js run -c` |
 | "simula" / "que tarea haria" / "dry run" | `node src/index.js run --dry-run` |
+| "ve al proyecto X" / "proyecto X" | `node src/index.js run -p X` (busca por nombre si no es un ID) |
 
 ## Flujo de Ejecucion
 

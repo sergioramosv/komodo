@@ -13,6 +13,10 @@ node_modules/
 
 # Firebase credentials
 serviceAccountKey.json
+*-firebase-adminsdk-*.json
+
+# Config (may contain sensitive data)
+komodo.config.json
 
 # Memory store (local, not shared)
 memory/patterns.json

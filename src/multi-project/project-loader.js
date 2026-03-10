@@ -62,6 +62,45 @@ function extractDefaultRepoUrl(repositories) {
 }
 
 /**
+ * Resolves a project identifier that can be either an ID or a name.
+ * Searches Firebase by name (case-insensitive) if no project is found by ID.
+ *
+ * @param {string} idOrName - Project ID or name
+ * @param {string} [userId] - User ID for member filtering
+ * @returns {Promise<string>} Resolved project ID
+ */
+export async function resolveProjectIdByName(idOrName, userId) {
+  // First try as exact ID
+  const byId = await getById('projects', idOrName);
+  if (byId) return byId.id;
+
+  // Search by name (case-insensitive)
+  const allProjects = await getAll('projects');
+  const uid = userId || config.defaultUserId;
+  const needle = idOrName.toLowerCase();
+
+  const matches = allProjects.filter(p => {
+    const nameMatch = p.name && p.name.toLowerCase().includes(needle);
+    if (!nameMatch) return false;
+    // If we have a userId, only return projects where user is member
+    if (uid && p.members) return isMember(p, uid);
+    return true;
+  });
+
+  if (matches.length === 1) {
+    logger.info(`Proyecto encontrado por nombre: "${matches[0].name}" (${matches[0].id})`, AGENT);
+    return matches[0].id;
+  }
+
+  if (matches.length > 1) {
+    const list = matches.map(p => `  - ${p.name} (${p.id})`).join('\n');
+    throw new Error(`Múltiples proyectos coinciden con "${idOrName}":\n${list}\nUsa el ID exacto con -p`);
+  }
+
+  throw new Error(`No se encontró ningún proyecto con ID o nombre "${idOrName}"`);
+}
+
+/**
  * Loads and validates a single project config.
  * Throws if the project doesn't exist or the user has no access.
  *

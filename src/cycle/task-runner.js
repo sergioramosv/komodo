@@ -347,6 +347,15 @@ export async function runTask(projectId, cwd) {
         branchName: taskSpec.branchName,
         repo,
         priority: taskSpec.bizPoints || null,
+        taskDetails: {
+          id: taskSpec.taskId,
+          title: taskSpec.title,
+          userStory: taskSpec.userStory?.description || null,
+          sprint: taskSpec.sprintId || null,
+          devPoints: taskSpec.devPoints || null,
+          businessPoints: taskSpec.bizPoints || null,
+          assignedDeveloper: taskSpec.assignedTo || null,
+        },
       },
     });
 

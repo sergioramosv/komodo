@@ -1,14 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import type { KomodoConfig, AgentModel, Project } from '@/lib/config-types';
-import { DEFAULT_CONFIG } from '@/lib/config-types';
+import type { KomodoConfig, AgentModel, CliProvider, Project } from '@/lib/config-types';
+import { DEFAULT_CONFIG, CLI_MODELS, CLI_OPTIONS, DEFAULT_MODELS } from '@/lib/config-types';
+import { CliHealthStatus } from '@/components/cli-health-status';
+import { useKomodoSocket } from '@/hooks/useKomodoSocket';
 
-const MODEL_OPTIONS: { value: AgentModel; label: string }[] = [
-  { value: 'sonnet', label: 'Sonnet' },
-  { value: 'opus', label: 'Opus' },
-  { value: 'haiku', label: 'Haiku' },
-];
 
 const AGENT_LABELS: Record<string, { name: string; icon: string }> = {
   planner: { name: 'Planner', icon: '✎' },
@@ -27,6 +24,8 @@ export default function SettingsPage() {
   const [guidelinesLoading, setGuidelinesLoading] = useState(false);
   const [guidelinesSaving, setGuidelinesSaving] = useState(false);
   const [guidelinesStatus, setGuidelinesStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const { snapshot, connected, events, cliHealth, sendCommand } = useKomodoSocket();
+
 
   const fetchData = useCallback(async () => {
     try {
@@ -115,6 +114,20 @@ export default function SettingsPage() {
     }
   }
 
+  function updateAgentCli(agent: 'planner' | 'coder' | 'reviewer', cli: CliProvider) {
+    setConfig((prev) => ({
+      ...prev,
+      agents: {
+        ...prev.agents,
+        [agent]: {
+          ...prev.agents[agent],
+          cli,
+          model: DEFAULT_MODELS[cli],
+        },
+      },
+    }));
+  }
+
   function updateAgentModel(agent: 'planner' | 'coder' | 'reviewer', model: AgentModel) {
     setConfig((prev) => ({
       ...prev,
@@ -165,6 +178,8 @@ export default function SettingsPage() {
           </button>
         </div>
       </div>
+      {/* CLI Health Status */}
+      <CliHealthStatus cliHealth={cliHealth} availableClis={config.availableClis} />
 
       {/* Active Project */}
       <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
@@ -245,48 +260,78 @@ export default function SettingsPage() {
       <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
         <h2 className="mb-4 text-lg font-semibold">Agent Configuration</h2>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {(['planner', 'coder', 'reviewer'] as const).map((agent) => (
-            <div
-              key={agent}
-              className="rounded-lg border border-neutral-700 bg-neutral-800/50 p-4"
-            >
-              <h3 className="mb-3 text-sm font-semibold text-neutral-200">
-                <span className="mr-1.5">{AGENT_LABELS[agent].icon}</span>
-                {AGENT_LABELS[agent].name}
-              </h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-neutral-400">
-                    Model
-                  </label>
-                  <select
-                    value={config.agents[agent].model}
-                    onChange={(e) => updateAgentModel(agent, e.target.value as AgentModel)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-sm text-neutral-200"
-                  >
-                    {MODEL_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-neutral-400">
-                    Max Turns
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={config.agents[agent].maxTurns}
-                    onChange={(e) => updateAgentMaxTurns(agent, parseInt(e.target.value) || 1)}
-                    className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-sm text-neutral-200"
-                  />
+          {(['planner', 'coder', 'reviewer'] as const).map((agent) => {
+            const agentCfg = config.agents[agent];
+            const currentCli = agentCfg.cli || 'claude';
+            const modelOptions = CLI_MODELS[currentCli] || CLI_MODELS.claude;
+
+            return (
+              <div
+                key={agent}
+                className="rounded-lg border border-neutral-700 bg-neutral-800/50 p-4"
+              >
+                <h3 className="mb-3 text-sm font-semibold text-neutral-200">
+                  <span className="mr-1.5">{AGENT_LABELS[agent].icon}</span>
+                  {AGENT_LABELS[agent].name}
+                </h3>
+                <div className="space-y-3">
+                  {/* CLI Provider */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-neutral-400">
+                      CLI Provider
+                    </label>
+                    <div className="flex gap-1">
+                      {CLI_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => updateAgentCli(agent, opt.value)}
+                          className={`flex-1 rounded px-2 py-1.5 text-xs font-medium transition-colors ${currentCli === opt.value
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-neutral-700 text-neutral-400 hover:bg-neutral-600 hover:text-neutral-200'
+                            }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Model */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-neutral-400">
+                      Model
+                    </label>
+                    <select
+                      value={agentCfg.model}
+                      onChange={(e) => updateAgentModel(agent, e.target.value)}
+                      className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-sm text-neutral-200"
+                    >
+                      {modelOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Max Turns */}
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-neutral-400">
+                      Max Turns
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={agentCfg.maxTurns}
+                      onChange={(e) => updateAgentMaxTurns(agent, parseInt(e.target.value) || 1)}
+                      className="w-full rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-sm text-neutral-200"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -350,14 +395,12 @@ export default function SettingsPage() {
                 onClick={() =>
                   setConfig((prev) => ({ ...prev, continuousMode: !prev.continuousMode }))
                 }
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-                  config.continuousMode ? 'bg-blue-600' : 'bg-neutral-700'
-                }`}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${config.continuousMode ? 'bg-blue-600' : 'bg-neutral-700'
+                  }`}
               >
                 <span
-                  className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                    config.continuousMode ? 'translate-x-5' : 'translate-x-0'
-                  }`}
+                  className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${config.continuousMode ? 'translate-x-5' : 'translate-x-0'
+                    }`}
                 />
               </button>
               <div>
