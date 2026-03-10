@@ -2,10 +2,13 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { runSonarScan, checkSonarConfig } from './scanner.js';
+import { runGhApi } from '../../skills/github-mcp/src/gh-cli.js';
 
 const AGENT = 'SONAR';
 const POLL_INTERVAL_MS = 5000;
 const MAX_POLL_ATTEMPTS = 60; // 5 min max wait
+const BOT_POLL_INTERVAL_MS = 5000;
+const BOT_MAX_POLL_ATTEMPTS = 24; // 2 min max wait for bot comment
 
 /**
  * Estructura vacía de SonarReport (usada cuando SonarQube no está disponible).
@@ -83,6 +86,42 @@ async function waitForAnalysis() {
   }
 
   throw new Error('Timeout esperando a que SonarQube procese el análisis');
+}
+
+/**
+ * Espera a que el bot de SonarCloud postee su comentario en la PR de GitHub.
+ * Esto asegura que el comentario con el Quality Gate esté visible antes de que
+ * el Reviewer empiece su análisis.
+ *
+ * @param {string} repo - Repositorio en formato owner/repo
+ * @param {number} prNumber - Número de la PR
+ * @returns {Promise<boolean>} true si el comentario fue encontrado, false si timeout
+ */
+async function waitForSonarBotComment(repo, prNumber) {
+  logger.info(`Esperando comentario del bot de SonarCloud en PR #${prNumber}...`, AGENT);
+
+  for (let attempt = 1; attempt <= BOT_MAX_POLL_ATTEMPTS; attempt++) {
+    try {
+      const comments = runGhApi(`/repos/${repo}/issues/${prNumber}/comments`, { method: 'GET' }) || [];
+      const botComment = comments.find(c =>
+        (c.user?.login === 'sonarcloud[bot]' || c.user?.login === 'sonarqubecloud[bot]') &&
+        c.body?.includes('Quality Gate'),
+      );
+
+      if (botComment) {
+        logger.success(`Comentario de SonarCloud detectado en PR #${prNumber}`, AGENT);
+        return true;
+      }
+    } catch (err) {
+      logger.warn(`Error consultando comentarios de PR: ${err.message}`, AGENT);
+    }
+
+    logger.info(`Esperando bot de SonarCloud (${attempt}/${BOT_MAX_POLL_ATTEMPTS})...`, AGENT);
+    await new Promise(resolve => setTimeout(resolve, BOT_POLL_INTERVAL_MS));
+  }
+
+  logger.warn('Timeout esperando comentario del bot de SonarCloud. Continuando sin él.', AGENT);
+  return false;
 }
 
 /**
@@ -192,6 +231,7 @@ async function fetchMetrics(ctx = {}) {
  * @param {string} [options.cwd] - Directorio del proyecto
  * @param {number} [options.prNumber] - Número de PR para PR decoration en SonarCloud
  * @param {string} [options.baseBranch] - Rama base/target de la PR (default: main)
+ * @param {string} [options.repo] - Repositorio en formato owner/repo (para esperar comentario del bot)
  * @returns {Promise<SonarReport>}
  *
  * @typedef {Object} SonarReport
@@ -203,7 +243,7 @@ async function fetchMetrics(ctx = {}) {
  * @property {Array<{ severity: string, file: string, line: number, message: string, rule: string }>} issueDetails - Detalles de issues BLOCKER y CRITICAL
  * @property {{ bugs: number, vulnerabilities: number, code_smells: number, duplicated_lines_density: number, coverage: number }} metrics
  */
-export async function analyzeSonar({ branch, cwd, prNumber, baseBranch = 'main' } = {}) {
+export async function analyzeSonar({ branch, cwd, prNumber, baseBranch = 'main', repo } = {}) {
   // Check config first — graceful degradation
   const check = checkSonarConfig();
   if (!check.ready) {
@@ -233,6 +273,11 @@ export async function analyzeSonar({ branch, cwd, prNumber, baseBranch = 'main' 
     // Step 2: Wait for SonarQube to process
     logger.info('Esperando a que SonarQube procese los resultados...', AGENT);
     await waitForAnalysis();
+
+    // Step 2.5: Wait for SonarCloud bot to post comment on the PR
+    if (prNumber && repo) {
+      await waitForSonarBotComment(repo, prNumber);
+    }
 
     // Step 3: Fetch results
     // When analyzing a PR, SonarCloud stores results under pullRequest context,

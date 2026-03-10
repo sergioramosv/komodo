@@ -138,6 +138,10 @@ export const tools = {
         throw new Error('projectId requerido. No hay DEFAULT_PROJECT_ID configurado en .env.');
       }
 
+      komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+      komodoState.updatePhase('planning');
+      komodoState.updateAgent('PLANNER', { status: 'working' });
+
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
         agentName: 'PLANNER',
         previousState: 'idle',
@@ -146,6 +150,8 @@ export const tools = {
       });
 
       const result = await pickNextTask(pid);
+
+      komodoState.updateAgent('PLANNER', { status: 'idle', currentTask: null });
 
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
         agentName: 'PLANNER',
@@ -230,14 +236,46 @@ export const tools = {
         bizPoints: params.bizPoints || 0,
       };
 
+      komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+      komodoState.updatePhase('coding');
+      komodoState.updateAgent('CODER', { status: 'working', currentTask: params.title });
+      komodoState.state.currentTask = params.title;
+      komodoState.state.taskDetails = {
+        id: params.taskId,
+        title: params.title,
+        devPoints: params.devPoints || 0,
+        branchName: params.branchName,
+      };
+
+      eventBus.emitEvent(EVENT_TYPES.TASK_STARTED, {
+        metadata: {
+          taskId: params.taskId,
+          taskTitle: params.title,
+          taskDetails: {
+            id: params.taskId,
+            title: params.title,
+            devPoints: params.devPoints || 0,
+            branchName: params.branchName,
+          },
+        },
+      });
+
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
         agentName: 'CODER',
         previousState: 'idle',
         newState: 'working',
-        metadata: { phase: 'coding', taskId: params.taskId },
+        metadata: {
+          phase: 'coding',
+          taskId: params.taskId,
+          taskTitle: params.title,
+          branchName: params.branchName,
+          devPoints: params.devPoints,
+        },
       });
 
       const result = await implementTask(taskSpec, params.cwd);
+
+      komodoState.updateAgent('CODER', { status: 'idle', currentTask: null });
 
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
         agentName: 'CODER',
@@ -347,6 +385,7 @@ export const tools = {
             cwd: params.cwd,
             prNumber: params.prNumber,
             baseBranch: 'main',
+            repo: params.repo,
           });
         } catch (err) {
           // Graceful degradation — continue review without sonar if it fails
@@ -354,11 +393,15 @@ export const tools = {
         }
       }
 
+      komodoState.updatePhase('reviewing');
+      komodoState.updateAgent('REVIEWER', { status: 'working', currentTask: params.taskTitle });
+      komodoState.state.currentPR = { number: params.prNumber, repo: params.repo };
+
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
         agentName: 'REVIEWER',
         previousState: 'idle',
         newState: 'working',
-        metadata: { phase: 'reviewing', prNumber: params.prNumber },
+        metadata: { phase: 'reviewing', prNumber: params.prNumber, taskTitle: params.taskTitle },
       });
 
       const result = await reviewPR({
@@ -368,6 +411,8 @@ export const tools = {
         cwd: params.cwd,
         sonarReport,
       });
+
+      komodoState.updateAgent('REVIEWER', { status: 'idle', currentTask: null });
 
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
         agentName: 'REVIEWER',
@@ -443,14 +488,19 @@ export const tools = {
         issues: params.reviewIssues.map(desc => ({ description: desc })),
       };
 
+      komodoState.updatePhase('coding');
+      komodoState.updateAgent('CODER', { status: 'working', currentTask: `Fix: ${params.title}` });
+
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
         agentName: 'CODER',
         previousState: 'idle',
         newState: 'working',
-        metadata: { phase: 'coding', prNumber: params.prNumber, fixing: true },
+        metadata: { phase: 'coding', prNumber: params.prNumber, fixing: true, taskTitle: params.title },
       });
 
       const result = await fixReviewIssues(taskSpec, params.prNumber, reviewFeedback, params.cwd);
+
+      komodoState.updateAgent('CODER', { status: 'idle', currentTask: null });
 
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
         agentName: 'CODER',

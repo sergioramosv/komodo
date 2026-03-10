@@ -175,13 +175,31 @@ export class KomodoWsServer {
             if (status) {
               komodoState.updateAgent(payload.agentName, {
                 status,
-                currentTask: payload.metadata?.taskId || null,
+                currentTask: payload.metadata?.taskTitle || payload.metadata?.taskId || null,
                 cli: payload.metadata?.cli || null,
                 model: payload.metadata?.model || null,
               });
             }
             if (payload.metadata?.phase) {
               komodoState.updatePhase(payload.metadata.phase);
+              if (payload.metadata.phase !== 'idle') {
+                komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+              }
+            }
+            // Update current task info
+            if (payload.metadata?.taskTitle) {
+              komodoState.state.currentTask = payload.metadata.taskTitle;
+              komodoState.state.taskDetails = {
+                id: payload.metadata.taskId || null,
+                title: payload.metadata.taskTitle,
+                devPoints: payload.metadata.devPoints || 0,
+                branchName: payload.metadata.branchName || null,
+              };
+            }
+            // Clear task when phase goes idle
+            if (payload.metadata?.phase === 'idle' && payload.newState === 'idle') {
+              komodoState.state.currentTask = null;
+              komodoState.state.taskDetails = null;
             }
           }
 
