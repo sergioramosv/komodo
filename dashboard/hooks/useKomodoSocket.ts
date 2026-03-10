@@ -7,6 +7,7 @@ const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
 const RECONNECT_DELAY = 3000;
 const MAX_EVENTS = 20;
 const MAX_AGENT_LOGS = 200;
+const EVENTS_STORAGE_KEY = 'komodo:recent-events';
 
 const DEFAULT_CLI_HEALTH: Record<CliName, CliHealth> = {
   claude: { cli: 'claude', status: 'available', lastHeartbeat: null, rateLimitedAt: null, cooldownMinutes: null },
@@ -26,10 +27,38 @@ interface UseKomodoSocketReturn {
 let eventCounter = 0;
 let logCounter = 0;
 
+function loadStoredEvents(): DashboardEvent[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(EVENTS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as DashboardEvent[];
+    // Restore eventCounter so new IDs don't collide
+    if (parsed.length > 0) {
+      const maxId = Math.max(...parsed.map(e => {
+        const n = parseInt(e.id.replace('evt-', ''), 10);
+        return isNaN(n) ? 0 : n;
+      }));
+      if (maxId > eventCounter) eventCounter = maxId;
+    }
+    return parsed.slice(0, MAX_EVENTS);
+  } catch {
+    return [];
+  }
+}
+
+function saveEvents(events: DashboardEvent[]) {
+  try {
+    localStorage.setItem(EVENTS_STORAGE_KEY, JSON.stringify(events));
+  } catch {
+    // Storage full or unavailable — ignore
+  }
+}
+
 export function useKomodoSocket(): UseKomodoSocketReturn {
   const [snapshot, setSnapshot] = useState<KomodoSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
-  const [events, setEvents] = useState<DashboardEvent[]>([]);
+  const [events, setEvents] = useState<DashboardEvent[]>(loadStoredEvents);
   const [agentLogs, setAgentLogs] = useState<Record<string, AgentLog[]>>({});
   const [cliHealth, setCliHealth] = useState<Record<CliName, CliHealth>>({ ...DEFAULT_CLI_HEALTH });
   const wsRef = useRef<WebSocket | null>(null);
@@ -129,7 +158,11 @@ export function useKomodoSocket(): UseKomodoSocketReturn {
           // Track event in timeline
           const dashEvent = formatEvent(eventData);
           if (dashEvent) {
-            setEvents((prev) => [dashEvent, ...prev].slice(0, MAX_EVENTS));
+            setEvents((prev) => {
+              const updated = [dashEvent, ...prev].slice(0, MAX_EVENTS);
+              saveEvents(updated);
+              return updated;
+            });
           }
         }
       } catch {

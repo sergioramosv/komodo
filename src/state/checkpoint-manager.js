@@ -29,28 +29,29 @@ class CheckpointManager {
   constructor() {
     /** @type {Object} Extra flow context set by task-runner / review-loop */
     this._flowContext = {};
-    /** @type {Function|null} Unsubscribe from rate limit events */
-    this._unsubscribe = null;
+    /** @type {Function|null} Bound handler for rate limit events */
+    this._rateLimitHandler = null;
   }
 
   /**
    * Start listening for rate limit events.
    */
   start() {
-    if (this._unsubscribe) return;
+    if (this._rateLimitHandler) return;
 
-    this._unsubscribe = eventBus.on(EVENT_TYPES.RATE_LIMIT_DETECTED, (payload) => {
+    this._rateLimitHandler = (payload) => {
       return this._onRateLimitDetected(payload);
-    });
+    };
+    eventBus.on(EVENT_TYPES.RATE_LIMIT_DETECTED, this._rateLimitHandler);
   }
 
   /**
    * Stop listening and clean up.
    */
   stop() {
-    if (this._unsubscribe) {
-      this._unsubscribe();
-      this._unsubscribe = null;
+    if (this._rateLimitHandler) {
+      eventBus.off(EVENT_TYPES.RATE_LIMIT_DETECTED, this._rateLimitHandler);
+      this._rateLimitHandler = null;
     }
     this._flowContext = {};
   }

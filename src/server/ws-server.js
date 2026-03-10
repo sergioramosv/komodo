@@ -172,8 +172,9 @@ export class KomodoWsServer {
           // Handle task lifecycle events
           if (payload.type === 'task:started') {
             komodoState.totalTasks = (komodoState.totalTasks || 0) + 1;
-            if (payload.metadata?.taskTitle) {
-              komodoState.currentTask = payload.metadata.taskTitle;
+            const taskName = payload.metadata?.taskTitle || payload.metadata?.title;
+            if (taskName) {
+              komodoState.currentTask = taskName;
               komodoState.taskDetails = payload.metadata.taskDetails || null;
             }
             komodoState.setExecutionState(EXECUTION_STATES.RUNNING);

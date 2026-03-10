@@ -36,7 +36,11 @@ eventBus.onAny((payload) => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  }).catch(() => {});
+  }).then(res => {
+    if (!res.ok) console.error(`[MCP→WS] Event ${payload.type} failed: ${res.status}`);
+  }).catch(err => {
+    console.error(`[MCP→WS] Event ${payload.type} POST failed: ${err.message}`);
+  });
 });
 // ──────────────────────────────────────────────────────────────────────
 
