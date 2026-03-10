@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { KomodoSnapshot, WsMessage, WsEventMessage, DashboardEvent, AgentLog, CliHealth, CliName } from '@/lib/types';
+import type { KomodoSnapshot, WsMessage, WsEventMessage, DashboardEvent, AgentLog, CliHealth, CliName, MultiProjectState } from '@/lib/types';
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001';
 const RECONNECT_DELAY = 3000;
@@ -258,6 +258,51 @@ function applyEvent(
     case 'budget:exceeded':
       next.budget = { ...(prev.budget ?? { dailySpent: 0, weeklySpent: 0, dailyBudget: 0, weeklyBudget: 0, paused: false }), paused: true };
       break;
+    case 'multi-project:run-started': {
+      const mp = event.metadata as Record<string, unknown>;
+      next.multiProject = {
+        enabled: true,
+        projects: (mp.projects as string[]) ?? [],
+        strategy: (mp.strategy as string) ?? 'round-robin',
+        activeProject: null,
+        perProject: {},
+      };
+      break;
+    }
+    case 'multi-project:project-selected':
+    case 'multi-project:project-switch': {
+      const mp = event.metadata as Record<string, unknown>;
+      if (next.multiProject) {
+        next.multiProject = {
+          ...next.multiProject,
+          activeProject: (mp.projectId as string) ?? next.multiProject.activeProject,
+        };
+      }
+      break;
+    }
+    case 'multi-project:run-completed': {
+      if (next.multiProject) {
+        const mp = event.metadata as Record<string, unknown>;
+        const perProject = mp.perProject as MultiProjectState['perProject'] | undefined;
+        next.multiProject = {
+          ...next.multiProject,
+          activeProject: null,
+          ...(perProject ? { perProject } : {}),
+        };
+      }
+      break;
+    }
+  }
+
+  // Update multi-project perProject stats if present in metadata
+  if (next.multiProject && event.metadata) {
+    const meta = event.metadata as Record<string, unknown>;
+    if (meta.perProject && typeof meta.perProject === 'object') {
+      next.multiProject = {
+        ...next.multiProject,
+        perProject: meta.perProject as MultiProjectState['perProject'],
+      };
+    }
   }
 
   return next;
@@ -340,6 +385,19 @@ function formatEvent(event: WsEventMessage['data']): DashboardEvent | null {
       break;
     case 'budget:reset':
       message = `Budget counters reset for day ${meta.day ?? ''}`;
+      break;
+    case 'multi-project:run-started':
+      message = `Multi-project run started with ${(meta.projects as string[])?.length ?? '?'} projects`;
+      break;
+    case 'multi-project:project-selected':
+    case 'multi-project:project-switch':
+      message = `Switched to project ${meta.projectId ?? '?'}`;
+      break;
+    case 'multi-project:run-completed':
+      message = `Multi-project run completed`;
+      break;
+    case 'multi-project:all-backlogs-empty':
+      message = `All project backlogs are empty`;
       break;
     default:
       message = event.type;

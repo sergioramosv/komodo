@@ -150,9 +150,6 @@ function applyEvent(state, event) {
     case 'multi-project:run-completed':
       if (state.multiProject) {
         state.multiProject.activeProject = null;
-        if (event.metadata?.perProject) {
-          state.multiProject.perProject = event.metadata.perProject;
-        }
       }
       break;
   }

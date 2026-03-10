@@ -88,7 +88,7 @@ export interface KomodoSnapshot {
   phase: Phase;
   currentTask: string | null;
   taskDetails?: TaskDetails | null;
-  currentPR: string | null;
+  currentPR: string | { number: number; [key: string]: unknown } | null;
   reviewCycle: number;
   totalCost: number;
   tasksCompleted: number;

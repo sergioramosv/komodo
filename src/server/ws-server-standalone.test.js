@@ -214,6 +214,64 @@ describe('ws-server-standalone', () => {
       server.applyEvent({ type: 'task:started', metadata: { taskId: 'T-1', phase: 'planning' } });
       expect(server.state.phase).toBe('planning');
     });
+
+    it('multi-project:run-started initializes multiProject state', () => {
+      server.applyEvent({
+        type: 'multi-project:run-started',
+        metadata: { projects: ['proj-a', 'proj-b'], strategy: 'round-robin' },
+      });
+      expect(server.state.multiProject).toEqual({
+        enabled: true,
+        projects: ['proj-a', 'proj-b'],
+        strategy: 'round-robin',
+        activeProject: null,
+        perProject: {},
+      });
+    });
+
+    it('multi-project:project-selected sets activeProject', () => {
+      server.applyEvent({
+        type: 'multi-project:run-started',
+        metadata: { projects: ['proj-a'], strategy: 'round-robin' },
+      });
+      server.applyEvent({
+        type: 'multi-project:project-selected',
+        metadata: { projectId: 'proj-a' },
+      });
+      expect(server.state.multiProject.activeProject).toBe('proj-a');
+    });
+
+    it('multi-project:project-switch updates activeProject', () => {
+      server.applyEvent({
+        type: 'multi-project:run-started',
+        metadata: { projects: ['proj-a', 'proj-b'], strategy: 'round-robin' },
+      });
+      server.applyEvent({
+        type: 'multi-project:project-switch',
+        metadata: { projectId: 'proj-b' },
+      });
+      expect(server.state.multiProject.activeProject).toBe('proj-b');
+    });
+
+    it('multi-project:run-completed clears activeProject', () => {
+      server.applyEvent({
+        type: 'multi-project:run-started',
+        metadata: { projects: ['proj-a'], strategy: 'round-robin' },
+      });
+      server.applyEvent({
+        type: 'multi-project:project-selected',
+        metadata: { projectId: 'proj-a' },
+      });
+      server.applyEvent({
+        type: 'multi-project:run-completed',
+        metadata: { perProject: { 'proj-a': { tasksCompleted: 3, tasksFailed: 0, dailySpent: 1.5 } } },
+      });
+      expect(server.state.multiProject.activeProject).toBeNull();
+      // perProject is updated by the generic post-switch block
+      expect(server.state.multiProject.perProject).toEqual({
+        'proj-a': { tasksCompleted: 3, tasksFailed: 0, dailySpent: 1.5 },
+      });
+    });
   });
 
   // ── Broadcast a clientes WS ──────────────────────────
