@@ -13,6 +13,20 @@ vi.mock('../state/komodo-state.js', () => ({
   komodoState: {
     executionState: 'stopped',
     setExecutionState: vi.fn(),
+    getSnapshot: vi.fn(() => ({
+      phase: 'idle',
+      currentTask: null,
+      executionState: 'stopped',
+      agents: {
+        PLANNER: { name: 'PLANNER', status: 'idle' },
+        CODER: { name: 'CODER', status: 'idle' },
+        QA: { name: 'QA', status: 'idle' },
+        REVIEWER: { name: 'REVIEWER', status: 'idle' },
+      },
+      tasksCompleted: 0,
+      totalTasks: 0,
+      totalCost: 0,
+    })),
   },
   EXECUTION_STATES: {
     STOPPED: 'stopped',
@@ -260,6 +274,226 @@ describe('POST /api/run', () => {
   });
 });
 
+// --- POST /api/task ---
+
+describe('POST /api/task', () => {
+  let server;
+
+  beforeEach(() => {
+    config.komodoApiKey = 'test-secret';
+    vi.clearAllMocks();
+  });
+
+  it('returns 401 without auth', () => {
+    const req = makeStreamReq({}, 'POST', '/api/task', { title: 'Test' });
+    const res = makeStreamRes();
+    server = new KomodoApiServer({ port: 3099 });
+    server._handleRequest(req, res);
+    expect(res._status).toBe(401);
+  });
+
+  it('returns 400 when title is missing', async () => {
+    server = new KomodoApiServer({ port: 3099, onCreateTask: vi.fn() });
+    const req = makeStreamReq({ 'x-komodo-key': 'test-secret' }, 'POST', '/api/task', {
+      userStory: 'As a user I want X',
+      bizPoints: 3,
+      devPoints: 5,
+    });
+    const res = makeStreamRes();
+    await server._handleCreateTask(req, res);
+    expect(res._status).toBe(400);
+    const body = JSON.parse(res._body);
+    expect(body.error).toBe('Validation failed');
+    expect(body.details).toEqual(expect.arrayContaining([expect.stringMatching(/title/)]));
+  });
+
+  it('returns 400 when userStory is missing', async () => {
+    server = new KomodoApiServer({ port: 3099, onCreateTask: vi.fn() });
+    const req = makeStreamReq({ 'x-komodo-key': 'test-secret' }, 'POST', '/api/task', {
+      title: 'My task',
+      bizPoints: 3,
+      devPoints: 5,
+    });
+    const res = makeStreamRes();
+    await server._handleCreateTask(req, res);
+    expect(res._status).toBe(400);
+    const body = JSON.parse(res._body);
+    expect(body.details).toEqual(expect.arrayContaining([expect.stringMatching(/userStory/)]));
+  });
+
+  it('returns 400 when bizPoints is not a valid Fibonacci number', async () => {
+    server = new KomodoApiServer({ port: 3099, onCreateTask: vi.fn() });
+    const req = makeStreamReq({ 'x-komodo-key': 'test-secret' }, 'POST', '/api/task', {
+      title: 'My task',
+      userStory: 'As a user I want X',
+      bizPoints: 4,
+      devPoints: 5,
+    });
+    const res = makeStreamRes();
+    await server._handleCreateTask(req, res);
+    expect(res._status).toBe(400);
+    const body = JSON.parse(res._body);
+    expect(body.details).toEqual(expect.arrayContaining([expect.stringMatching(/bizPoints/)]));
+  });
+
+  it('returns 400 when devPoints is not a valid Fibonacci number', async () => {
+    server = new KomodoApiServer({ port: 3099, onCreateTask: vi.fn() });
+    const req = makeStreamReq({ 'x-komodo-key': 'test-secret' }, 'POST', '/api/task', {
+      title: 'My task',
+      userStory: 'As a user I want X',
+      bizPoints: 3,
+      devPoints: 7,
+    });
+    const res = makeStreamRes();
+    await server._handleCreateTask(req, res);
+    expect(res._status).toBe(400);
+    const body = JSON.parse(res._body);
+    expect(body.details).toEqual(expect.arrayContaining([expect.stringMatching(/devPoints/)]));
+  });
+
+  it('returns 400 when multiple fields are missing', async () => {
+    server = new KomodoApiServer({ port: 3099, onCreateTask: vi.fn() });
+    const req = makeStreamReq({ 'x-komodo-key': 'test-secret' }, 'POST', '/api/task', {});
+    const res = makeStreamRes();
+    await server._handleCreateTask(req, res);
+    expect(res._status).toBe(400);
+    const body = JSON.parse(res._body);
+    expect(body.details.length).toBe(4);
+  });
+
+  it('returns 503 when onCreateTask callback is not configured', async () => {
+    server = new KomodoApiServer({ port: 3099 });
+    const req = makeStreamReq({ 'x-komodo-key': 'test-secret' }, 'POST', '/api/task', {
+      title: 'My task',
+      userStory: 'As a user I want X',
+      bizPoints: 3,
+      devPoints: 5,
+    });
+    const res = makeStreamRes();
+    await server._handleCreateTask(req, res);
+    expect(res._status).toBe(503);
+    expect(JSON.parse(res._body).error).toMatch(/not configured/i);
+  });
+
+  it('returns 201 with created task on success', async () => {
+    const createdTask = { id: 'task-123', title: 'My task', bizPoints: 3, devPoints: 5 };
+    const onCreateTask = vi.fn().mockResolvedValue(createdTask);
+    server = new KomodoApiServer({ port: 3099, onCreateTask });
+    const req = makeStreamReq({ 'x-komodo-key': 'test-secret' }, 'POST', '/api/task', {
+      title: 'My task',
+      userStory: 'As a user I want X',
+      bizPoints: 3,
+      devPoints: 5,
+    });
+    const res = makeStreamRes();
+    await server._handleCreateTask(req, res);
+    expect(res._status).toBe(201);
+    const body = JSON.parse(res._body);
+    expect(body.status).toBe('created');
+    expect(body.task).toEqual(createdTask);
+    expect(onCreateTask).toHaveBeenCalledWith({
+      title: 'My task',
+      userStory: 'As a user I want X',
+      bizPoints: 3,
+      devPoints: 5,
+    });
+  });
+
+  it('returns 500 when onCreateTask throws', async () => {
+    const onCreateTask = vi.fn().mockRejectedValue(new Error('DB error'));
+    server = new KomodoApiServer({ port: 3099, onCreateTask });
+    const req = makeStreamReq({ 'x-komodo-key': 'test-secret' }, 'POST', '/api/task', {
+      title: 'My task',
+      userStory: 'As a user I want X',
+      bizPoints: 3,
+      devPoints: 5,
+    });
+    const res = makeStreamRes();
+    await server._handleCreateTask(req, res);
+    expect(res._status).toBe(500);
+    expect(JSON.parse(res._body).error).toMatch(/failed/i);
+  });
+});
+
+// --- GET /api/status ---
+
+describe('GET /api/status', () => {
+  let server;
+
+  beforeEach(() => {
+    config.komodoApiKey = 'test-secret';
+    server = new KomodoApiServer({ port: 3099 });
+    vi.clearAllMocks();
+  });
+
+  it('returns 401 without auth', () => {
+    const { req, res } = makeReqRes({}, 'GET', '/api/status');
+    server._handleRequest(req, res);
+    expect(res._status).toBe(401);
+  });
+
+  it('returns 200 with state snapshot', () => {
+    const { req, res } = makeReqRes({ 'x-komodo-key': 'test-secret' }, 'GET', '/api/status');
+    server._handleRequest(req, res);
+    expect(res._status).toBe(200);
+    const body = JSON.parse(res._body);
+    expect(body.phase).toBe('idle');
+    expect(body.executionState).toBe('stopped');
+    expect(body.agents).toBeDefined();
+    expect(body.agents.PLANNER).toBeDefined();
+    expect(komodoState.getSnapshot).toHaveBeenCalled();
+  });
+});
+
+// --- _readBody edge cases ---
+
+describe('_readBody', () => {
+  let server;
+
+  beforeEach(() => {
+    config.komodoApiKey = 'test-secret';
+    server = new KomodoApiServer({ port: 3099 });
+  });
+
+  it('rejects with 400 on invalid JSON', async () => {
+    const req = new EventEmitter();
+    req.method = 'POST';
+    req.headers = {};
+    req.url = '/';
+    process.nextTick(() => {
+      req.emit('data', 'not valid json{{{');
+      req.emit('end');
+    });
+    await expect(server._readBody(req)).rejects.toThrow('Invalid JSON');
+  });
+
+  it('rejects with 413 on oversized body', async () => {
+    const req = new EventEmitter();
+    req.method = 'POST';
+    req.headers = {};
+    req.url = '/';
+    req.destroy = vi.fn();
+    process.nextTick(() => {
+      // Send a chunk larger than 1MB
+      const largeChunk = Buffer.alloc(1024 * 1024 + 1, 'a');
+      req.emit('data', largeChunk);
+    });
+    await expect(server._readBody(req)).rejects.toThrow('Payload too large');
+  });
+
+  it('resolves {} on empty body', async () => {
+    const req = new EventEmitter();
+    req.method = 'POST';
+    req.headers = {};
+    req.url = '/';
+    process.nextTick(() => {
+      req.emit('end');
+    });
+    const result = await server._readBody(req);
+    expect(result).toEqual({});
+  });
+});
+
 // --- Unknown routes ---
 
 describe('Unknown routes', () => {
@@ -317,6 +551,16 @@ describe('startApiServerIfEnabled()', () => {
     const onRun = vi.fn();
     const server = await startApiServerIfEnabled({ onRun });
     expect(server._onRun).toBe(onRun);
+    await server.stop();
+  });
+
+  it('passes onCreateTask callback to server', async () => {
+    config.apiServer = true;
+    config.komodoApiKey = 'test-secret';
+    config.apiPort = 3101;
+    const onCreateTask = vi.fn();
+    const server = await startApiServerIfEnabled({ onCreateTask });
+    expect(server._onCreateTask).toBe(onCreateTask);
     await server.stop();
   });
 });

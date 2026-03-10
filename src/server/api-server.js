@@ -9,19 +9,24 @@ import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
  *
  * - Autenticación via header X-Komodo-Key
  * - Configurable con API_SERVER=true, API_PORT=3002, KOMODO_API_KEY
- * - Endpoints: POST /api/run, POST /api/stop, POST /api/pause
+ * - Endpoints: POST /api/run, POST /api/stop, POST /api/pause,
+ *              POST /api/task, GET /api/status
  */
 export class KomodoApiServer {
   /**
    * @param {Object} [options]
    * @param {number} [options.port] - Puerto del servidor (default: config.apiPort)
    * @param {Function} [options.onRun] - Callback async(tasks: number) => void para iniciar ejecución
+   * @param {Function} [options.onCreateTask] - Callback async(taskData) => createdTask para crear tareas
    */
   constructor(options = {}) {
     this.port = options.port ?? config.apiPort;
 
     /** @type {Function|null} */
     this._onRun = options.onRun ?? null;
+
+    /** @type {Function|null} */
+    this._onCreateTask = options.onCreateTask ?? null;
 
     /** @type {import('http').Server|null} */
     this._httpServer = null;
@@ -100,6 +105,16 @@ export class KomodoApiServer {
       return;
     }
 
+    if (method === 'POST' && path === '/api/task') {
+      this._handleCreateTask(req, res);
+      return;
+    }
+
+    if (method === 'GET' && path === '/api/status') {
+      this._handleStatus(res);
+      return;
+    }
+
     res.writeHead(404);
     res.end(JSON.stringify({ error: 'Not found' }));
   }
@@ -139,19 +154,39 @@ export class KomodoApiServer {
 
   /**
    * Lee el body JSON de una petición.
+   * Limita el tamaño del body a 1 MB para evitar DoS por payloads grandes.
    *
    * @param {import('http').IncomingMessage} req
-   * @returns {Promise<Object>} Body parseado (o {} si vacío o inválido)
+   * @returns {Promise<Object>} Body parseado (o {} si vacío)
+   * @throws {Error} Si el body excede el límite o el JSON es inválido
    */
   _readBody(req) {
+    const MAX_BODY_SIZE = 1024 * 1024; // 1 MB
     return new Promise((resolve, reject) => {
       let data = '';
-      req.on('data', (chunk) => { data += chunk; });
+      let size = 0;
+      req.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > MAX_BODY_SIZE) {
+          req.destroy();
+          const err = new Error('Payload too large');
+          err.statusCode = 413;
+          reject(err);
+          return;
+        }
+        data += chunk;
+      });
       req.on('end', () => {
-        try {
-          resolve(data ? JSON.parse(data) : {});
-        } catch {
+        if (!data) {
           resolve({});
+          return;
+        }
+        try {
+          resolve(JSON.parse(data));
+        } catch {
+          const err = new Error('Invalid JSON');
+          err.statusCode = 400;
+          reject(err);
         }
       });
       req.on('error', reject);
@@ -169,9 +204,10 @@ export class KomodoApiServer {
     let body;
     try {
       body = await this._readBody(req);
-    } catch {
-      res.writeHead(400);
-      res.end(JSON.stringify({ error: 'Invalid request body' }));
+    } catch (err) {
+      const status = err.statusCode || 400;
+      res.writeHead(status);
+      res.end(JSON.stringify({ error: err.message || 'Invalid request body' }));
       return;
     }
 
@@ -198,7 +234,7 @@ export class KomodoApiServer {
     logger.info(`Run requested via API: ${tasks} task(s)`, 'API');
 
     // Fire-and-forget: start the run without blocking the response
-    this._onRun(tasks).catch((err) => {
+    Promise.resolve(this._onRun(tasks)).catch((err) => {
       logger.error(`API run error: ${err.message}`, 'API');
     });
 
@@ -229,6 +265,82 @@ export class KomodoApiServer {
     res.writeHead(200);
     res.end(JSON.stringify({ status: 'pausing' }));
   }
+
+  /**
+   * POST /api/task — crea una nueva tarea en el backlog.
+   * Body: { title: string, userStory: string, bizPoints: number, devPoints: number }
+   *
+   * @param {import('http').IncomingMessage} req
+   * @param {import('http').ServerResponse} res
+   */
+  async _handleCreateTask(req, res) {
+    let body;
+    try {
+      body = await this._readBody(req);
+    } catch (err) {
+      const status = err.statusCode || 400;
+      res.writeHead(status);
+      res.end(JSON.stringify({ error: err.message || 'Invalid request body' }));
+      return;
+    }
+
+    const VALID_FIBONACCI = [1, 2, 3, 5, 8, 13];
+    const errors = [];
+
+    if (!body.title || typeof body.title !== 'string' || body.title.trim().length === 0) {
+      errors.push('title is required and must be a non-empty string');
+    }
+    if (!body.userStory || typeof body.userStory !== 'string' || body.userStory.trim().length === 0) {
+      errors.push('userStory is required and must be a non-empty string');
+    }
+    if (body.bizPoints === undefined || !VALID_FIBONACCI.includes(body.bizPoints)) {
+      errors.push(`bizPoints is required and must be one of: ${VALID_FIBONACCI.join(', ')}`);
+    }
+    if (body.devPoints === undefined || !VALID_FIBONACCI.includes(body.devPoints)) {
+      errors.push(`devPoints is required and must be one of: ${VALID_FIBONACCI.join(', ')}`);
+    }
+
+    if (errors.length > 0) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'Validation failed', details: errors }));
+      return;
+    }
+
+    if (!this._onCreateTask) {
+      res.writeHead(503);
+      res.end(JSON.stringify({ error: 'Task creation not configured' }));
+      return;
+    }
+
+    try {
+      const task = await this._onCreateTask({
+        title: body.title.trim(),
+        userStory: body.userStory.trim(),
+        bizPoints: body.bizPoints,
+        devPoints: body.devPoints,
+      });
+
+      logger.info(`Task created via API: ${task.id ?? task.title}`, 'API');
+
+      res.writeHead(201);
+      res.end(JSON.stringify({ status: 'created', task }));
+    } catch (err) {
+      logger.error(`API task creation error: ${err.message}`, 'API');
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'Failed to create task' }));
+    }
+  }
+
+  /**
+   * GET /api/status — devuelve el estado actual de Komodo.
+   *
+   * @param {import('http').ServerResponse} res
+   */
+  _handleStatus(res) {
+    const snapshot = komodoState.getSnapshot();
+    res.writeHead(200);
+    res.end(JSON.stringify(snapshot));
+  }
 }
 
 /**
@@ -237,6 +349,7 @@ export class KomodoApiServer {
  *
  * @param {Object} [options]
  * @param {Function} [options.onRun] - Callback async(tasks: number) => void para /api/run
+ * @param {Function} [options.onCreateTask] - Callback async(taskData) => createdTask para /api/task
  * @returns {Promise<KomodoApiServer|null>} Instancia del servidor o null si está deshabilitado
  */
 export async function startApiServerIfEnabled(options = {}) {
@@ -247,7 +360,10 @@ export async function startApiServerIfEnabled(options = {}) {
     return null;
   }
 
-  const server = new KomodoApiServer({ onRun: options.onRun });
+  const server = new KomodoApiServer({
+    onRun: options.onRun,
+    onCreateTask: options.onCreateTask,
+  });
   try {
     await server.start();
     return server;
