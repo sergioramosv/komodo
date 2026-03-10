@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { KomodoApiServer } from './api-server.js';
 import { config } from '../config.js';
 import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
@@ -95,7 +95,7 @@ describe('API Integration Tests', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.status).toBe('stopping');
-      expect(komodoState.setExecutionState).toHaveBeenCalled;
+      expect(komodoState.executionState).toBe(EXECUTION_STATES.STOPPED);
     });
 
     it('POST /pause pauses execution', async () => {
@@ -141,6 +141,10 @@ describe('API Integration Tests', () => {
   // --- Rate Limiting ---
 
   describe('Rate Limiting', () => {
+    beforeEach(() => {
+      server._rateLimits.clear();
+    });
+
     it('returns 429 when exceeding limit', async () => {
       // The limit is 60, but since we are running integration tests
       // we can't easily change the limit in the instance without

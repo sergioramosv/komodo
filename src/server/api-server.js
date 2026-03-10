@@ -94,8 +94,8 @@ export class KomodoApiServer {
       return;
     }
 
-    if (!this._checkRateLimit(req, res)) return;
     if (!this._authenticate(req, res)) return;
+    if (!this._checkRateLimit(req, res)) return;
 
     const path = (req.url || '').split('?')[0];
     const method = req.method;
