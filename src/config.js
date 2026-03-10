@@ -263,6 +263,21 @@ export const config = {
   // Multi-project support (comma-separated IDs or '*' for all user projects)
   projects: process.env.PROJECTS || '',
 
+  // Circuit Breaker
+  circuitBreakerEnabled: process.env.CIRCUIT_BREAKER_ENABLED !== 'false', // default: true
+  cbFirebaseThreshold: parseInt(process.env.CB_FIREBASE_THRESHOLD || '5', 10),
+  cbGithubThreshold: parseInt(process.env.CB_GITHUB_THRESHOLD || '3', 10),
+  cbCliThreshold: parseInt(process.env.CB_CLI_THRESHOLD || '4', 10),
+  cbCooldownSeconds: parseInt(process.env.CB_COOLDOWN_SECONDS || '60', 10),
+  cbHalfOpenMaxAttempts: parseInt(process.env.CB_HALF_OPEN_MAX_ATTEMPTS || '2', 10),
+
+  // Error Budget
+  errorBudgetWindowMinutes: parseInt(process.env.ERROR_BUDGET_WINDOW_MINUTES || '30', 10),
+  errorBudgetMaxFailureRate: parseFloat(process.env.ERROR_BUDGET_MAX_FAILURE_RATE || '0.3'),
+
+  // Dead Letter Queue
+  deadLetterMaxRetries: parseInt(process.env.DEAD_LETTER_MAX_RETRIES || '3', 10),
+
   // Plugins
   pluginsDir: resolve(ROOT_DIR, process.env.PLUGINS_DIR || './plugins'),
   enabledPlugins: (process.env.ENABLED_PLUGINS || '')

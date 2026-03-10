@@ -12,12 +12,13 @@ import { shutdownManager } from './shutdown/shutdown-manager.js';
 import { pluginLoader } from './plugins/plugin-loader.js';
 import { heartbeatMonitor } from './heartbeat/heartbeat-monitor.js';
 import { startApiServerIfEnabled } from './server/api-server.js';
+import { resilienceManager } from './resilience/resilience-manager.js';
 
 // Daemon / watch mode
 export { watch } from './daemon/daemon.js';
 
 // Re-export para que consumidores externos puedan suscribirse
-export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES, checkpointManager, fallbackManager, shutdownManager };
+export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASES, EXECUTION_STATES, checkpointManager, fallbackManager, shutdownManager, resilienceManager };
 
 /**
  * Ejecuta N tareas del backlog de un proyecto.
@@ -90,6 +91,9 @@ export async function run(projectId, options = {}) {
 
   // Start heartbeat monitor for auto-recovery from rate limits
   heartbeatMonitor.start();
+
+  // Start resilience manager (circuit breakers, error budget, DLQ)
+  resilienceManager.start();
 
   let wsServer = null;
   let apiServer = null;
@@ -180,9 +184,10 @@ export async function run(projectId, options = {}) {
   // Unregister shutdown handlers (cleanup handled manually below)
   if (!skipServers) shutdownManager.unregister();
 
-  // Stop checkpoint manager and heartbeat monitor
+  // Stop checkpoint manager, heartbeat monitor, and resilience manager
   checkpointManager.stop();
   heartbeatMonitor.stop();
+  resilienceManager.stop();
 
   // Set state to stopped when loop ends (unless already paused by rate limit)
   if (komodoState.executionState !== EXECUTION_STATES.PAUSED) {
