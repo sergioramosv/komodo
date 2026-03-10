@@ -169,6 +169,31 @@ export class KomodoWsServer {
         try {
           const payload = JSON.parse(body);
 
+          // Handle task lifecycle events
+          if (payload.type === 'TASK_STARTED') {
+            komodoState.totalTasks = (komodoState.totalTasks || 0) + 1;
+            if (payload.metadata?.taskTitle) {
+              komodoState.currentTask = payload.metadata.taskTitle;
+              komodoState.taskDetails = payload.metadata.taskDetails || null;
+            }
+            komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+          }
+          if (payload.type === 'TASK_COMPLETED') {
+            komodoState.tasksCompleted = (komodoState.tasksCompleted || 0) + 1;
+            komodoState.currentTask = null;
+            komodoState.taskDetails = null;
+            komodoState.currentPR = null;
+            komodoState.reviewCycle = 0;
+          }
+          if (payload.type === 'PR_CREATED') {
+            komodoState.currentPR = payload.metadata?.prNumber
+              ? { number: payload.metadata.prNumber, repo: payload.metadata.repo }
+              : null;
+          }
+          if (payload.type === 'PR_MERGED') {
+            komodoState.currentPR = null;
+          }
+
           // Update komodoState from the event
           if (payload.type === 'AGENT_STATE_CHANGE' && payload.agentName) {
             const status = payload.newState || payload.metadata?.newState;
@@ -188,8 +213,8 @@ export class KomodoWsServer {
             }
             // Update current task info
             if (payload.metadata?.taskTitle) {
-              komodoState.state.currentTask = payload.metadata.taskTitle;
-              komodoState.state.taskDetails = {
+              komodoState.currentTask = payload.metadata.taskTitle;
+              komodoState.taskDetails = {
                 id: payload.metadata.taskId || null,
                 title: payload.metadata.taskTitle,
                 devPoints: payload.metadata.devPoints || 0,
@@ -198,8 +223,8 @@ export class KomodoWsServer {
             }
             // Clear task when phase goes idle
             if (payload.metadata?.phase === 'idle' && payload.newState === 'idle') {
-              komodoState.state.currentTask = null;
-              komodoState.state.taskDetails = null;
+              komodoState.currentTask = null;
+              komodoState.taskDetails = null;
             }
           }
 

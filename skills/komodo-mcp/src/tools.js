@@ -239,13 +239,14 @@ export const tools = {
       komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
       komodoState.updatePhase('coding');
       komodoState.updateAgent('CODER', { status: 'working', currentTask: params.title });
-      komodoState.state.currentTask = params.title;
-      komodoState.state.taskDetails = {
+      komodoState.currentTask = params.title;
+      komodoState.taskDetails = {
         id: params.taskId,
         title: params.title,
         devPoints: params.devPoints || 0,
         branchName: params.branchName,
       };
+      komodoState.totalTasks = (komodoState.totalTasks || 0) + 1;
 
       eventBus.emitEvent(EVENT_TYPES.TASK_STARTED, {
         metadata: {
@@ -395,7 +396,7 @@ export const tools = {
 
       komodoState.updatePhase('reviewing');
       komodoState.updateAgent('REVIEWER', { status: 'working', currentTask: params.taskTitle });
-      komodoState.state.currentPR = { number: params.prNumber, repo: params.repo };
+      komodoState.currentPR = { number: params.prNumber, repo: params.repo };
 
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
         agentName: 'REVIEWER',
