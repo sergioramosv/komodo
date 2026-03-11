@@ -303,6 +303,7 @@ export async function runTask(projectId, cwd) {
 
       const waitMs = Math.max(0, headroom.resetTime - Date.now());
 
+
       eventBus.emitEvent(EVENT_TYPES.RATE_LIMIT_PREEMPTIVE_WAIT, {
         metadata: {
           taskId: taskSpec.taskId,

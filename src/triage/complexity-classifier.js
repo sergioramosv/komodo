@@ -14,6 +14,20 @@ const DEFAULT_WEIGHTS = {
 };
 
 /**
+ * Weights for real complexity calculation.
+ * Uses architect/implementation plan data for a more accurate assessment.
+ */
+const REAL_COMPLEXITY_WEIGHTS = {
+  devPoints: 0.20,
+  filesAffected: 0.20,
+  dependencies: 0.15,
+  dataModelChanges: 0.15,
+  apiChanges: 0.15,
+  risks: 0.10,
+  acceptanceCriteria: 0.05,
+};
+
+/**
  * Computes a partial score (1-10) based on devPoints.
  *
  * - 1-2 devPoints → low score (1-3)
@@ -121,6 +135,178 @@ function hasImplementationPlan(task) {
   if (Array.isArray(task.implementationPlan)) return task.implementationPlan.length > 0;
   if (typeof task.implementationPlan === 'object') return Object.keys(task.implementationPlan).length > 0;
   return false;
+}
+
+/**
+ * Scores the number of files affected (creates + modifies) on a 1-10 scale.
+ * @param {number} count
+ * @returns {number}
+ */
+function scoreFilesAffected(count) {
+  if (count <= 0) return 1;
+  if (count <= 2) return 3;
+  if (count <= 5) return 5;
+  if (count <= 10) return 7;
+  if (count <= 15) return 9;
+  return 10;
+}
+
+/**
+ * Scores the number of external dependencies on a 1-10 scale.
+ * @param {number} count
+ * @returns {number}
+ */
+function scoreDependencies(count) {
+  if (count <= 0) return 1;
+  if (count <= 1) return 3;
+  if (count <= 3) return 5;
+  if (count <= 5) return 7;
+  return 9;
+}
+
+/**
+ * Scores the presence/complexity of data model changes on a 1-10 scale.
+ * @param {string|undefined} changes
+ * @returns {number}
+ */
+function scoreDataModelChanges(changes) {
+  if (!changes) return 1;
+  const text = typeof changes === 'string' ? changes.trim() : String(changes).trim();
+  if (!text || text.toLowerCase() === 'none') return 1;
+  if (text.length < 50) return 4;
+  if (text.length < 150) return 6;
+  return 8;
+}
+
+/**
+ * Scores the presence/complexity of API changes on a 1-10 scale.
+ * @param {string|undefined} changes
+ * @returns {number}
+ */
+function scoreApiChanges(changes) {
+  if (!changes) return 1;
+  const text = typeof changes === 'string' ? changes.trim() : String(changes).trim();
+  if (!text || text.toLowerCase() === 'none') return 1;
+  if (text.length < 50) return 4;
+  if (text.length < 150) return 6;
+  return 8;
+}
+
+/**
+ * Scores the number of identified risks on a 1-10 scale.
+ * @param {number} count
+ * @returns {number}
+ */
+function scoreRisks(count) {
+  if (count <= 0) return 1;
+  if (count <= 1) return 3;
+  if (count <= 3) return 6;
+  return 9;
+}
+
+/**
+ * Extracts plan data from a task, checking both architectPlan and implementationPlan.
+ * @param {Object} task
+ * @returns {{ filesToCreate: Array, filesToModify: Array, dependencies: Array, dataModelChanges: string, apiChanges: string, risks: Array, implementationOrder: Array }}
+ */
+function extractPlanData(task) {
+  const plan = task.architectPlan || task.implementationPlan || {};
+
+  const filesToCreate = Array.isArray(plan.filesToCreate) ? plan.filesToCreate : [];
+  const filesToModify = Array.isArray(plan.filesToModify) ? plan.filesToModify : [];
+  const dependencies = Array.isArray(plan.dependencies) ? plan.dependencies : [];
+  const risks = Array.isArray(plan.risks)
+    ? plan.risks
+    : (typeof plan.risks === 'string' && plan.risks.trim() && plan.risks.trim().toLowerCase() !== 'none')
+      ? plan.risks.split('\n').filter(l => l.trim())
+      : [];
+  const dataModelChanges = plan.dataModelChanges || '';
+  const apiChanges = plan.apiChanges || '';
+  const implementationOrder = Array.isArray(plan.implementationOrder)
+    ? plan.implementationOrder
+    : (Array.isArray(plan.steps) ? plan.steps : []);
+
+  return { filesToCreate, filesToModify, dependencies, dataModelChanges, apiChanges, risks, implementationOrder };
+}
+
+/**
+ * Calculates a "real" complexity score (1-10) using architect/implementation plan data.
+ *
+ * Unlike classifyComplexity which uses generic task metadata, this function
+ * considers the actual scope of changes: files affected, dependencies,
+ * data model changes, API changes, and risks.
+ *
+ * @param {Object} task - The task with optional architectPlan or implementationPlan
+ * @returns {{ score: number, signals: Object, reasoning: string }}
+ */
+export function calculateRealComplexity(task) {
+  const planData = extractPlanData(task);
+  const hasPlan = planData.filesToCreate.length > 0 || planData.filesToModify.length > 0 ||
+    planData.dependencies.length > 0 || planData.risks.length > 0;
+
+  // If no plan data, fall back to basic devPoints-based scoring
+  if (!hasPlan) {
+    const devPtsScore = scoreDevPoints(task.devPoints);
+    const acCount = getAcceptanceCriteriaCount(task.acceptanceCriteria);
+    const acScore = scoreAcceptanceCriteria(acCount);
+    const fallbackScore = Math.max(1, Math.min(10, Math.round(devPtsScore * 0.7 + acScore * 0.3)));
+    return {
+      score: fallbackScore,
+      signals: { devPoints: task.devPoints || 0, noPlanData: true },
+      reasoning: `No plan data available. Fallback score ${fallbackScore}/10 (devPoints=${task.devPoints ?? 'N/A'}, criteria=${acCount})`,
+    };
+  }
+
+  const filesCount = planData.filesToCreate.length + planData.filesToModify.length;
+  const depsCount = planData.dependencies.length;
+  const risksCount = planData.risks.length;
+  const acCount = getAcceptanceCriteriaCount(task.acceptanceCriteria);
+
+  const signals = {
+    devPoints: scoreDevPoints(task.devPoints),
+    filesAffected: scoreFilesAffected(filesCount),
+    dependencies: scoreDependencies(depsCount),
+    dataModelChanges: scoreDataModelChanges(planData.dataModelChanges),
+    apiChanges: scoreApiChanges(planData.apiChanges),
+    risks: scoreRisks(risksCount),
+    acceptanceCriteria: scoreAcceptanceCriteria(acCount),
+  };
+
+  const w = REAL_COMPLEXITY_WEIGHTS;
+  const rawScore =
+    signals.devPoints * w.devPoints +
+    signals.filesAffected * w.filesAffected +
+    signals.dependencies * w.dependencies +
+    signals.dataModelChanges * w.dataModelChanges +
+    signals.apiChanges * w.apiChanges +
+    signals.risks * w.risks +
+    signals.acceptanceCriteria * w.acceptanceCriteria;
+
+  const score = Math.max(1, Math.min(10, Math.round(rawScore)));
+
+  const parts = [
+    `devPts=${task.devPoints ?? 'N/A'}(${signals.devPoints})`,
+    `files=${filesCount}(${signals.filesAffected})`,
+    `deps=${depsCount}(${signals.dependencies})`,
+    `dataModel=${planData.dataModelChanges ? 'yes' : 'no'}(${signals.dataModelChanges})`,
+    `api=${planData.apiChanges ? 'yes' : 'no'}(${signals.apiChanges})`,
+    `risks=${risksCount}(${signals.risks})`,
+    `criteria=${acCount}(${signals.acceptanceCriteria})`,
+  ];
+
+  return {
+    score,
+    signals: {
+      devPoints: task.devPoints || 0,
+      filesAffected: filesCount,
+      dependencies: depsCount,
+      dataModelChanges: !!planData.dataModelChanges && planData.dataModelChanges.toLowerCase() !== 'none',
+      apiChanges: !!planData.apiChanges && planData.apiChanges.toLowerCase() !== 'none',
+      risks: risksCount,
+      acceptanceCriteria: acCount,
+    },
+    reasoning: `Real complexity ${score}/10 [${parts.join(', ')}]`,
+  };
 }
 
 /**
