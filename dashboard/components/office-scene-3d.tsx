@@ -16,11 +16,11 @@ export function OfficeScene3D({ agents, phase, cliHealth }: OfficeScene3DProps) 
     <div className="w-full h-full relative bg-zinc-950 overflow-hidden">
       <Canvas shadows>
         {/* Cámara Isométrica estilo 2.5D */}
-        <OrthographicCamera 
-          makeDefault 
-          position={[20, 20, 20]} 
-          zoom={35} 
-          near={-100} 
+        <OrthographicCamera
+          makeDefault
+          position={[20, 20, 20]}
+          zoom={28}
+          near={-100}
           far={100}
         />
         
@@ -29,7 +29,7 @@ export function OfficeScene3D({ agents, phase, cliHealth }: OfficeScene3DProps) 
           enablePan={false}
           minPolarAngle={0} 
           maxPolarAngle={Math.PI / 2.1} 
-          minZoom={20}
+          minZoom={15}
           maxZoom={80}
         />
 
@@ -40,10 +40,10 @@ export function OfficeScene3D({ agents, phase, cliHealth }: OfficeScene3DProps) 
           intensity={1.5} 
           castShadow 
           shadow-mapSize={[1024, 1024]} 
-          shadow-camera-left={-20}
-          shadow-camera-right={20}
-          shadow-camera-top={20}
-          shadow-camera-bottom={-20}
+          shadow-camera-left={-25}
+          shadow-camera-right={25}
+          shadow-camera-top={25}
+          shadow-camera-bottom={-25}
         />
 
         {/* Entorno Dinámico */}

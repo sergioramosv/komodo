@@ -260,6 +260,8 @@ export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) 
   const plannerState = agents?.PLANNER?.status || 'idle';
   const coderState = agents?.CODER?.status || 'idle';
   const reviewerState = agents?.REVIEWER?.status || 'idle';
+  const architectState = agents?.ARCHITECT?.status || 'idle';
+  const securityState = agents?.SECURITY?.status || 'idle';
   const isAnalyzing = phase === 'analyzing';
 
   // Derive CLI health status per agent from their assigned CLI
@@ -272,8 +274,8 @@ export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) 
 
   return (
     <group>
-      {/* Floor - Light wood/grey */}
-      <Plane args={[16, 14]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, 0, 0]}>
+      {/* Floor - Light wood/grey (extended for new back offices) */}
+      <Plane args={[16, 20]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow position={[0, 0, -3]}>
         <meshStandardMaterial color="#aaaaaaff" /> {/* Madera Losas */}
       </Plane>
 
@@ -292,13 +294,19 @@ export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) 
       <Text position={[5, 0.03, 3]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1} color="#7f8c8d" fillOpacity={0.6}>
         REVIEWER
       </Text>
+      <Text position={[-4, 0.03, -10]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1} color="#7f8c8d" fillOpacity={0.6}>
+        ARCHITECT
+      </Text>
+      <Text position={[4, 0.03, -10]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1} color="#7f8c8d" fillOpacity={0.6}>
+        SECURITY
+      </Text>
 
       {/* Paredes Exteriores del edificio */}
-      <Wall args={[16.2, 3, 0.2]} position={[0, 1.5, -7]} /> {/* Fondo */}
-      <Wall args={[0.2, 3, 14.2]} position={[-8, 1.5, 0]} /> {/* Izquierda */}
+      <Wall args={[16.2, 3, 0.2]} position={[0, 1.5, -13]} /> {/* Fondo (extended) */}
+      <Wall args={[0.2, 3, 20.2]} position={[-8, 1.5, -3]} /> {/* Izquierda (extended) */}
 
       {/* Pared Derecha Exterior (Pantalla media para no ocluir) */}
-      <WallScreen args={[0.2, 3, 14.2]} position={[8, 1.5, 0]} /> {/* Derecha */}
+      <WallScreen args={[0.2, 3, 20.2]} position={[8, 1.5, -3]} /> {/* Derecha (extended) */}
 
       {/* --- Paredes Interiores Horizontales (dividen oficinas traseras del pasillo Z=-1) --- */}
       {/* Planner (X=-8 a -1). Puerta en X=-2.5 */}
@@ -328,6 +336,18 @@ export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) 
       {/* Coder / Breakroom / Reviewer (Desde Z=1 al Frente Z=7) */}
       <WallScreen args={[0.2, 3, 6]} position={[-2, 1.5, 4]} /> {/* Coder Right Wall */}
       <WallScreen args={[0.2, 3, 6]} position={[2, 1.5, 4]} />  {/* Reviewer Left Wall */}
+
+      {/* --- NEW: Walls for ARCHITECT & SECURITY offices (Z=-7 to Z=-13) --- */}
+      {/* Horizontal wall at Z=-7 separating old back row from new offices */}
+      {/* ARCHITECT door at X=-4 */}
+      <WallScreen args={[3, 3, 0.2]} position={[-6.5, 1.5, -7]} />
+      <WallScreen args={[3, 3, 0.2]} position={[-1.5, 1.5, -7]} />
+      {/* SECURITY door at X=4 */}
+      <WallScreen args={[3, 3, 0.2]} position={[1.5, 1.5, -7]} />
+      <WallScreen args={[3, 3, 0.2]} position={[6.5, 1.5, -7]} />
+
+      {/* Vertical divider between ARCHITECT and SECURITY */}
+      <WallScreen args={[0.2, 3, 6]} position={[0, 1.5, -10]} />
 
       {/* ==== MOBILIARIO Y DECORACIÓN POR HABITACIÓN ==== */}
 
@@ -364,6 +384,43 @@ export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) 
       <PottedPlant position={[7.5, 0, 6.5]} />
       <Bookshelf position={[2.5, 0, 6]} rotation={[0, -Math.PI / 2, 0]} />
 
+
+      {/* -- ROOM 5: ARCHITECT (Back Left: X=-4, Z=-10) -- */}
+      {/* Blueprint whiteboard on back wall */}
+      <AnimatedWhiteboard position={[-4, 0, -12.8]} rotation={[0, 0, 0]} isDrawing={architectState === 'working'} />
+      <LDesk position={[-5.5, 0, -9.5]} rotation={[0, Math.PI / 2, 0]} />
+      <FilingCabinet position={[-7.5, 0, -12.5]} rotation={[0, 0, 0]} />
+      <PottedPlant position={[-7.5, 0, -7.5]} />
+      {/* Blueprint/diagram decoration on side wall */}
+      <WallPainting position={[-7.9, 1.5, -10]} rotation={[0, Math.PI / 2, 0]} />
+
+      {/* -- ROOM 6: SECURITY (Back Right: X=4, Z=-10) -- */}
+      <LDesk position={[5, 0, -9.5]} rotation={[0, Math.PI / 2, 0]} />
+      <FilingCabinet position={[7.5, 0, -12.5]} rotation={[0, -Math.PI / 2, 0]} />
+      <Bookshelf position={[2, 0, -12]} rotation={[0, 0, 0]} />
+      <PottedPlant position={[7.5, 0, -7.5]} />
+      {/* Security monitor with shield icon (screen glow in green) */}
+      <group position={[4, 0, -12.8]} rotation={[0, 0, 0]}>
+        {/* Large security monitor */}
+        <Box args={[2, 1.5, 0.1]} position={[0, 1.5, 0]} castShadow receiveShadow>
+          <meshStandardMaterial color="#111" />
+        </Box>
+        {/* Screen with green security glow */}
+        <Box args={[1.8, 1.3, 0.05]} position={[0, 1.5, 0.06]}>
+          <meshStandardMaterial color="#0a2e0a" emissive="#22c55e" emissiveIntensity={0.3} />
+        </Box>
+        {/* Shield icon (simple geometric representation) */}
+        <Box args={[0.5, 0.6, 0.02]} position={[0, 1.6, 0.1]}>
+          <meshStandardMaterial color="#22c55e" emissive="#22c55e" emissiveIntensity={0.5} />
+        </Box>
+        <Box args={[0.3, 0.2, 0.02]} position={[0, 1.2, 0.1]}>
+          <meshStandardMaterial color="#22c55e" emissive="#22c55e" emissiveIntensity={0.5} />
+        </Box>
+        {/* Lock icon on shield */}
+        <Box args={[0.12, 0.15, 0.03]} position={[0, 1.55, 0.12]}>
+          <meshStandardMaterial color="#0a2e0a" />
+        </Box>
+      </group>
 
       {/* -- SONARQUBE SCANNER (Hallway between Coder and Reviewer) -- */}
       <SonarScanner3D position={[0, 0, -1.5]} isAnalyzing={isAnalyzing} />
@@ -423,6 +480,47 @@ export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) 
           [3, 0, 0],          // Pasillo hacia puerta Reviewer
           [3, 0, 5.3],        // Entra en su habitacion Reviewer hacia la silla
           [5, 0, 5.5]         // Sentado en su silla
+        ]}
+        rotationWait={[0, Math.PI, 0]}
+        rotationWork={[0, Math.PI, 0]}
+      />
+
+      {/* ARCHITECT — teal shirt, short hair, works at blueprint whiteboard */}
+      <Agent3D
+        id="ARCHITECT"
+        status={architectState}
+        shirtColor="#0d9488"
+        hairColor="#4a3728"
+        hairStyle="short"
+        cliStatus={getAgentCliStatus('ARCHITECT')}
+        pathWaypoints={[
+          [-0.5, 0, 6.2],     // Descanso en sillón Breakroom
+          [-0.5, 0, 2.5],     // Sale de Breakroom
+          [-4, 0, 0],         // Pasillo central
+          [-4, 0, -4],        // Cruza zona Planner
+          [-4, 0, -7],        // Puerta del despacho Architect
+          [-4, 0, -11.8]      // Frente a la pizarra de planos (Trabajando)
+        ]}
+        rotationWait={[0, Math.PI, 0]}
+        rotationWork={[0, Math.PI, 0]}
+        isWhiteboard={true}
+      />
+
+      {/* SECURITY — dark green shirt, short hair, works at security monitor */}
+      <Agent3D
+        id="SECURITY"
+        status={securityState}
+        shirtColor="#166534"
+        hairColor="#1a1a2e"
+        hairStyle="short"
+        cliStatus={getAgentCliStatus('SECURITY')}
+        pathWaypoints={[
+          [0.5, 0, 6.2],      // Descanso en sillón Breakroom
+          [0.5, 0, 2.5],      // Sale de Breakroom
+          [4, 0, 0],          // Pasillo central
+          [4, 0, -4],         // Cruza zona Boss
+          [4, 0, -7],         // Puerta del despacho Security
+          [5, 0, -10.5]       // Sentado en su escritorio
         ]}
         rotationWait={[0, Math.PI, 0]}
         rotationWork={[0, Math.PI, 0]}

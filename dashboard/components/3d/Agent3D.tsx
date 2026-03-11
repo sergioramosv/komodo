@@ -6,7 +6,7 @@ import { Box, Sphere } from '@react-three/drei';
 import * as THREE from 'three';
 
 interface Agent3DProps {
-  id: string; // 'PLANNER' | 'CODER' | 'REVIEWER'
+  id: string; // 'PLANNER' | 'CODER' | 'REVIEWER' | 'ARCHITECT' | 'SECURITY'
   status: 'idle' | 'working' | 'walking';
   hairColor: string;
   shirtColor: string;
