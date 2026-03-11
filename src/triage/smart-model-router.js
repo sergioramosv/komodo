@@ -6,12 +6,6 @@ import { getDb } from '../../skills/planning-task-mcp/src/firebase.js';
 
 const AGENT_TAG = 'SMART-ROUTER';
 
-/**
- * Minimum tasks required per model before using learned metrics.
- * Below this threshold, falls back to static selectModel().
- */
-export const LOW_QUALITY_THRESHOLD = config.smartModelRoutingThreshold;
-
 const MIN_TASKS = config.smartModelRoutingMinTasks;
 
 /**
@@ -83,6 +77,9 @@ export async function selectModelSmart({
   if (!config.smartModelRouting) {
     return selectModel(cliType, agentRole, complexityLevel, taskOverride);
   }
+
+  // taskOverride has maximum priority — bypass smart routing entirely
+  if (taskOverride) return taskOverride;
 
   const cli = cliType.toLowerCase();
   const role = agentRole.toUpperCase();
