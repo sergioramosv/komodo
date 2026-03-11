@@ -1,0 +1,19 @@
+{
+  "analysis": {
+    "indentation": {
+      "style": "spaces",
+      "size": 2
+    },
+    "quotes": "single",
+    "semicolons": "always",
+    "naming": "camelCase",
+    "imports": "esm",
+    "testFramework": "vitest",
+    "validation": null,
+    "errorHandling": "mixed",
+    "primaryLanguage": "js"
+  },
+  "summary": "Style: camelCase functions, 2-space indent, single quotes, semicolons, ES modules (import/export), vitest for tests, mixed error handling",
+  "checksum": "de556fe003a2bd851b05ceec0faed200e9b092ef66f5043c7dff4f154dc52c5e",
+  "generatedAt": "2026-03-10T20:53:29.288Z"
+}

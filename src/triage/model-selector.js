@@ -20,9 +20,9 @@ const DEFAULT_MODEL_MAP = {
     REVIEWER: { trivial: 'codex-mini', standard: 'o4-mini', complex: 'o3' },
   },
   gemini: {
-    PLANNER:  { trivial: 'gemini-3-flash', standard: 'gemini-3-flash', complex: 'gemini-3-flash' },
-    CODER:    { trivial: 'gemini-3-flash', standard: 'gemini-3-flash', complex: 'gemini-3.1-pro' },
-    REVIEWER: { trivial: 'gemini-3-flash', standard: 'gemini-3-flash', complex: 'gemini-3.1-pro' },
+    PLANNER:  { trivial: 'gemini-2.5-flash', standard: 'gemini-2.5-flash', complex: 'gemini-2.5-pro' },
+    CODER:    { trivial: 'gemini-2.5-flash', standard: 'gemini-2.5-flash', complex: 'gemini-2.5-pro' },
+    REVIEWER: { trivial: 'gemini-2.5-flash', standard: 'gemini-2.5-flash', complex: 'gemini-2.5-pro' },
   },
 };
 

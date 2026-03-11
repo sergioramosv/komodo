@@ -1,0 +1,3009 @@
+{
+  "files": {
+    "dashboard/app/agents/page.tsx": {
+      "exports": [
+        "AgentsPage"
+      ],
+      "imports": [
+        "react",
+        "@/hooks/useKomodoSocket",
+        "@/components/connection-status"
+      ],
+      "functions": [
+        "getElapsedTime(startedAt: string | null)",
+        "getModelBadge(cli?: string | null, model?: string | null)",
+        "AgentDetail({ agent, logs, events, accent, onClose }: AgentDetailProps)",
+        "Stat({ label, value }: { label: string; value: string })",
+        "LiveLogTerminal({ logs, accent }: { logs: AgentLog[]; accent: { color: string } })",
+        "EventHistory({ events }: { events: { id: string; timestamp: string; message: string }[] })"
+      ]
+    },
+    "dashboard/app/analytics/page.tsx": {
+      "exports": [
+        "AnalyticsPage"
+      ],
+      "imports": [
+        "react",
+        "@/components/analytics/velocity-chart",
+        "@/components/analytics/cost-chart",
+        "@/components/analytics/review-pass-rate-chart",
+        "@/components/analytics/duration-complexity-chart",
+        "@/components/analytics/model-usage-chart",
+        "@/components/analytics/analytics-filters",
+        "@/components/budget-history"
+      ],
+      "functions": [
+        "defaultFilters()"
+      ]
+    },
+    "dashboard/app/api/config/route.ts": {
+      "exports": [
+        "GET",
+        "PUT"
+      ],
+      "imports": [
+        "next/server",
+        "fs",
+        "path",
+        "child_process",
+        "@/lib/config-types"
+      ],
+      "functions": [
+        "detectInstalledClis()",
+        "GET()",
+        "PUT(request: Request)"
+      ]
+    },
+    "dashboard/app/api/memory/clear/route.ts": {
+      "exports": [
+        "DELETE"
+      ],
+      "imports": [
+        "next/server",
+        "fs",
+        "path"
+      ],
+      "functions": [
+        "DELETE()"
+      ]
+    },
+    "dashboard/app/api/memory/route.ts": {
+      "exports": [
+        "GET"
+      ],
+      "imports": [
+        "next/server",
+        "fs",
+        "path"
+      ],
+      "functions": [
+        "GET()"
+      ]
+    },
+    "dashboard/app/api/projects/[projectId]/analytics/route.ts": {
+      "exports": [],
+      "imports": [
+        "next/server",
+        "@/lib/firebase"
+      ],
+      "functions": [
+        "groupBySprint(events: PersistedEvent[], type: string)",
+        "buildVelocity(events: PersistedEvent[])",
+        "buildCostPerSprint(events: PersistedEvent[])",
+        "buildReviewPassRate(events: PersistedEvent[])",
+        "buildDurationByComplexity(events: PersistedEvent[])",
+        "buildModelUsage(events: PersistedEvent[])"
+      ]
+    },
+    "dashboard/app/api/projects/[projectId]/budget-history/route.ts": {
+      "exports": [
+        "DailyCostEntry"
+      ],
+      "imports": [
+        "next/server",
+        "@/lib/firebase"
+      ],
+      "functions": []
+    },
+    "dashboard/app/api/projects/[projectId]/coding-guidelines/route.ts": {
+      "exports": [],
+      "imports": [
+        "next/server",
+        "@/lib/firebase"
+      ],
+      "functions": []
+    },
+    "dashboard/app/api/projects/[projectId]/coverage-trend/route.ts": {
+      "exports": [],
+      "imports": [
+        "next/server",
+        "@/lib/firebase"
+      ],
+      "functions": []
+    },
+    "dashboard/app/api/projects/[projectId]/estimation-metrics/route.ts": {
+      "exports": [],
+      "imports": [
+        "next/server",
+        "@/lib/firebase"
+      ],
+      "functions": [
+        "calculateRatios(metrics: TaskMetric[])"
+      ]
+    },
+    "dashboard/app/api/projects/[projectId]/model-leaderboard/route.ts": {
+      "exports": [],
+      "imports": [
+        "next/server",
+        "@/lib/firebase",
+        "@/lib/leaderboard"
+      ],
+      "functions": [
+        "getPeriodStart(period: string)",
+        "isValidDate(d: Date)"
+      ]
+    },
+    "dashboard/app/api/projects/[projectId]/tech-debt/route.ts": {
+      "exports": [],
+      "imports": [
+        "next/server",
+        "@/lib/firebase"
+      ],
+      "functions": []
+    },
+    "dashboard/app/api/projects/route.ts": {
+      "exports": [
+        "GET"
+      ],
+      "imports": [
+        "next/server",
+        "@/lib/firebase"
+      ],
+      "functions": [
+        "GET()"
+      ]
+    },
+    "dashboard/app/api/schedule/route.ts": {
+      "exports": [
+        "GET"
+      ],
+      "imports": [
+        "next/server"
+      ],
+      "functions": [
+        "parseTime(timeStr: string)",
+        "toMinutes(time: { hours: number; minutes: number })",
+        "parseScheduleWindows(scheduleStr: string)",
+        "getCurrentTime(timezone?: string)",
+        "GET()"
+      ]
+    },
+    "dashboard/app/api/tasks/[taskId]/route.ts": {
+      "exports": [],
+      "imports": [
+        "next/server",
+        "@/lib/firebase"
+      ],
+      "functions": []
+    },
+    "dashboard/app/layout.tsx": {
+      "exports": [
+        "metadata",
+        "RootLayout"
+      ],
+      "imports": [
+        "@/components/sidebar",
+        "@/components/notification-provider",
+        "./globals.css"
+      ],
+      "functions": []
+    },
+    "dashboard/app/leaderboard/page.tsx": {
+      "exports": [
+        "LeaderboardPage"
+      ],
+      "imports": [
+        "react",
+        "@/components/analytics/model-leaderboard-table",
+        "@/components/analytics/leaderboard-filters"
+      ],
+      "functions": [
+        "defaultFilters()",
+        "OptimalModelHighlights({ optimalModels }: { optimalModels: OptimalModel[] })",
+        "RecommendationCards({ recommendations }: { recommendations: ModelRecommendation[] })"
+      ]
+    },
+    "dashboard/app/memory/page.tsx": {
+      "exports": [
+        "MemoryPage"
+      ],
+      "imports": [
+        "react"
+      ],
+      "functions": [
+        "PatternRow({ pattern }: { pattern: Pattern })"
+      ]
+    },
+    "dashboard/app/notifications/page.tsx": {
+      "exports": [
+        "NotificationsPage"
+      ],
+      "imports": [
+        "react",
+        "@/hooks/useNotifications"
+      ],
+      "functions": []
+    },
+    "dashboard/app/page.tsx": {
+      "exports": [
+        "DashboardPage"
+      ],
+      "imports": [
+        "react",
+        "@/hooks/useKomodoSocket",
+        "@/hooks/useAgentStates",
+        "@/hooks/useOfficeFeedback",
+        "@/components/connection-status",
+        "next/dynamic",
+        "@/components/execution-controls",
+        "@/components/cli-health-status",
+        "@/components/budget-widget",
+        "@/components/project-selector",
+        "@/components/multi-project-overview",
+        "@/components/task-detail-modal",
+        "lucide-react"
+      ],
+      "functions": [
+        "SonarStatus({ sonar }: { sonar: SonarAnalysisState })",
+        "EventRow({ event }: { event: DashboardEvent })"
+      ]
+    },
+    "dashboard/app/settings/page.tsx": {
+      "exports": [
+        "SettingsPage"
+      ],
+      "imports": [
+        "react",
+        "@/lib/config-types",
+        "@/components/cli-health-status",
+        "@/hooks/useKomodoSocket"
+      ],
+      "functions": []
+    },
+    "dashboard/components/3d/Agent3D.tsx": {
+      "exports": [
+        "Agent3D"
+      ],
+      "imports": [
+        "react",
+        "@react-three/fiber",
+        "@react-three/drei",
+        "three"
+      ],
+      "functions": [
+        "Agent3D({ id, status, hairColor, shirtColor, hairStyle, pathWaypoints, rotationWork, rotationWait, isWhiteboard, cliStatus = 'available' }: Agent3DProps)"
+      ]
+    },
+    "dashboard/components/3d/AnimatedWhiteboard.tsx": {
+      "exports": [
+        "AnimatedWhiteboard"
+      ],
+      "imports": [
+        "react",
+        "@react-three/fiber",
+        "@react-three/drei",
+        "three"
+      ],
+      "functions": [
+        "AnimatedWhiteboard({ position, rotation, isDrawing }: { position: [number, number, number], rotation: [number, number, number], isDrawing: boolean })"
+      ]
+    },
+    "dashboard/components/3d/Environment3D.tsx": {
+      "exports": [
+        "Environment3D"
+      ],
+      "imports": [
+        "react",
+        "@react-three/drei",
+        "./AnimatedWhiteboard",
+        "./KomodoBoss",
+        "./Agent3D",
+        "./SonarScanner3D"
+      ],
+      "functions": [
+        "Wall({ args, position }: { args: [number, number, number], position: [number, number, number] })",
+        "WallScreen({ args, position }: { args: [number, number, number], position: [number, number, number] })",
+        "LDesk({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] })",
+        "Armchair({ position, rotation, color = \"#ff7700\" }: { position: [number, number, number], rotation: [number, number, number], color?: string })",
+        "Sofa({ position, rotation, color }: { position: [number, number, number], rotation: [number, number, number], color?: string })",
+        "MiniSofa({ position, rotation, color = \"#000000\" }: { position: [number, number, number], rotation: [number, number, number], color?: string })",
+        "VendingMachine({ position, rotation, color }: { position: [number, number, number], rotation: [number, number, number], color: string })",
+        "WaterCooler({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] })",
+        "Bookshelf({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] })",
+        "FilingCabinet({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] })",
+        "PottedPlant({ position }: { position: [number, number, number] })",
+        "WindowProps({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] })",
+        "WallPainting({ position, rotation }: { position: [number, number, number], rotation: [number, number, number] })",
+        "Environment3D({ agents, phase, cliHealth }: Environment3DProps)"
+      ]
+    },
+    "dashboard/components/3d/KomodoBoss.tsx": {
+      "exports": [
+        "KomodoBoss"
+      ],
+      "imports": [
+        "react",
+        "@react-three/fiber",
+        "@react-three/drei",
+        "three"
+      ],
+      "functions": [
+        "KomodoBoss({ position }: { position: [number, number, number] })"
+      ]
+    },
+    "dashboard/components/3d/SonarScanner3D.tsx": {
+      "exports": [
+        "SonarScanner3D"
+      ],
+      "imports": [
+        "react",
+        "@react-three/drei",
+        "@react-three/fiber",
+        "three"
+      ],
+      "functions": [
+        "SonarScanner3D({ position, isAnalyzing }: SonarScanner3DProps)"
+      ]
+    },
+    "dashboard/components/agent-avatar.tsx": {
+      "exports": [
+        "AgentType",
+        "AnimationState"
+      ],
+      "imports": [],
+      "functions": [
+        "KomodoSprite()",
+        "PlannerSprite()",
+        "CoderSprite()",
+        "ReviewerSprite()"
+      ]
+    },
+    "dashboard/components/analytics/analytics-filters.tsx": {
+      "exports": [
+        "AnalyticsFilters"
+      ],
+      "imports": [],
+      "functions": [
+        "AnalyticsFilters({ filters, onChange, availableSprints, availableModels }: AnalyticsFiltersProps)"
+      ]
+    },
+    "dashboard/components/analytics/cost-chart.tsx": {
+      "exports": [
+        "CostChart"
+      ],
+      "imports": [],
+      "functions": [
+        "CostChart({ data }: { data: SprintCost[] })"
+      ]
+    },
+    "dashboard/components/analytics/duration-complexity-chart.tsx": {
+      "exports": [
+        "DurationComplexityChart"
+      ],
+      "imports": [],
+      "functions": [
+        "DurationComplexityChart({ data }: { data: DurationByComplexity[] })"
+      ]
+    },
+    "dashboard/components/analytics/leaderboard-filters.tsx": {
+      "exports": [
+        "LeaderboardFilters",
+        "LeaderboardFiltersState"
+      ],
+      "imports": [],
+      "functions": [
+        "LeaderboardFilters({ filters, onChange }: LeaderboardFiltersProps)"
+      ]
+    },
+    "dashboard/components/analytics/model-leaderboard-table.tsx": {
+      "exports": [
+        "ModelLeaderboardTable",
+        "LeaderboardRow",
+        "OptimalModel"
+      ],
+      "imports": [],
+      "functions": [
+        "ScoreBadge({ score }: { score: number | null })",
+        "isOptimal(row: LeaderboardRow, optimalModels: OptimalModel[])",
+        "ModelLeaderboardTable({ data, optimalModels = [] }: Props)"
+      ]
+    },
+    "dashboard/components/analytics/model-usage-chart.tsx": {
+      "exports": [
+        "ModelUsageChart"
+      ],
+      "imports": [],
+      "functions": [
+        "ModelUsageChart({ data }: { data: ModelUsage[] })"
+      ]
+    },
+    "dashboard/components/analytics/review-pass-rate-chart.tsx": {
+      "exports": [
+        "ReviewPassRateChart"
+      ],
+      "imports": [],
+      "functions": [
+        "ReviewPassRateChart({ data }: { data: ReviewPassRate[] })"
+      ]
+    },
+    "dashboard/components/analytics/velocity-chart.tsx": {
+      "exports": [
+        "VelocityChart"
+      ],
+      "imports": [],
+      "functions": [
+        "VelocityChart({ data }: { data: SprintVelocity[] })"
+      ]
+    },
+    "dashboard/components/budget-history.tsx": {
+      "exports": [
+        "BudgetHistory"
+      ],
+      "imports": [
+        "react"
+      ],
+      "functions": [
+        "BudgetHistory({ projectId, dailyBudget }: BudgetHistoryProps)"
+      ]
+    },
+    "dashboard/components/budget-widget.tsx": {
+      "exports": [
+        "BudgetWidget"
+      ],
+      "imports": [],
+      "functions": [
+        "ProgressBar({ value, max, color }: { value: number; max: number; color: string })",
+        "barColor(pct: number)",
+        "BudgetWidget({ budget, totalCost }: BudgetWidgetProps)"
+      ]
+    },
+    "dashboard/components/cli-health-status.tsx": {
+      "exports": [
+        "CliHealthStatus"
+      ],
+      "imports": [],
+      "functions": [
+        "getRemainingMinutes(rateLimitedAt: string | null, cooldownMinutes: number | null)",
+        "formatTimestamp(ts: string | null)",
+        "CliHealthStatus({ cliHealth, availableClis }: CliHealthStatusProps)"
+      ]
+    },
+    "dashboard/components/connection-status.tsx": {
+      "exports": [
+        "ConnectionStatus"
+      ],
+      "imports": [],
+      "functions": [
+        "ConnectionStatus({ connected }: ConnectionStatusProps)"
+      ]
+    },
+    "dashboard/components/coverage-trend.tsx": {
+      "exports": [
+        "CoverageTrend"
+      ],
+      "imports": [
+        "react"
+      ],
+      "functions": [
+        "MiniBar({ value, max }: { value: number; max: number })",
+        "CoverageTrend({ projectId }: { projectId: string })"
+      ]
+    },
+    "dashboard/components/estimation-chart.tsx": {
+      "exports": [
+        "EstimationChart"
+      ],
+      "imports": [
+        "react"
+      ],
+      "functions": [
+        "BarGroup({ label, stats }: { label: string; stats: RangeStats })",
+        "EstimationChart({ projectId }: { projectId: string })"
+      ]
+    },
+    "dashboard/components/execution-controls.tsx": {
+      "exports": [],
+      "imports": [
+        "react"
+      ],
+      "functions": []
+    },
+    "dashboard/components/multi-project-overview.tsx": {
+      "exports": [
+        "MultiProjectOverview"
+      ],
+      "imports": [],
+      "functions": [
+        "ProgressBar({ value, max, color }: { value: number; max: number; color: string })",
+        "MultiProjectOverview({ multiProject, selectedProject, budget, totalCost }: MultiProjectOverviewProps)"
+      ]
+    },
+    "dashboard/components/notification-provider.tsx": {
+      "exports": [
+        "NotificationProvider"
+      ],
+      "imports": [
+        "@/hooks/useNotifications",
+        "@/components/toast-notifications"
+      ],
+      "functions": [
+        "NotificationProvider({ children }: { children: React.ReactNode })"
+      ]
+    },
+    "dashboard/components/office-scene-3d.tsx": {
+      "exports": [
+        "OfficeScene3D"
+      ],
+      "imports": [
+        "react",
+        "@react-three/fiber",
+        "@react-three/drei",
+        "./3d/Environment3D"
+      ],
+      "functions": [
+        "OfficeScene3D({ agents, phase, cliHealth }: OfficeScene3DProps)"
+      ]
+    },
+    "dashboard/components/project-selector.tsx": {
+      "exports": [
+        "ProjectSelector"
+      ],
+      "imports": [],
+      "functions": [
+        "ProjectSelector({ multiProject, selectedProject, onSelectProject }: ProjectSelectorProps)"
+      ]
+    },
+    "dashboard/components/sidebar.tsx": {
+      "exports": [
+        "Sidebar"
+      ],
+      "imports": [
+        "next/link",
+        "next/navigation",
+        "@/hooks/useNotifications"
+      ],
+      "functions": [
+        "Sidebar()"
+      ]
+    },
+    "dashboard/components/task-detail-modal.tsx": {
+      "exports": [
+        "TaskDetailModal"
+      ],
+      "imports": [
+        "react",
+        "lucide-react",
+        "@/lib/types"
+      ],
+      "functions": [
+        "TaskDetailModal({ isOpen, onClose, task, currentPR }: TaskDetailModalProps)"
+      ]
+    },
+    "dashboard/components/toast-notifications.tsx": {
+      "exports": [
+        "ToastContainer"
+      ],
+      "imports": [
+        "react",
+        "@/hooks/useNotifications"
+      ],
+      "functions": [
+        "ToastContainer()"
+      ]
+    },
+    "dashboard/hooks/useAgentStates.ts": {
+      "exports": [
+        "DEFAULT_AGENTS",
+        "getAgentActivity",
+        "AgentVisualState",
+        "UseAgentStatesReturn"
+      ],
+      "imports": [],
+      "functions": [
+        "getAgentActivity(agent: AgentState, phase: Phase)"
+      ]
+    },
+    "dashboard/hooks/useKomodoSocket.ts": {
+      "exports": [
+        "useKomodoSocket"
+      ],
+      "imports": [
+        "react"
+      ],
+      "functions": [
+        "loadStoredEvents()",
+        "saveEvents(events: DashboardEvent[])",
+        "useKomodoSocket()",
+        "formatEvent(event: WsEventMessage['data'])"
+      ]
+    },
+    "dashboard/hooks/useNotifications.ts": {
+      "exports": [
+        "NotificationsContext",
+        "useNotifications",
+        "useNotificationsProvider",
+        "NotificationsState"
+      ],
+      "imports": [
+        "react"
+      ],
+      "functions": [
+        "useNotifications()",
+        "useNotificationsProvider()"
+      ]
+    },
+    "dashboard/hooks/useOfficeFeedback.ts": {
+      "exports": [
+        "OfficeFeedback"
+      ],
+      "imports": [
+        "react"
+      ],
+      "functions": []
+    },
+    "dashboard/lib/config-types.ts": {
+      "exports": [
+        "CLI_MODELS",
+        "CLI_OPTIONS",
+        "DEFAULT_MODELS",
+        "DEFAULT_CONFIG",
+        "CliProvider",
+        "ClaudeModel",
+        "CodexModel",
+        "GeminiModel",
+        "AgentModel",
+        "AgentConfig",
+        "KomodoConfig",
+        "Project"
+      ],
+      "imports": [],
+      "functions": []
+    },
+    "dashboard/lib/firebase.ts": {
+      "exports": [
+        "getDb"
+      ],
+      "imports": [
+        "firebase-admin",
+        "path",
+        "fs"
+      ],
+      "functions": [
+        "findCredentials()",
+        "findDatabaseUrl()",
+        "getApp()",
+        "getDb()"
+      ]
+    },
+    "dashboard/lib/leaderboard.ts": {
+      "exports": [
+        "computeOptimalModels",
+        "computeRecommendations",
+        "TaskRecord",
+        "LeaderboardRow",
+        "OptimalModel",
+        "ModelRecommendation"
+      ],
+      "imports": [],
+      "functions": [
+        "avg(arr: number[])",
+        "round2(v: number)",
+        "computeOptimalModels(leaderboard: LeaderboardRow[])",
+        "computeRecommendations(leaderboard: LeaderboardRow[])"
+      ]
+    },
+    "dashboard/lib/memory-types.ts": {
+      "exports": [
+        "PatternType",
+        "Severity",
+        "Pattern",
+        "ReviewOutcome",
+        "MemoryStore",
+        "MemoryStats"
+      ],
+      "imports": [],
+      "functions": []
+    },
+    "dashboard/lib/types.ts": {
+      "exports": [
+        "AgentName",
+        "AgentStatus",
+        "Phase",
+        "ExecutionState",
+        "AgentState",
+        "AgentLog",
+        "TaskDetails",
+        "SonarAnalysisState",
+        "CliName",
+        "CliHealthStatus",
+        "CliHealth",
+        "BudgetState",
+        "PerProjectStats",
+        "MultiProjectState",
+        "KomodoSnapshot",
+        "DashboardEvent",
+        "WsSnapshotMessage",
+        "WsEventMessage",
+        "WsCommandAckMessage",
+        "WsMessage",
+        "NotificationType",
+        "KomodoNotification"
+      ],
+      "imports": [],
+      "functions": []
+    },
+    "dashboard/next.config.ts": {
+      "exports": [
+        "nextConfig"
+      ],
+      "imports": [],
+      "functions": []
+    },
+    "dashboard/postcss.config.mjs": {
+      "exports": [
+        "config"
+      ],
+      "imports": [],
+      "functions": []
+    },
+    "dashboard/types/coverage.ts": {
+      "exports": [
+        "CoverageEntry"
+      ],
+      "imports": [],
+      "functions": []
+    },
+    "dashboard/vitest.config.ts": {
+      "exports": [
+        "defineConfig"
+      ],
+      "imports": [
+        "vitest/config",
+        "path"
+      ],
+      "functions": []
+    },
+    "fetch_backlog.js": {
+      "exports": [],
+      "imports": [
+        "./skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "main()"
+      ]
+    },
+    "plugins/security-audit/index.js": {
+      "exports": [
+        "securityAuditPlugin"
+      ],
+      "imports": [
+        "fs",
+        "path"
+      ],
+      "functions": [
+        "isScannable(filePath)",
+        "scanFile(filePath, displayName)"
+      ]
+    },
+    "scripts/launch-chrome-debug.js": {
+      "exports": [],
+      "imports": [
+        "child_process",
+        "net",
+        "path",
+        "url",
+        "path"
+      ],
+      "functions": [
+        "parseArgs()",
+        "isPortInUse(port)",
+        "findChrome()",
+        "main()"
+      ]
+    },
+    "skills/github-mcp/src/config.js": {
+      "exports": [
+        "validateConfig"
+      ],
+      "imports": [
+        "child_process"
+      ],
+      "functions": [
+        "validateConfig()"
+      ]
+    },
+    "skills/github-mcp/src/gh-cli.js": {
+      "exports": [
+        "runGh",
+        "runGit",
+        "runGhApi"
+      ],
+      "imports": [
+        "child_process"
+      ],
+      "functions": [
+        "runGh(args, options = {})",
+        "runGit(args, options = {})",
+        "runGhApi(endpoint, options = {})"
+      ]
+    },
+    "skills/github-mcp/src/index.js": {
+      "exports": [],
+      "imports": [
+        "@modelcontextprotocol/sdk/server/mcp.js",
+        "@modelcontextprotocol/sdk/server/stdio.js",
+        "zod",
+        "./config.js",
+        "./tools/branches.js",
+        "./tools/pulls.js",
+        "./tools/reviews.js",
+        "./tools/merge.js"
+      ],
+      "functions": [
+        "jsonPropsToZod(properties, required = [])",
+        "main()"
+      ]
+    },
+    "skills/github-mcp/src/tools/branches.js": {
+      "exports": [
+        "branchTools"
+      ],
+      "imports": [
+        "../gh-cli.js"
+      ],
+      "functions": []
+    },
+    "skills/github-mcp/src/tools/merge.js": {
+      "exports": [
+        "mergeTools"
+      ],
+      "imports": [
+        "../gh-cli.js"
+      ],
+      "functions": []
+    },
+    "skills/github-mcp/src/tools/pulls.js": {
+      "exports": [
+        "pullTools"
+      ],
+      "imports": [
+        "../gh-cli.js"
+      ],
+      "functions": []
+    },
+    "skills/github-mcp/src/tools/reviews.js": {
+      "exports": [
+        "reviewTools"
+      ],
+      "imports": [
+        "../gh-cli.js"
+      ],
+      "functions": []
+    },
+    "skills/komodo-mcp/src/index.js": {
+      "exports": [],
+      "imports": [
+        "path",
+        "url",
+        "dotenv"
+      ],
+      "functions": [
+        "main()"
+      ]
+    },
+    "skills/komodo-mcp/src/tools.js": {
+      "exports": [
+        "tools"
+      ],
+      "imports": [
+        "zod"
+      ],
+      "functions": [
+        "handleRateLimitIfNeeded(result, { taskId, title, branchName, repoUrl, flowStep, prNumber })",
+        "extractOwnerRepo(repoUrl)",
+        "changeTaskStatus(taskId, newStatus)",
+        "_recordFinalizationMetrics(params, approved, merged)"
+      ]
+    },
+    "skills/memory-mcp/src/config.js": {
+      "exports": [
+        "MEMORY_DIR",
+        "PATTERNS_FILE",
+        "validateConfig"
+      ],
+      "imports": [
+        "fs",
+        "path",
+        "url"
+      ],
+      "functions": [
+        "validateConfig()"
+      ]
+    },
+    "skills/memory-mcp/src/index.js": {
+      "exports": [],
+      "imports": [
+        "@modelcontextprotocol/sdk/server/mcp.js",
+        "@modelcontextprotocol/sdk/server/stdio.js",
+        "zod",
+        "./config.js",
+        "./tools/patterns.js",
+        "./tools/stats.js"
+      ],
+      "functions": [
+        "jsonPropsToZod(properties, required = [])",
+        "main()"
+      ]
+    },
+    "skills/memory-mcp/src/store.js": {
+      "exports": [
+        "readStore",
+        "writeStore",
+        "findSimilarPattern",
+        "calculateStats"
+      ],
+      "imports": [
+        "fs",
+        "./config.js"
+      ],
+      "functions": [
+        "readStore()",
+        "writeStore(data)",
+        "findSimilarPattern(patterns, description)",
+        "calculateStats(reviewOutcomes)"
+      ]
+    },
+    "skills/memory-mcp/src/tools/patterns.js": {
+      "exports": [
+        "patternTools"
+      ],
+      "imports": [
+        "uuid",
+        "../store.js"
+      ],
+      "functions": []
+    },
+    "skills/memory-mcp/src/tools/stats.js": {
+      "exports": [
+        "statsTools"
+      ],
+      "imports": [
+        "../store.js"
+      ],
+      "functions": []
+    },
+    "src/agents/base-agent.js": {
+      "exports": [
+        "buildMcpServers"
+      ],
+      "imports": [
+        "child_process",
+        "fs",
+        "path",
+        "crypto",
+        "../config.js",
+        "../utils/parser.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "./rate-limit-detector.js",
+        "./fallback-manager.js"
+      ],
+      "functions": [
+        "generateMcpConfig(mcpServers)",
+        "buildMcpServers(serverNames)",
+        "spawnCli(command, args, options = {})"
+      ]
+    },
+    "src/agents/coder.js": {
+      "exports": [
+        "implementTask",
+        "fixReviewIssues"
+      ],
+      "imports": [
+        "./base-agent.js",
+        "../prompts/coder-system.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../utils/parser.js",
+        "../intelligence/codebase-indexer.js",
+        "../intelligence/style-detector.js",
+        "../intelligence/review-feedback.js"
+      ],
+      "functions": [
+        "getCoderMcpServers()",
+        "implementTask(taskSpec, cwd, { model, codingGuidelines } = {})",
+        "fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, { model, codingGuidelines } = {})",
+        "extractOwnerRepo(repoUrl)"
+      ]
+    },
+    "src/agents/fallback-manager.js": {
+      "exports": [
+        "fallbackManager"
+      ],
+      "imports": [
+        "../events/event-bus.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../config.js"
+      ],
+      "functions": []
+    },
+    "src/agents/planner.js": {
+      "exports": [
+        "fetchProjectTasks",
+        "filterBlockedTasks",
+        "pickNextTask"
+      ],
+      "imports": [
+        "./base-agent.js",
+        "../prompts/planner-system.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../utils/parser.js",
+        "../../skills/planning-task-mcp/src/firebase.js",
+        "../state/komodo-state.js",
+        "../smart-ordering/context-affinity.js"
+      ],
+      "functions": [
+        "fetchProjectTasks(projectId)",
+        "filterBlockedTasks(todoTasks, allTasks)",
+        "pickNextTask(projectId, { model } = {})"
+      ]
+    },
+    "src/agents/qa.js": {
+      "exports": [
+        "runQAAgent"
+      ],
+      "imports": [
+        "./base-agent.js",
+        "../prompts/qa-system.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../utils/parser.js",
+        "../events/event-bus.js"
+      ],
+      "functions": [
+        "getQAMcpServers()",
+        "runQAAgent({ taskSpec, filesChanged, branchName, repo, prNumber, cwd, model })"
+      ]
+    },
+    "src/agents/rate-limit-detector.js": {
+      "exports": [
+        "detectRateLimit",
+        "parseRetryAfter",
+        "checkAndEmitRateLimit",
+        "checkAllClisRateLimited"
+      ],
+      "imports": [
+        "../events/event-bus.js",
+        "../config.js",
+        "../utils/logger.js",
+        "./fallback-manager.js"
+      ],
+      "functions": [
+        "detectRateLimit(text, cli)",
+        "parseRetryAfter(text)",
+        "checkAndEmitRateLimit(text, cli, agentName)",
+        "checkAllClisRateLimited()"
+      ]
+    },
+    "src/agents/reviewer.js": {
+      "exports": [
+        "buildPluginIssuesSection",
+        "reviewPR"
+      ],
+      "imports": [
+        "./base-agent.js",
+        "../prompts/reviewer-system.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../utils/parser.js",
+        "../coverage/coverage-analyzer.js"
+      ],
+      "functions": [
+        "getReviewerMcpServers()",
+        "buildSonarSection(sonarReport)",
+        "buildQASection(qaReport)",
+        "buildPluginIssuesSection(issues)",
+        "reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines, reviewCycle, previousReview, lastReviewSHA, pluginIssues })",
+        "normalizeVerdict(rawVerdict, score, issues = [], sonarReport, coverageReport)"
+      ]
+    },
+    "src/auto-improve/codebase-analyzer.js": {
+      "exports": [
+        "CATEGORIES",
+        "getEnabledCategories",
+        "findDuplicateCandidates",
+        "findLongFunctions",
+        "findMissingTests",
+        "findTodoFixme",
+        "findVulnerableDeps",
+        "analyzeCodebase",
+        "generateProposals",
+        "runAutoImprove"
+      ],
+      "imports": [
+        "child_process",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../../skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "getEnabledCategories()",
+        "findDuplicateCandidates(cwd)",
+        "findLongFunctions(cwd)",
+        "findMissingTests(cwd)",
+        "findTodoFixme(cwd)",
+        "findVulnerableDeps(cwd)",
+        "analyzeCodebase(cwd, options = {})",
+        "generateProposals(findings, projectId)",
+        "runAutoImprove({ projectId, cwd, categories })"
+      ]
+    },
+    "src/auto-improve/dependency-checker.js": {
+      "exports": [
+        "runNpmAudit",
+        "runNpmOutdated",
+        "deduplicationKey",
+        "runDependencyCheck"
+      ],
+      "imports": [
+        "child_process",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../../skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "runNpmAudit(cwd)",
+        "runNpmOutdated(cwd)",
+        "deduplicationKey(name, type)",
+        "createVulnerabilityTasks(vulnerabilities, projectId, existingKeys)",
+        "createUpdateProposals(outdated, projectId, existingKeys)",
+        "loadExistingKeys()",
+        "runDependencyCheck({ projectId, cwd })"
+      ]
+    },
+    "src/ci-monitor/auto-revert.js": {
+      "exports": [
+        "autoRevertPR"
+      ],
+      "imports": [
+        "child_process",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js"
+      ],
+      "functions": [
+        "runGh(args, { repo } = {})",
+        "runGit(args, cwd)",
+        "autoRevertPR({ prNumber, repo, errorLog, runId, mergeCommitSha })",
+        "getMergeCommitSha(repo, prNumber)",
+        "getCommitParentCount(repo, sha)",
+        "createBranchAndRevert(cwd, revertBranch, mergeCommitSha, parentCount)",
+        "openRevertPR(repo, revertBranch, originalPrNumber, errorLog, runId)",
+        "mergeRevertPR(repo, prNumber)"
+      ]
+    },
+    "src/ci-monitor/ci-monitor.js": {
+      "exports": [
+        "runGhCommand",
+        "listRuns",
+        "getFailedLogs",
+        "findRunForCommit",
+        "getMergeCommitSha",
+        "createCiBugTask",
+        "monitorCi"
+      ],
+      "imports": [
+        "child_process",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../../skills/planning-task-mcp/src/firebase.js",
+        "./auto-revert.js"
+      ],
+      "functions": [
+        "runGhCommand(args, { repo } = {})",
+        "listRuns(repo, branch, limit = 5)",
+        "getFailedLogs(repo, runId)",
+        "findRunForCommit(runs, mergeCommitSha)",
+        "getMergeCommitSha(repo, prNumber)",
+        "delay(ms)",
+        "createCiBugTask({ prNumber, runId, errorLog, projectId, repo })",
+        "monitorCi({ prNumber, repo, projectId, mergeCommitSha, taskId })",
+        "rollbackTaskToTodo(taskId, prNumber, runId)"
+      ]
+    },
+    "src/config.js": {
+      "exports": [
+        "cliExists",
+        "config",
+        "validateConfig"
+      ],
+      "imports": [
+        "dotenv/config",
+        "path",
+        "url",
+        "path",
+        "child_process",
+        "fs"
+      ],
+      "functions": [
+        "loadDashboardConfig()",
+        "cliExists(command)",
+        "validateConfig()"
+      ]
+    },
+    "src/cost/budget-manager.js": {
+      "exports": [
+        "budgetManager"
+      ],
+      "imports": [
+        "../config.js",
+        "../events/event-bus.js",
+        "../state/komodo-state.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "_formatDate(date)",
+        "_getISOWeek(date)"
+      ]
+    },
+    "src/cost/cost-persistence.js": {
+      "exports": [
+        "persistDailyCost",
+        "queryDailyCosts"
+      ],
+      "imports": [
+        "../../skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "persistDailyCost(projectId, date, totalCost)",
+        "queryDailyCosts(projectId, startDate, endDate)"
+      ]
+    },
+    "src/coverage/coverage-analyzer.js": {
+      "exports": [
+        "detectCoverageCommand",
+        "resolveCoverageCommand",
+        "runCoverage",
+        "parseCoverageFromOutput",
+        "readBaseline",
+        "writeBaseline",
+        "analyzeCoverage",
+        "updateBaselineAfterMerge",
+        "recordCoverageHistory",
+        "buildCoverageSection"
+      ],
+      "imports": [
+        "child_process",
+        "fs",
+        "path",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../../skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "detectCoverageCommand(cwd)",
+        "resolveCoverageCommand(cwd)",
+        "runCoverage(command, cwd)",
+        "parseCoverageFromOutput(output)",
+        "readBaseline(cwd)",
+        "writeBaseline(cwd, coverage, commitSha = '')",
+        "analyzeCoverage({ cwd } = {})",
+        "updateBaselineAfterMerge({ cwd, commitSha } = {})",
+        "recordCoverageHistory({ projectId, coverage, delta, commitSha, prNumber } = {})",
+        "buildCoverageSection(report)",
+        "emptyReport(reason)"
+      ]
+    },
+    "src/cycle/incremental-review.js": {
+      "exports": [
+        "shouldUseIncrementalReview",
+        "buildIncrementalContext",
+        "formatPreviousIssues",
+        "buildIncrementalPromptSection",
+        "calculateSavings",
+        "getHeadSHA",
+        "getFullDiffTokenEstimate",
+        "estimateTokens"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "shouldUseIncrementalReview(cycle)",
+        "buildIncrementalContext({ previousReview, cwd, cycle, lastReviewSHA })",
+        "getFixCommitDiff(cwd, lastReviewSHA)",
+        "formatPreviousIssues(previousReview)",
+        "buildIncrementalPromptSection(context)",
+        "calculateSavings(fullDiffTokens, incrementalDiffTokens)",
+        "getHeadSHA(cwd)",
+        "getFullDiffTokenEstimate(cwd, baseBranch = 'main')",
+        "estimateTokens(text)"
+      ]
+    },
+    "src/cycle/parallel-runner.js": {
+      "exports": [
+        "tasksShareFiles",
+        "selectParallelTasks",
+        "ParallelDashboard",
+        "runParallel"
+      ],
+      "imports": [
+        "./task-runner.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../agents/fallback-manager.js"
+      ],
+      "functions": [
+        "tasksShareFiles(taskA, taskB)",
+        "selectParallelTasks(tasks, maxParallel)",
+        "runPipeline(projectId, task, dashboard, cwd)",
+        "waitForRateLimitRecovery(dashboard)",
+        "runParallel(tasks, projectId, options = {})"
+      ]
+    },
+    "src/cycle/review-feedback-recorder.js": {
+      "exports": [
+        "recordReviewIssues",
+        "recordAvoidedPatterns"
+      ],
+      "imports": [
+        "../agents/base-agent.js",
+        "../utils/logger.js",
+        "../intelligence/review-feedback.js"
+      ],
+      "functions": [
+        "extractTags(issue)",
+        "recordReviewIssues(issues, taskId, prNumber)",
+        "recordAvoidedPatterns(reviewIssues)"
+      ]
+    },
+    "src/cycle/review-loop.js": {
+      "exports": [
+        "reviewLoop"
+      ],
+      "imports": [
+        "../agents/reviewer.js",
+        "../agents/coder.js",
+        "../sonar/analyzer.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../state/komodo-state.js",
+        "../state/checkpoint-manager.js",
+        "./review-feedback-recorder.js"
+      ],
+      "functions": [
+        "reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: initialSonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues })"
+      ]
+    },
+    "src/cycle/smart-batching.js": {
+      "exports": [
+        "detectTrivialTasks",
+        "groupBatch",
+        "buildBatchBranchName",
+        "buildBatchPR",
+        "separateRejectedTasks",
+        "prepareBatch"
+      ],
+      "imports": [
+        "../agents/planner.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js"
+      ],
+      "functions": [
+        "detectTrivialTasks(projectId)",
+        "groupBatch(trivialTasks, options = {})",
+        "buildBatchBranchName(sprintId)",
+        "buildBatchPR(batch)",
+        "separateRejectedTasks(batch, reviewFeedback)",
+        "prepareBatch(projectId, options = {})"
+      ]
+    },
+    "src/cycle/task-runner.js": {
+      "exports": [
+        "runTaskDryRun",
+        "runTask",
+        "resumeTask"
+      ],
+      "imports": [
+        "../agents/planner.js",
+        "../agents/coder.js",
+        "../agents/qa.js",
+        "./review-loop.js",
+        "../sonar/analyzer.js",
+        "../testing/pre-pr-tests.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../../skills/github-mcp/src/gh-cli.js",
+        "../agents/base-agent.js",
+        "../events/event-bus.js",
+        "../state/komodo-state.js",
+        "../state/checkpoint-manager.js",
+        "../triage/complexity-classifier.js",
+        "../triage/model-selector.js",
+        "../triage/task-decomposer.js",
+        "../agents/fallback-manager.js",
+        "../watchdog/watchdog.js",
+        "../tech-debt/tech-debt-tracker.js",
+        "../estimation/estimation-tracker.js",
+        "../metrics/model-performance-tracker.js",
+        "../smart-ordering/context-affinity.js",
+        "../../skills/planning-task-mcp/src/firebase.js",
+        "../ci-monitor/ci-monitor.js",
+        "../coverage/coverage-analyzer.js",
+        "../versioning/version-bumper.js",
+        "../versioning/release-manager.js",
+        "../plugins/plugin-loader.js"
+      ],
+      "functions": [
+        "fetchCodingGuidelines(projectId)",
+        "extractOwnerRepo(repoUrl)",
+        "mergePR(repo, prNumber)",
+        "closePR(repo, prNumber, reason)",
+        "changeTaskStatus(taskId, newStatus)",
+        "recordOutcome(passed, cycles)",
+        "rollbackTask(taskId)",
+        "runTaskDryRun(projectId)",
+        "getDryRunPlannerPrompt(projectId)",
+        "runTask(projectId, cwd)",
+        "resumeTask(checkpoint, cwd)",
+        "_continueFromAnalysis(taskSpec, prNumber, repo, startTime, cwd)",
+        "_continueFromReview(taskSpec, prNumber, repo, startTime, cwd, sonarReport)",
+        "_continueFromFix(taskSpec, prNumber, repo, reviewIssues, startTime, cwd)",
+        "_continueFromMerge(taskSpec, prNumber, repo, startTime, reviewCycles = 0)",
+        "makeResult({ success, taskSpec, prNumber, startTime, reviewCycles, error })"
+      ]
+    },
+    "src/cycle/worker-pool.js": {
+      "exports": [
+        "Worker",
+        "PriorityQueue",
+        "WorkerPool"
+      ],
+      "imports": [
+        "events",
+        "./task-runner.js",
+        "../utils/logger.js",
+        "../events/event-bus.js"
+      ],
+      "functions": []
+    },
+    "src/daemon/daemon.js": {
+      "exports": [
+        "watch"
+      ],
+      "imports": [
+        "../cycle/task-runner.js",
+        "../agents/planner.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../state/komodo-state.js",
+        "../server/ws-server.js",
+        "../state/checkpoint-manager.js",
+        "../orchestrator.js",
+        "../scheduler/scheduler.js",
+        "../shutdown/shutdown-manager.js",
+        "../auto-improve/dependency-checker.js",
+        "../integrations/webhook-outgoing.js",
+        "../cost/budget-manager.js",
+        "../server/api-server.js"
+      ],
+      "functions": [
+        "watch(projectId, options = {})",
+        "_hasEligibleTasks(projectId)",
+        "_pollUntilTaskOrStop(projectId, intervalSeconds)",
+        "_waitForScheduleWindow(intervalSeconds = 30)",
+        "_waitForBudgetReset(intervalSeconds = 30)",
+        "_sleep(ms)"
+      ]
+    },
+    "src/doctor/doctor.js": {
+      "exports": [
+        "STATUS",
+        "checkAgentClis",
+        "checkGitHubCli",
+        "checkRepoAccess",
+        "checkFirebase",
+        "checkGitHubToken",
+        "checkSonar",
+        "checkTelegram",
+        "runDiagnostics",
+        "printDiagnostics",
+        "doctor"
+      ],
+      "imports": [
+        "child_process",
+        "fs",
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "checkAgentClis()",
+        "checkGitHubCli()",
+        "checkRepoAccess()",
+        "checkFirebase()",
+        "checkGitHubToken()",
+        "checkSonar()",
+        "checkTelegram()",
+        "runDiagnostics()",
+        "printDiagnostics({ results, hasFails, hasWarns })",
+        "doctor()"
+      ]
+    },
+    "src/estimation/estimation-tracker.js": {
+      "exports": [
+        "getTaskMetrics",
+        "calculateEstimationRatios",
+        "detectUnderestimatedCategories",
+        "getEstimationCalibrationContext"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../../skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "getTaskMetrics(projectId)",
+        "calculateEstimationRatios(metrics)",
+        "detectUnderestimatedCategories(ratios)",
+        "getEstimationCalibrationContext(projectId)"
+      ]
+    },
+    "src/events/event-bus.js": {
+      "exports": [
+        "EVENT_TYPES",
+        "AGENT_STATES",
+        "KomodoEventBus",
+        "eventBus"
+      ],
+      "imports": [
+        "events"
+      ],
+      "functions": []
+    },
+    "src/events/event-persistence.js": {
+      "exports": [
+        "shouldPersist",
+        "persistEvent",
+        "startEventPersistence",
+        "queryEvents",
+        "cleanupOldEvents"
+      ],
+      "imports": [
+        "../../skills/planning-task-mcp/src/firebase.js",
+        "./event-bus.js",
+        "../config.js"
+      ],
+      "functions": [
+        "shouldPersist(eventType)",
+        "formatDate(date)",
+        "persistEvent(projectId, payload)",
+        "startEventPersistence(projectId)",
+        "queryEvents(projectId, startDate, endDate, typeFilter)",
+        "cleanupOldEvents(projectId, retentionDays)"
+      ]
+    },
+    "src/heartbeat/heartbeat-monitor.js": {
+      "exports": [
+        "heartbeatMonitor"
+      ],
+      "imports": [
+        "child_process",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../agents/fallback-manager.js",
+        "../state/checkpoint-manager.js",
+        "../state/komodo-state.js",
+        "../cycle/task-runner.js"
+      ],
+      "functions": []
+    },
+    "src/index.js": {
+      "exports": [],
+      "imports": [
+        "commander",
+        "./orchestrator.js",
+        "./multi-project/multi-project-runner.js",
+        "./config.js",
+        "./utils/logger.js",
+        "./doctor/doctor.js",
+        "./multi-project/project-loader.js",
+        "child_process"
+      ],
+      "functions": [
+        "resolveProjectIdFromEnv()"
+      ]
+    },
+    "src/integrations/github-issue-sync.js": {
+      "exports": [
+        "fetchLabeledIssues",
+        "extractUserStory",
+        "extractAcceptanceCriteria",
+        "commentOnIssue",
+        "swapLabel",
+        "syncIssue",
+        "pollOnce",
+        "startPolling"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js",
+        "../../skills/planning-task-mcp/src/firebase.js",
+        "../../skills/github-mcp/src/gh-cli.js"
+      ],
+      "functions": [
+        "fetchLabeledIssues(repo, label)",
+        "extractUserStory(title, body = '')",
+        "extractAcceptanceCriteria(body = '')",
+        "commentOnIssue(repo, issueNumber, comment)",
+        "swapLabel(repo, issueNumber, oldLabel, newLabel)",
+        "taskExistsForIssue(existingTasks, projectId, issueNumber)",
+        "syncIssue(issue, repo, projectId, label, existingTasks)",
+        "pollOnce({ repo, projectId, label = 'komodo' })",
+        "startPolling({ repo, projectId, label = 'komodo', intervalMinutes })"
+      ]
+    },
+    "src/integrations/pr-comment-bugs.js": {
+      "exports": [
+        "detectSeverity",
+        "fetchOpenPRs",
+        "fetchPRComments",
+        "fetchPRReviewComments",
+        "replyToComment",
+        "processComment",
+        "pollOnce",
+        "startPolling",
+        "getProcessedComments",
+        "clearProcessedComments"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js",
+        "../../skills/planning-task-mcp/src/firebase.js",
+        "../../skills/github-mcp/src/gh-cli.js"
+      ],
+      "functions": [
+        "detectSeverity(description)",
+        "fetchOpenPRs(repo)",
+        "fetchPRComments(repo, prNumber)",
+        "fetchPRReviewComments(repo, prNumber)",
+        "replyToComment(repo, prNumber, body)",
+        "processComment(comment, prNumber, prTitle, repo, projectId)",
+        "pollOnce({ repo, projectId })",
+        "startPolling({ repo, projectId, intervalMinutes })",
+        "getProcessedComments()",
+        "clearProcessedComments()"
+      ]
+    },
+    "src/integrations/webhook-outgoing.js": {
+      "exports": [
+        "getTargetUrls",
+        "parseHeaders",
+        "shouldForward",
+        "sendWithRetry",
+        "startWebhookOutgoing",
+        "stopWebhookOutgoing"
+      ],
+      "imports": [
+        "../events/event-bus.js",
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "getTargetUrls()",
+        "parseHeaders()",
+        "shouldForward(eventType)",
+        "sendWithRetry(url, payload, headers, maxRetries = 3)",
+        "startWebhookOutgoing()",
+        "stopWebhookOutgoing()"
+      ]
+    },
+    "src/intelligence/codebase-indexer.js": {
+      "exports": [
+        "listSourceFiles",
+        "computeChecksum",
+        "buildDirectoryTree",
+        "analyzeFile",
+        "generateIndex",
+        "loadCachedIndex",
+        "saveCachedIndex",
+        "summarizeForPrompt",
+        "getCodebaseContext"
+      ],
+      "imports": [
+        "child_process",
+        "fs",
+        "path",
+        "crypto",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js"
+      ],
+      "functions": [
+        "parseJavaScript(content)",
+        "parseTypeScript(content)",
+        "parsePython(content)",
+        "parseGo(content)",
+        "listSourceFiles(cwd)",
+        "readSourceFile(cwd, filePath)",
+        "computeChecksum(cwd, files)",
+        "buildDirectoryTree(files)",
+        "formatDirectoryTree(tree, prefix = '')",
+        "analyzeFile(cwd, filePath)",
+        "generateIndex(cwd)",
+        "loadCachedIndex(cwd, currentChecksum)",
+        "saveCachedIndex(cwd, index)",
+        "estimateTokens(text)",
+        "summarizeForPrompt(index, maxTokens)",
+        "getCodebaseContext(cwd, options = {})"
+      ]
+    },
+    "src/intelligence/review-feedback.js": {
+      "exports": [
+        "readPatterns",
+        "calculateDecayWeight",
+        "calculatePatternScore",
+        "getTopPatterns",
+        "formatFeedbackSection",
+        "getReviewFeedbackContext",
+        "findAvoidedPatterns"
+      ],
+      "imports": [
+        "fs",
+        "path",
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "readPatterns()",
+        "calculateDecayWeight(lastSeen)",
+        "calculatePatternScore(pattern)",
+        "getTopPatterns({ limit = 5 } = {})",
+        "formatFeedbackSection({ limit = 5 } = {})",
+        "getReviewFeedbackContext()",
+        "findAvoidedPatterns(reviewIssues)"
+      ]
+    },
+    "src/intelligence/style-detector.js": {
+      "exports": [
+        "computeStyleChecksum",
+        "detectIndentation",
+        "detectQuoteStyle",
+        "detectSemicolons",
+        "detectNamingConvention",
+        "detectImportStyle",
+        "detectTestFramework",
+        "detectValidationLibrary",
+        "detectErrorHandling",
+        "analyzeStyle",
+        "formatStyleGuide",
+        "loadCachedStyleGuide",
+        "saveCachedStyleGuide",
+        "getStyleContext"
+      ],
+      "imports": [
+        "child_process",
+        "fs",
+        "path",
+        "crypto",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js"
+      ],
+      "functions": [
+        "listSourceFiles(cwd)",
+        "readSourceFile(cwd, filePath)",
+        "computeStyleChecksum(cwd, files)",
+        "detectIndentation(contents)",
+        "detectQuoteStyle(contents)",
+        "detectSemicolons(contents)",
+        "detectNamingConvention(contents, language)",
+        "detectImportStyle(contents)",
+        "detectTestFramework(cwd)",
+        "detectValidationLibrary(contents)",
+        "detectErrorHandling(contents)",
+        "detectPrimaryLanguage(files)",
+        "analyzeStyle(cwd, files)",
+        "formatStyleGuide(analysis)",
+        "loadCachedStyleGuide(cwd, currentChecksum)",
+        "saveCachedStyleGuide(cwd, guide)",
+        "estimateTokens(text)",
+        "getStyleContext(cwd, options = {})"
+      ]
+    },
+    "src/metrics/model-performance-tracker.js": {
+      "exports": [
+        "getModelPerformanceAggregates",
+        "getModelPerformanceTasks"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../../skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "toFirebaseKey(model)",
+        "updateModelAggregate(db, projectId, model, role, { reviewScore, reviewCycles, durationSeconds, cost })",
+        "getModelPerformanceAggregates(projectId)",
+        "getModelPerformanceTasks(projectId)"
+      ]
+    },
+    "src/metrics/weekly-metrics.js": {
+      "exports": [
+        "getWeekRange",
+        "calculateVelocityTrend",
+        "collectWeeklyMetrics"
+      ],
+      "imports": [
+        "../utils/logger.js",
+        "../../skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "getWeekRange(weekOffset = 0, referenceDate = new Date()",
+        "fetchMetricsRecords(projectId)",
+        "calculateVelocityTrend(current, previous)",
+        "collectWeeklyMetrics(projectId, { referenceDate } = {})"
+      ]
+    },
+    "src/multi-project/multi-project-runner.js": {
+      "exports": [
+        "MULTI_PROJECT_EVENTS",
+        "resolveProjectIds",
+        "runMultiProject"
+      ],
+      "imports": [
+        "../cycle/task-runner.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../state/komodo-state.js",
+        "../server/ws-server.js",
+        "../state/checkpoint-manager.js",
+        "../shutdown/shutdown-manager.js",
+        "../cost/budget-manager.js",
+        "./project-selector.js",
+        "../../skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "resolveProjectIds()",
+        "runMultiProject(projectIds, options = {})"
+      ]
+    },
+    "src/multi-project/project-loader.js": {
+      "exports": [
+        "parseProjectsEnv",
+        "resolveProjectIdByName",
+        "loadProjectConfig",
+        "loadProjects"
+      ],
+      "imports": [
+        "../../skills/planning-task-mcp/src/firebase.js",
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "parseProjectsEnv()",
+        "isMember(project, userId)",
+        "extractDefaultRepoUrl(repositories)",
+        "resolveProjectIdByName(idOrName, userId)",
+        "loadProjectConfig(projectId, userId)",
+        "loadAllUserProjects(userId)",
+        "loadProjects(userId)"
+      ]
+    },
+    "src/multi-project/project-selector.js": {
+      "exports": [
+        "STRATEGIES",
+        "selectNextProject"
+      ],
+      "imports": [
+        "../agents/planner.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "selectNextProject(projectIds, strategy, context)",
+        "_roundRobin(projectIds, context)",
+        "_priority(projectIds)",
+        "_backlogSize(projectIds)",
+        "_getEligibleCount(projectId)",
+        "_getEligibleWithPriority(projectId)"
+      ]
+    },
+    "src/orchestrator.js": {
+      "exports": [
+        "run",
+        "checkForPendingCheckpoints",
+        "resume"
+      ],
+      "imports": [
+        "./cycle/task-runner.js",
+        "readline",
+        "./config.js",
+        "./utils/logger.js",
+        "./events/event-bus.js",
+        "./state/komodo-state.js",
+        "./server/ws-server.js",
+        "./state/checkpoint-manager.js",
+        "./agents/fallback-manager.js",
+        "./shutdown/shutdown-manager.js",
+        "./plugins/plugin-loader.js",
+        "./heartbeat/heartbeat-monitor.js",
+        "./server/api-server.js"
+      ],
+      "functions": [
+        "run(projectId, options = {})",
+        "askUser(question)",
+        "_getLatestValidCheckpoint()",
+        "checkForPendingCheckpoints(options = {})",
+        "resume(options = {})",
+        "_executeResume(checkpoint, filepath, cwd)"
+      ]
+    },
+    "src/plugins/plugin-interface.js": {
+      "exports": [
+        "PLUGIN_POSITIONS",
+        "validatePlugin"
+      ],
+      "imports": [],
+      "functions": [
+        "validatePlugin(plugin)"
+      ]
+    },
+    "src/plugins/plugin-loader.js": {
+      "exports": [
+        "PluginLoader",
+        "pluginLoader"
+      ],
+      "imports": [
+        "fs",
+        "path",
+        "url",
+        "../config.js",
+        "../utils/logger.js",
+        "./plugin-interface.js"
+      ],
+      "functions": []
+    },
+    "src/prompts/coder-system.js": {
+      "exports": [
+        "getCoderSystemPrompt",
+        "getCoderFixSystemPrompt"
+      ],
+      "imports": [],
+      "functions": [
+        "getCoderSystemPrompt({ enableBrowserMcp = false } = {})",
+        "getCoderFixSystemPrompt({ enableBrowserMcp = false } = {})"
+      ]
+    },
+    "src/prompts/planner-system.js": {
+      "exports": [
+        "getPlannerSystemPrompt"
+      ],
+      "imports": [],
+      "functions": [
+        "getPlannerSystemPrompt({ projectId, defaultUserId, defaultUserName })"
+      ]
+    },
+    "src/prompts/qa-system.js": {
+      "exports": [
+        "getQASystemPrompt"
+      ],
+      "imports": [],
+      "functions": [
+        "getQASystemPrompt()"
+      ]
+    },
+    "src/prompts/reviewer-system.js": {
+      "exports": [
+        "getReviewerSystemPrompt"
+      ],
+      "imports": [],
+      "functions": [
+        "getReviewerSystemPrompt({ enableBrowserMcp = false } = {})"
+      ]
+    },
+    "src/scheduler/scheduler.js": {
+      "exports": [
+        "parseTime",
+        "parseScheduleWindows",
+        "getCurrentTime",
+        "isTimeInWindow",
+        "isInScheduleWindow",
+        "getNextWindow",
+        "formatMinutes",
+        "checkSchedule"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "parseTime(timeStr)",
+        "parseScheduleWindows(scheduleStr)",
+        "toMinutes(time)",
+        "getCurrentTime(timezone)",
+        "isTimeInWindow(currentTime, window)",
+        "isInScheduleWindow(windows, timezone)",
+        "getNextWindow(windows, timezone)",
+        "formatMinutes(minutes)",
+        "checkSchedule()"
+      ]
+    },
+    "src/server/api-server.js": {
+      "exports": [
+        "KomodoApiServer",
+        "startApiServerIfEnabled"
+      ],
+      "imports": [
+        "http",
+        "crypto",
+        "../config.js",
+        "../utils/logger.js",
+        "../state/komodo-state.js"
+      ],
+      "functions": [
+        "startApiServerIfEnabled(options = {})"
+      ]
+    },
+    "src/server/ws-server-standalone.js": {
+      "exports": [
+        "createStandaloneServer"
+      ],
+      "imports": [
+        "http",
+        "ws"
+      ],
+      "functions": [
+        "createInitialState()",
+        "applyEvent(state, event)",
+        "readBody(req)",
+        "createStandaloneServer()"
+      ]
+    },
+    "src/server/ws-server.js": {
+      "exports": [
+        "KomodoWsServer"
+      ],
+      "imports": [
+        "http",
+        "ws",
+        "../events/event-bus.js",
+        "../state/komodo-state.js",
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": []
+    },
+    "src/setup.js": {
+      "exports": [],
+      "imports": [
+        "readline/promises",
+        "process",
+        "fs",
+        "child_process",
+        "path",
+        "url"
+      ],
+      "functions": [
+        "log(msg = '')",
+        "ok(msg)",
+        "fail(msg)",
+        "warn(msg)",
+        "step(n, total, msg)",
+        "header(msg)",
+        "section(msg)",
+        "cliVersion(cmd)",
+        "loadExistingEnv()",
+        "ask(rl, question, defaultValue = '')",
+        "askChoice(rl, question, options, defaultValue = '')",
+        "askYesNo(rl, question, defaultYes = true)",
+        "askNumber(rl, question, defaultValue, min = 0, max = Infinity)",
+        "main()"
+      ]
+    },
+    "src/shutdown/shutdown-manager.js": {
+      "exports": [
+        "shutdownManager"
+      ],
+      "imports": [
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../state/komodo-state.js",
+        "../state/checkpoint-manager.js"
+      ],
+      "functions": []
+    },
+    "src/smart-ordering/context-affinity.js": {
+      "exports": [
+        "extractModule",
+        "extractTaskKeywords",
+        "calculateAffinity",
+        "rankWithContextAffinity",
+        "buildAffinityHint"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "extractModule(filePath)",
+        "extractTaskKeywords(task)",
+        "calculateAffinity(previousContext, candidateTask)",
+        "rankWithContextAffinity(eligibleTasks, previousContext)",
+        "buildAffinityHint(ranked)"
+      ]
+    },
+    "src/sonar/analyzer.js": {
+      "exports": [
+        "analyzeSonar"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "./scanner.js",
+        "../../skills/github-mcp/src/gh-cli.js"
+      ],
+      "functions": [
+        "emptySonarReport(reason)",
+        "sonarApi(path, params = {})",
+        "waitForAnalysis()",
+        "waitForSonarBotComment(repo, prNumber)",
+        "fetchQualityGateStatus(ctx = {})",
+        "fetchIssuesBySeverity(ctx = {})",
+        "fetchBlockerCriticalDetails(ctx = {})",
+        "fetchMetrics(ctx = {})",
+        "analyzeSonar({ branch, cwd, prNumber, baseBranch = 'main', repo } = {})"
+      ]
+    },
+    "src/sonar/scanner.js": {
+      "exports": [
+        "checkSonarConfig",
+        "runSonarScan"
+      ],
+      "imports": [
+        "child_process",
+        "fs",
+        "path",
+        "util",
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "checkSonarConfig()",
+        "runSonarScan({ cwd, prNumber, branch, baseBranch = 'main' } = {})"
+      ]
+    },
+    "src/state/checkpoint-manager.js": {
+      "exports": [
+        "checkpointManager"
+      ],
+      "imports": [
+        "path",
+        "fs/promises",
+        "../events/event-bus.js",
+        "./komodo-state.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../agents/fallback-manager.js"
+      ],
+      "functions": []
+    },
+    "src/state/komodo-state.js": {
+      "exports": [
+        "DASHBOARD_AGENT_STATES",
+        "PHASES",
+        "EXECUTION_STATES",
+        "KomodoState",
+        "komodoState"
+      ],
+      "imports": [
+        "../events/event-bus.js"
+      ],
+      "functions": [
+        "createAgentState(name)"
+      ]
+    },
+    "src/tech-debt/tech-debt-tracker.js": {
+      "exports": [
+        "extractMinorIssues",
+        "estimateDevPoints",
+        "deduplicationKey",
+        "createTechDebtTasks"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../../skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "extractMinorIssues(issues)",
+        "estimateDevPoints(severity)",
+        "deduplicationKey(file, description)",
+        "createTechDebtTasks({ issues, prNumber, projectId })"
+      ]
+    },
+    "src/telegram/auth.js": {
+      "exports": [
+        "isAuthorized",
+        "withAuth"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "isAuthorized(userId)",
+        "withAuth(handler)"
+      ]
+    },
+    "src/telegram/bot.js": {
+      "exports": [
+        "startBot",
+        "stopBot",
+        "getBot"
+      ],
+      "imports": [
+        "node-telegram-bot-api",
+        "../config.js",
+        "../utils/logger.js",
+        "./commands.js",
+        "./claude-terminal.js",
+        "./notifier.js"
+      ],
+      "functions": [
+        "startBot()",
+        "stopBot()",
+        "getBot()"
+      ]
+    },
+    "src/telegram/claude-terminal.js": {
+      "exports": [
+        "registerTerminalHandler"
+      ],
+      "imports": [
+        "child_process",
+        "../config.js",
+        "../utils/logger.js",
+        "./auth.js"
+      ],
+      "functions": [
+        "spawnClaude(prompt, options = {})",
+        "parseClaudeOutput(stdout)",
+        "markdownToHtml(text)",
+        "splitMessage(text)",
+        "registerTerminalHandler(bot)"
+      ]
+    },
+    "src/telegram/commands.js": {
+      "exports": [
+        "registerCommands"
+      ],
+      "imports": [
+        "./auth.js",
+        "../utils/logger.js",
+        "./data.js",
+        "./formatter.js",
+        "./run-controller.js",
+        "./digest.js"
+      ],
+      "functions": [
+        "registerCommands(bot)"
+      ]
+    },
+    "src/telegram/data.js": {
+      "exports": [
+        "getStatus",
+        "getTasks",
+        "getBacklog"
+      ],
+      "imports": [
+        "../state/komodo-state.js",
+        "../config.js",
+        "../../skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "getStatus()",
+        "getTasks(projectId)",
+        "getBacklog(projectId)"
+      ]
+    },
+    "src/telegram/digest.js": {
+      "exports": [
+        "sendWeeklyDigest"
+      ],
+      "imports": [
+        "../utils/logger.js",
+        "../config.js",
+        "./bot.js",
+        "../metrics/weekly-metrics.js",
+        "./formatter.js"
+      ],
+      "functions": [
+        "sendWeeklyDigest({ projectId, referenceDate, chatId } = {})"
+      ]
+    },
+    "src/telegram/formatter.js": {
+      "exports": [
+        "escapeMarkdown",
+        "escapeUrl",
+        "formatTaskStarted",
+        "formatPRCreated",
+        "formatReviewCycleEnd",
+        "formatFixDone",
+        "formatPRMerged",
+        "formatTaskCompleted",
+        "formatError",
+        "formatCliRecovered",
+        "formatAllClisRateLimited",
+        "formatCiPassed",
+        "formatCiFailed",
+        "formatDaemonStarted",
+        "formatDaemonIdle",
+        "formatDaemonTaskDetected",
+        "formatDaemonStopped",
+        "formatReleaseCreated",
+        "formatReleaseGateBlocked",
+        "formatStatus",
+        "formatTaskList",
+        "formatBacklog",
+        "formatBudgetWarning",
+        "formatBudgetExceeded",
+        "formatRunStarted",
+        "formatRunSummary",
+        "formatDryRunResult",
+        "formatStopConfirmed",
+        "formatAlreadyRunning",
+        "formatNothingRunning",
+        "formatWeeklyDigest"
+      ],
+      "imports": [],
+      "functions": [
+        "escapeMarkdown(text)",
+        "escapeUrl(url)",
+        "formatTaskStarted(metadata)",
+        "formatPRCreated(metadata)",
+        "formatReviewCycleEnd(metadata)",
+        "formatFixDone(metadata)",
+        "formatPRMerged(metadata)",
+        "formatTaskCompleted(metadata)",
+        "formatError(metadata)",
+        "formatCliRecovered(metadata)",
+        "formatAllClisRateLimited(metadata)",
+        "formatCiPassed(metadata)",
+        "formatCiFailed(metadata)",
+        "formatDaemonStarted(metadata)",
+        "formatDaemonIdle(metadata)",
+        "formatDaemonTaskDetected(metadata)",
+        "formatDaemonStopped(metadata)",
+        "formatReleaseCreated(metadata)",
+        "formatReleaseGateBlocked(metadata)",
+        "formatElapsed(ms)",
+        "formatStatus(status)",
+        "formatTaskList(tasks)",
+        "formatBacklog(backlog)",
+        "buildProgressBar(percent)",
+        "formatBudgetWarning(metadata)",
+        "formatBudgetExceeded(metadata)",
+        "formatRunStarted({ tasks })",
+        "formatRunSummary(result)",
+        "formatDryRunResult(result)",
+        "formatStopConfirmed()",
+        "formatAlreadyRunning()",
+        "formatNothingRunning()",
+        "formatDateRange(startIso, endIso)",
+        "formatWeeklyDigest(metrics)"
+      ]
+    },
+    "src/telegram/notifier.js": {
+      "exports": [
+        "shouldNotify",
+        "startNotifier",
+        "stopNotifier"
+      ],
+      "imports": [
+        "../events/event-bus.js",
+        "../config.js",
+        "../utils/logger.js",
+        "./bot.js"
+      ],
+      "functions": [
+        "sendNotification(text)",
+        "shouldNotify(eventType)",
+        "startNotifier()",
+        "stopNotifier()"
+      ]
+    },
+    "src/telegram/run-controller.js": {
+      "exports": [
+        "isRunning",
+        "startExecution",
+        "runDryRun",
+        "stopExecution"
+      ],
+      "imports": [
+        "../orchestrator.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../state/komodo-state.js",
+        "./bot.js"
+      ],
+      "functions": [
+        "isRunning()",
+        "startExecution(chatId, options = {})",
+        "runDryRun(chatId)",
+        "stopExecution(chatId)",
+        "sendMessage(chatId, text)",
+        "escapeForPlain(text)"
+      ]
+    },
+    "src/testing/pre-pr-tests.js": {
+      "exports": [
+        "detectTestCommand",
+        "resolveTestCommand",
+        "runTests",
+        "parseTestSummary",
+        "executePrePRTests"
+      ],
+      "imports": [
+        "child_process",
+        "fs",
+        "path",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js"
+      ],
+      "functions": [
+        "detectTestCommand(cwd)",
+        "resolveTestCommand(cwd)",
+        "runTests(command, cwd)",
+        "parseTestSummary(output)",
+        "executePrePRTests({ cwd, onFixAttempt } = {})",
+        "emptyReport(reason)"
+      ]
+    },
+    "src/triage/complexity-classifier.js": {
+      "exports": [
+        "classifyComplexity",
+        "classifyAndEmit"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js"
+      ],
+      "functions": [
+        "scoreDevPoints(devPoints)",
+        "scoreAcceptanceCriteria(count)",
+        "scoreImplementationPlan(hasImplementationPlan)",
+        "scoreUserStoryLength(charCount)",
+        "getUserStoryLength(userStory)",
+        "getAcceptanceCriteriaCount(acceptanceCriteria)",
+        "hasImplementationPlan(task)",
+        "classifyComplexity(task)",
+        "classifyAndEmit(task)"
+      ]
+    },
+    "src/triage/model-selector.js": {
+      "exports": [
+        "selectModel"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js"
+      ],
+      "functions": [
+        "parseModelMapString(mapStr)",
+        "getModelMap(cliType, agentRole)",
+        "selectModel(cliType, agentRole, complexityLevel, taskOverride)"
+      ]
+    },
+    "src/triage/task-decomposer.js": {
+      "exports": [
+        "shouldDecompose",
+        "decomposeTask"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../agents/base-agent.js",
+        "../utils/parser.js"
+      ],
+      "functions": [
+        "shouldDecompose(task)",
+        "decomposeTask(task, projectId)",
+        "buildDecompositionPrompt(task, projectId, parentDevPoints, parentBizPoints)",
+        "getACCount(acceptanceCriteria)",
+        "getStoryLength(userStory)"
+      ]
+    },
+    "src/utils/logger.js": {
+      "exports": [
+        "info",
+        "success",
+        "warn",
+        "error",
+        "logStep",
+        "taskHeader",
+        "startSpinner",
+        "stopSpinner",
+        "sonarSummary",
+        "logger"
+      ],
+      "imports": [
+        "chalk"
+      ],
+      "functions": [
+        "timestamp()",
+        "agentTag(agent)",
+        "info(message, agent = 'SYSTEM')",
+        "success(message, agent = 'SYSTEM')",
+        "warn(message, agent = 'SYSTEM')",
+        "error(message, agent = 'SYSTEM')",
+        "logStep(current, total, message, agent = 'KOMODO')",
+        "taskHeader(taskTitle)",
+        "startSpinner(message, agent = 'SYSTEM')",
+        "stopSpinner()",
+        "sonarSummary(report)"
+      ]
+    },
+    "src/utils/parser.js": {
+      "exports": [
+        "extractJSON",
+        "validateAgentResponse"
+      ],
+      "imports": [],
+      "functions": [
+        "extractJSON(text)",
+        "validateAgentResponse(json, requiredFields)"
+      ]
+    },
+    "src/versioning/changelog-generator.js": {
+      "exports": [
+        "classifyTask",
+        "formatTaskEntry",
+        "generateChangelogEntry",
+        "updateChangelog",
+        "autoChangelog"
+      ],
+      "imports": [
+        "fs",
+        "path",
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "classifyTask(task)",
+        "formatTaskEntry(task)",
+        "generateChangelogEntry({ version, date, tasks })",
+        "updateChangelog({ version, date, tasks, cwd })",
+        "autoChangelog({ newVersion, task, cwd })"
+      ]
+    },
+    "src/versioning/release-gate.js": {
+      "exports": [
+        "checkReleaseGate",
+        "evaluateReleaseGate"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../../skills/planning-task-mcp/src/firebase.js"
+      ],
+      "functions": [
+        "checkReleaseGate(projectId)",
+        "evaluateReleaseGate(projectId)"
+      ]
+    },
+    "src/versioning/release-manager.js": {
+      "exports": [
+        "isSprintComplete",
+        "generateReleaseNotes",
+        "createGitHubRelease",
+        "autoRelease"
+      ],
+      "imports": [
+        "child_process",
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js",
+        "../../skills/planning-task-mcp/src/firebase.js",
+        "./changelog-generator.js",
+        "./version-bumper.js",
+        "./release-gate.js"
+      ],
+      "functions": [
+        "isSprintComplete(sprintId, projectId)",
+        "generateReleaseNotes({ tasks, sprint, version, dashboardUrl })",
+        "createGitHubRelease({ repo, tag, title, notes, cwd })",
+        "autoRelease({ sprintId, projectId, repo, cwd, dashboardUrl })"
+      ]
+    },
+    "src/versioning/version-bumper.js": {
+      "exports": [
+        "determineBumpType",
+        "bumpVersion",
+        "readVersion",
+        "writeVersion",
+        "commitAndPushVersion",
+        "autoVersionBump"
+      ],
+      "imports": [
+        "fs",
+        "child_process",
+        "path",
+        "../config.js",
+        "../utils/logger.js",
+        "./changelog-generator.js"
+      ],
+      "functions": [
+        "determineBumpType(task)",
+        "bumpVersion(currentVersion, bumpType)",
+        "readVersion(cwd, versionFile = 'package.json')",
+        "writeVersion(newVersion, cwd, versionFile = 'package.json')",
+        "commitAndPushVersion(newVersion, cwd, versionFile = 'package.json', extraFiles = [])",
+        "autoVersionBump({ task, cwd, versionFile = 'package.json' })"
+      ]
+    },
+    "src/watchdog/watchdog.js": {
+      "exports": [
+        "withWatchdog"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js",
+        "../events/event-bus.js"
+      ],
+      "functions": [
+        "withWatchdog(agentFn, options = {})",
+        "_getTimeoutMs()",
+        "_isTimeoutError(errorMsg)"
+      ]
+    },
+    "vitest.config.js": {
+      "exports": [
+        "defineConfig"
+      ],
+      "imports": [
+        "vitest/config"
+      ],
+      "functions": []
+    }
+  },
+  "directoryTree": {
+    "dashboard": {
+      "app": {
+        "agents": {
+          "page.tsx": null
+        },
+        "analytics": {
+          "page.tsx": null
+        },
+        "api": {
+          "config": {
+            "route.ts": null
+          },
+          "memory": {
+            "clear": {
+              "route.ts": null
+            },
+            "route.ts": null
+          },
+          "projects": {
+            "[projectId]": {
+              "analytics": {
+                "route.ts": null
+              },
+              "budget-history": {
+                "route.ts": null
+              },
+              "coding-guidelines": {
+                "route.ts": null
+              },
+              "coverage-trend": {
+                "route.ts": null
+              },
+              "estimation-metrics": {
+                "route.ts": null
+              },
+              "model-leaderboard": {
+                "route.ts": null
+              },
+              "tech-debt": {
+                "route.ts": null
+              }
+            },
+            "route.ts": null
+          },
+          "schedule": {
+            "route.ts": null
+          },
+          "tasks": {
+            "[taskId]": {
+              "route.ts": null
+            }
+          }
+        },
+        "layout.tsx": null,
+        "leaderboard": {
+          "page.tsx": null
+        },
+        "memory": {
+          "page.tsx": null
+        },
+        "notifications": {
+          "page.tsx": null
+        },
+        "page.tsx": null,
+        "settings": {
+          "page.tsx": null
+        }
+      },
+      "components": {
+        "3d": {
+          "Agent3D.tsx": null,
+          "AnimatedWhiteboard.tsx": null,
+          "Environment3D.tsx": null,
+          "KomodoBoss.tsx": null,
+          "SonarScanner3D.tsx": null
+        },
+        "agent-avatar.tsx": null,
+        "analytics": {
+          "analytics-filters.tsx": null,
+          "cost-chart.tsx": null,
+          "duration-complexity-chart.tsx": null,
+          "leaderboard-filters.tsx": null,
+          "model-leaderboard-table.tsx": null,
+          "model-usage-chart.tsx": null,
+          "review-pass-rate-chart.tsx": null,
+          "velocity-chart.tsx": null
+        },
+        "budget-history.tsx": null,
+        "budget-widget.tsx": null,
+        "cli-health-status.tsx": null,
+        "connection-status.tsx": null,
+        "coverage-trend.tsx": null,
+        "estimation-chart.tsx": null,
+        "execution-controls.tsx": null,
+        "multi-project-overview.tsx": null,
+        "notification-provider.tsx": null,
+        "office-scene-3d.tsx": null,
+        "project-selector.tsx": null,
+        "sidebar.tsx": null,
+        "task-detail-modal.tsx": null,
+        "toast-notifications.tsx": null
+      },
+      "hooks": {
+        "useAgentStates.ts": null,
+        "useKomodoSocket.ts": null,
+        "useNotifications.ts": null,
+        "useOfficeFeedback.ts": null
+      },
+      "lib": {
+        "config-types.ts": null,
+        "firebase.ts": null,
+        "leaderboard.ts": null,
+        "memory-types.ts": null,
+        "types.ts": null
+      },
+      "next.config.ts": null,
+      "postcss.config.mjs": null,
+      "types": {
+        "coverage.ts": null
+      },
+      "vitest.config.ts": null
+    },
+    "fetch_backlog.js": null,
+    "plugins": {
+      "security-audit": {
+        "index.js": null
+      }
+    },
+    "scripts": {
+      "launch-chrome-debug.js": null
+    },
+    "skills": {
+      "github-mcp": {
+        "src": {
+          "config.js": null,
+          "gh-cli.js": null,
+          "index.js": null,
+          "tools": {
+            "branches.js": null,
+            "merge.js": null,
+            "pulls.js": null,
+            "reviews.js": null
+          }
+        }
+      },
+      "komodo-mcp": {
+        "src": {
+          "index.js": null,
+          "tools.js": null
+        }
+      },
+      "memory-mcp": {
+        "src": {
+          "config.js": null,
+          "index.js": null,
+          "store.js": null,
+          "tools": {
+            "patterns.js": null,
+            "stats.js": null
+          }
+        }
+      }
+    },
+    "src": {
+      "agents": {
+        "base-agent.js": null,
+        "coder.js": null,
+        "fallback-manager.js": null,
+        "planner.js": null,
+        "qa.js": null,
+        "rate-limit-detector.js": null,
+        "reviewer.js": null
+      },
+      "auto-improve": {
+        "codebase-analyzer.js": null,
+        "dependency-checker.js": null
+      },
+      "ci-monitor": {
+        "auto-revert.js": null,
+        "ci-monitor.js": null
+      },
+      "config.js": null,
+      "cost": {
+        "budget-manager.js": null,
+        "cost-persistence.js": null
+      },
+      "coverage": {
+        "coverage-analyzer.js": null
+      },
+      "cycle": {
+        "incremental-review.js": null,
+        "parallel-runner.js": null,
+        "review-feedback-recorder.js": null,
+        "review-loop.js": null,
+        "smart-batching.js": null,
+        "task-runner.js": null,
+        "worker-pool.js": null
+      },
+      "daemon": {
+        "daemon.js": null
+      },
+      "doctor": {
+        "doctor.js": null
+      },
+      "estimation": {
+        "estimation-tracker.js": null
+      },
+      "events": {
+        "event-bus.js": null,
+        "event-persistence.js": null
+      },
+      "heartbeat": {
+        "heartbeat-monitor.js": null
+      },
+      "index.js": null,
+      "integrations": {
+        "github-issue-sync.js": null,
+        "pr-comment-bugs.js": null,
+        "webhook-outgoing.js": null
+      },
+      "intelligence": {
+        "codebase-indexer.js": null,
+        "review-feedback.js": null,
+        "style-detector.js": null
+      },
+      "metrics": {
+        "model-performance-tracker.js": null,
+        "weekly-metrics.js": null
+      },
+      "multi-project": {
+        "multi-project-runner.js": null,
+        "project-loader.js": null,
+        "project-selector.js": null
+      },
+      "orchestrator.js": null,
+      "plugins": {
+        "plugin-interface.js": null,
+        "plugin-loader.js": null
+      },
+      "prompts": {
+        "coder-system.js": null,
+        "planner-system.js": null,
+        "qa-system.js": null,
+        "reviewer-system.js": null
+      },
+      "scheduler": {
+        "scheduler.js": null
+      },
+      "server": {
+        "api-server.js": null,
+        "ws-server-standalone.js": null,
+        "ws-server.js": null
+      },
+      "setup.js": null,
+      "shutdown": {
+        "shutdown-manager.js": null
+      },
+      "smart-ordering": {
+        "context-affinity.js": null
+      },
+      "sonar": {
+        "analyzer.js": null,
+        "scanner.js": null
+      },
+      "state": {
+        "checkpoint-manager.js": null,
+        "komodo-state.js": null
+      },
+      "tech-debt": {
+        "tech-debt-tracker.js": null
+      },
+      "telegram": {
+        "auth.js": null,
+        "bot.js": null,
+        "claude-terminal.js": null,
+        "commands.js": null,
+        "data.js": null,
+        "digest.js": null,
+        "formatter.js": null,
+        "notifier.js": null,
+        "run-controller.js": null
+      },
+      "testing": {
+        "pre-pr-tests.js": null
+      },
+      "triage": {
+        "complexity-classifier.js": null,
+        "model-selector.js": null,
+        "task-decomposer.js": null
+      },
+      "utils": {
+        "logger.js": null,
+        "parser.js": null
+      },
+      "versioning": {
+        "changelog-generator.js": null,
+        "release-gate.js": null,
+        "release-manager.js": null,
+        "version-bumper.js": null
+      },
+      "watchdog": {
+        "watchdog.js": null
+      }
+    },
+    "vitest.config.js": null
+  },
+  "checksum": "de556fe003a2bd851b05ceec0faed200e9b092ef66f5043c7dff4f154dc52c5e",
+  "generatedAt": "2026-03-10T20:53:24.717Z"
+}

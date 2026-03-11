@@ -14,7 +14,7 @@ import { config } from '../config.js';
  */
 class ResilienceManager {
   constructor() {
-    this._unsubscribe = null;
+    this._handler = null;
   }
 
   /**
@@ -27,14 +27,15 @@ class ResilienceManager {
       return;
     }
 
-    this._unsubscribe = eventBus.on(EVENT_TYPES.ERROR_BUDGET_EXHAUSTED, (payload) => {
+    this._handler = (payload) => {
       const { failureRate, maxFailureRate } = payload.metadata;
       logger.error(
         `Komodo paused: error budget exhausted (${(failureRate * 100).toFixed(0)}% > ${(maxFailureRate * 100).toFixed(0)}%). Requires manual review.`,
         'KOMODO',
       );
       komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
-    });
+    };
+    eventBus.on(EVENT_TYPES.ERROR_BUDGET_EXHAUSTED, this._handler);
 
     logger.info('Resilience manager started', 'RESILIENCE');
   }
@@ -43,9 +44,9 @@ class ResilienceManager {
    * Stop listening for resilience events.
    */
   stop() {
-    if (this._unsubscribe) {
-      eventBus.removeListener(EVENT_TYPES.ERROR_BUDGET_EXHAUSTED, this._unsubscribe);
-      this._unsubscribe = null;
+    if (this._handler) {
+      eventBus.removeListener(EVENT_TYPES.ERROR_BUDGET_EXHAUSTED, this._handler);
+      this._handler = null;
     }
   }
 
