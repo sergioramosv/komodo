@@ -56,7 +56,7 @@ export async function runCanaryAutoFix({
     '',
     'Constraints:',
     `- Work directly on branch "${branchName}" (already checked out)`,
-    `- Maximum ~${MAX_LOG_CHARS} tokens`,
+    `- Maximum ~${MAX_LOG_CHARS} characters of error log context`,
     '- Only fix what is broken — do not add unrelated changes',
   ].join('\n');
 

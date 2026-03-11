@@ -107,6 +107,7 @@ export const EVENT_TYPES = {
   CANARY_PROMOTED: 'canary:promoted',
   CANARY_REVERTED: 'canary:reverted',
   CANARY_CONFLICT_DETECTED: 'canary:conflict:detected',
+  CANARY_CI_BYPASSED: 'canary:ci:bypassed',
 
   // QA agent events
   QA_TESTS_GENERATED: 'qa:tests-generated',

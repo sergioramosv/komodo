@@ -5,22 +5,66 @@ import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { fallbackManager } from '../agents/fallback-manager.js';
 
 /**
- * Checks whether two tasks might touch overlapping files
- * based on their branch names and title heuristics.
+ * Extracts file-path hints from a task's branch name and title.
+ * Used as a fallback when probableFiles is not populated.
+ *
+ * @param {Object} task
+ * @returns {Set<string>} lowercase keyword tokens
+ */
+function _extractFileHints(task) {
+  const hints = new Set();
+
+  // Strip branch prefix (e.g. "feature/task-uOCeLF-") then split on separators
+  if (task.branchName) {
+    task.branchName
+      .replace(/^(feature|fix|chore|refactor|docs)\/task-[^-]+-/, '')
+      .split(/[-_/]/)
+      .filter(t => t.length > 3)
+      .forEach(t => hints.add(t.toLowerCase()));
+  }
+
+  // Split title on whitespace and punctuation
+  if (task.title) {
+    task.title
+      .split(/[\s\-_/.,()[\]]+/)
+      .filter(t => t.length > 3)
+      .forEach(t => hints.add(t.toLowerCase()));
+  }
+
+  return hints;
+}
+
+/**
+ * Checks whether two tasks might touch overlapping files.
+ * Uses explicit probableFiles when available; falls back to keyword
+ * hints derived from branchName and title so the check is never a no-op
+ * when probableFiles is not populated.
  *
  * @param {Object} taskA
  * @param {Object} taskB
  * @returns {boolean} true if tasks likely share files
  */
 export function tasksShareFiles(taskA, taskB) {
-  // Extract probable file paths from task metadata
   const filesA = new Set(taskA.probableFiles || []);
   const filesB = new Set(taskB.probableFiles || []);
 
-  if (filesA.size === 0 || filesB.size === 0) return false;
+  // Prefer explicit file lists when both are populated
+  if (filesA.size > 0 && filesB.size > 0) {
+    for (const file of filesA) {
+      if (filesB.has(file)) return true;
+    }
+    return false;
+  }
 
-  for (const file of filesA) {
-    if (filesB.has(file)) return true;
+  // Fallback: derive hints from branch name + title so conflict detection
+  // works even when probableFiles is empty (the common case in production)
+  const hintsA = _extractFileHints(taskA);
+  const hintsB = _extractFileHints(taskB);
+
+  if (hintsA.size === 0 || hintsB.size === 0) return false;
+
+  for (const hint of hintsA) {
+    if (hintsB.has(hint)) return true;
   }
   return false;
 }

@@ -132,12 +132,19 @@ export function detectPreMergeConflicts(featureBranch, cwd) {
  * @param {string} cwd
  */
 function runLocalTests(cwd) {
-  execFileSync('npm', ['test'], {
-    cwd,
-    encoding: 'utf-8',
-    stdio: ['pipe', 'pipe', 'pipe'],
-    timeout: 120_000,
-  });
+  try {
+    execFileSync('npm', ['test'], {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 120_000,
+    });
+  } catch (err) {
+    const parts = [err.message];
+    if (err.stdout) parts.push(`stdout:\n${err.stdout}`);
+    if (err.stderr) parts.push(`stderr:\n${err.stderr}`);
+    throw new Error(parts.join('\n'));
+  }
 }
 
 /**
