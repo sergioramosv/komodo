@@ -46,6 +46,8 @@ export const EVENT_TYPES = {
   TASK_CLASSIFIED: 'task:classified',
   TASK_DECOMPOSED: 'task:decomposed',
   MODEL_SELECTED: 'triage:model-selected',
+  MODEL_ESCALATED: 'triage:model-escalated',
+  SMART_ROUTING_APPLIED: 'triage:smart-routing-applied',
 
   // Daemon / watch mode
   DAEMON_STARTED: 'daemon:started',

@@ -14,6 +14,7 @@ import { komodoState, PHASES, DASHBOARD_AGENT_STATES, EXECUTION_STATES } from '.
 import { checkpointManager } from '../state/checkpoint-manager.js';
 import { classifyAndEmit } from '../triage/complexity-classifier.js';
 import { selectModel } from '../triage/model-selector.js';
+import { selectModelSmart, recordRoutingOutcome } from '../triage/smart-model-router.js';
 import { shouldDecompose, decomposeTask } from '../triage/task-decomposer.js';
 import { fallbackManager } from '../agents/fallback-manager.js';
 import { withWatchdog } from '../watchdog/watchdog.js';
@@ -412,8 +413,8 @@ export async function runTask(projectId, cwd) {
     const reviewerCli = config.cliReviewer;
 
     const architectModel = selectModel(architectCli, 'ARCHITECT', complexityLevel, taskModelOverride);
-    const coderModel = selectModel(coderCli, 'CODER', complexityLevel, taskModelOverride);
-    const reviewerModel = selectModel(reviewerCli, 'REVIEWER', complexityLevel, taskModelOverride);
+    let coderModel = await selectModelSmart({ cliType: coderCli, agentRole: 'CODER', complexityLevel, taskSpec, projectId, taskOverride: taskModelOverride });
+    let reviewerModel = await selectModelSmart({ cliType: reviewerCli, agentRole: 'REVIEWER', complexityLevel, taskSpec, projectId, taskOverride: taskModelOverride });
 
     // Fetch project coding guidelines for injection into agent prompts
     const codingGuidelines = await fetchCodingGuidelines(projectId);
@@ -473,6 +474,9 @@ export async function runTask(projectId, cwd) {
       },
     );
 
+    eventBus.emitAgentEvent('ARCHITECT', 'done');
+    komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
+
     if (architectResult.cost) {
       taskCost += architectResult.cost;
       eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
@@ -489,9 +493,6 @@ export async function runTask(projectId, cwd) {
     } else {
       logger.warn(`Architect failed (${architectResult.error}), proceeding without plan`, 'KOMODO');
     }
-
-    eventBus.emitAgentEvent('ARCHITECT', 'done', { plan: architectPlan });
-    komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
     // ═══════════════════════════════════════════
     // PASO 3: CODER — Implementar
@@ -836,7 +837,7 @@ export async function runTask(projectId, cwd) {
     const pluginIssues = beforeReviewPluginResults.flatMap(r => r.issues || []);
 
     const reviewResult = await withWatchdog(
-      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues }),
+      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold: config.smartModelRoutingThreshold, coderCli }),
       { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
     );
 
@@ -846,6 +847,11 @@ export async function runTask(projectId, cwd) {
 
     if (reviewResult.cost) {
       taskCost += reviewResult.cost;
+    }
+
+    // Update coderModel if it was escalated during review loop
+    if (reviewResult.escalatedCoderModel) {
+      coderModel = reviewResult.escalatedCoderModel;
     }
 
     // Registrar outcome en memoria (best effort)
@@ -1109,6 +1115,36 @@ export async function runTask(projectId, cwd) {
       });
     } catch (err) {
       logger.warn(`Model performance tracking failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
+    // Record smart routing outcomes for future learning (best effort)
+    try {
+      const effectiveProjectId = projectId || config.defaultProjectId;
+      const approvedFirstCycle = reviewResult.cycles === 1 && reviewResult.approved;
+      await Promise.all([
+        recordRoutingOutcome({
+          projectId: effectiveProjectId,
+          role: 'coder',
+          model: coderModel || '',
+          approved: reviewResult.approved,
+          approvedFirstCycle,
+          reviewScore: reviewResult.finalReview?.score ?? null,
+          complexityLevel,
+          taskType: taskSpec.type || 'feature',
+        }),
+        recordRoutingOutcome({
+          projectId: effectiveProjectId,
+          role: 'reviewer',
+          model: reviewerModel || '',
+          approved: reviewResult.approved,
+          approvedFirstCycle,
+          reviewScore: reviewResult.finalReview?.score ?? null,
+          complexityLevel,
+          taskType: taskSpec.type || 'feature',
+        }),
+      ]);
+    } catch (err) {
+      logger.warn(`Smart routing outcome recording failed (non-blocking): ${err.message}`, 'KOMODO');
     }
 
     // Record context for smart task ordering (context affinity)
