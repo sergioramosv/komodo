@@ -340,10 +340,14 @@ export const tools = {
         if (architectResult.success && architectResult.plan) {
           architectPlan = architectResult.plan;
         }
-      } catch {
+      } catch (err) {
         // Non-blocking: if ARCHITECT fails, proceed without plan
+        console.error('[ARCHITECT] analyzeTask failed:', err?.message || err);
         komodoState.updateAgent('ARCHITECT', { status: 'idle', currentTask: null }, { phase: 'idle' });
       }
+
+      // Restore coding phase after ARCHITECT finishes (ARCHITECT sets phase to 'idle')
+      komodoState.updatePhase('coding');
 
       const result = await implementTask({ ...taskSpec, architectPlan }, params.cwd);
 
