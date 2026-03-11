@@ -6,11 +6,12 @@ import { validateAgentResponse } from '../utils/parser.js';
 import { getAll } from '../../skills/planning-task-mcp/src/firebase.js';
 import { komodoState } from '../state/komodo-state.js';
 import { rankWithContextAffinity, buildAffinityHint } from '../smart-ordering/context-affinity.js';
+import { estimateTaskTokens } from '../estimation/token-estimator.js'; // Import estimateTaskTokens
 
 /**
  * Fetches all tasks for a project from Firebase RTDB.
  * @param {string} projectId
- * @returns {Promise<Array<{id: string, status: string, blockedBy?: string[], title: string, priority?: number}>>}
+ * @returns {Promise<Array<{id: string, status: string, blockedBy?: string[], title: string, priority?: number, devPoints?: number, bizPoints?: number}>>}
  */
 export async function fetchProjectTasks(projectId) {
   const allTasks = await getAll('tasks');
@@ -77,9 +78,10 @@ export async function pickNextTask(projectId, { model } = {}) {
   logger.taskHeader('PLANNER - Seleccionando siguiente tarea');
 
   // ── Step 1: Check for in-progress tasks FIRST (priority resume) ──
-  let eligibleTaskIds = null;
+  let eligibleTasks = [];
   let inProgressTasks = [];
   let affinityHint = '';
+
   try {
     const allTasks = await fetchProjectTasks(projectId);
 
@@ -87,7 +89,7 @@ export async function pickNextTask(projectId, { model } = {}) {
     inProgressTasks = allTasks.filter(t => t.status === 'in-progress');
     if (inProgressTasks.length > 0) {
       logger.info(`Found ${inProgressTasks.length} in-progress task(s) — prioritizing these`, 'PLANNER');
-      eligibleTaskIds = inProgressTasks.map(t => t.id);
+      eligibleTasks = inProgressTasks;
     } else {
       // No in-progress tasks, fall back to to-do
       const todoTasks = allTasks.filter(t => t.status === 'to-do');
@@ -116,17 +118,30 @@ export async function pickNextTask(projectId, { model } = {}) {
         logger.info(`Filtered out ${blocked.length} blocked task(s), ${eligible.length} eligible`, 'PLANNER');
       }
 
-      eligibleTaskIds = eligible.map(t => t.id);
+      eligibleTasks = eligible;
 
       // ── Step 1b: Context affinity boost ──
       const previousContext = komodoState.lastCompletedTaskContext;
       if (previousContext && previousContext.filesChanged?.length > 0) {
-        const ranked = rankWithContextAffinity(eligible, previousContext);
-        affinityHint = buildAffinityHint(ranked);
+        eligibleTasks = rankWithContextAffinity(eligibleTasks, previousContext);
+        affinityHint = buildAffinityHint(eligibleTasks);
       }
+
+      // ── Step 1c: Calculate efficiency (bizPoints / estimatedTokens) ──
+      for (const task of eligibleTasks) {
+        const estimatedTokens = estimateTaskTokens(task).total;
+        task.estimatedTokens = estimatedTokens;
+        task.efficiency = task.bizPoints && estimatedTokens > 0 ? task.bizPoints / estimatedTokens : 0;
+      }
+
+      // Sort by efficiency (descending)
+      eligibleTasks.sort((a, b) => b.efficiency - a.efficiency);
     }
   } catch (err) {
-    logger.warn(`Could not pre-filter blocked tasks: ${err.message}. Proceeding without filter.`, 'PLANNER');
+    logger.warn(`Could not pre-filter blocked tasks or calculate efficiency: ${err.message}. Proceeding without full prioritization.`, 'PLANNER');
+    // Fallback to just using the available eligible tasks without advanced sorting
+    const allTasks = await fetchProjectTasks(projectId);
+    eligibleTasks = allTasks.filter(t => t.status === 'to-do'); // or in-progress if any
   }
 
   // ── Step 2: Run the Planner agent with eligible task context ──
@@ -136,12 +151,16 @@ export async function pickNextTask(projectId, { model } = {}) {
     defaultUserName: config.defaultUserName,
   });
 
-  let userPrompt = inProgressTasks.length > 0
-    ? `Hay ${inProgressTasks.length} tarea(s) IN-PROGRESS que deben completarse primero. Selecciona una de ellas (ya está en in-progress, NO cambies su estado). Devuélveme los detalles en JSON.`
-    : `Analiza el backlog del proyecto "${projectId}" y elige la siguiente tarea a implementar. Cambia su estado a in-progress y devuélveme los detalles en JSON.`;
-
-  if (eligibleTaskIds) {
-    userPrompt += `\n\nIMPORTANTE — Dependencias pre-filtradas: las siguientes tareas son las ÚNICAS elegibles (sus dependencias ya están resueltas). Solo selecciona de esta lista:\n${eligibleTaskIds.map(id => `- ${id}`).join('\n')}`;
+  let userPrompt = '';
+  if (inProgressTasks.length > 0) {
+    userPrompt = `Hay ${inProgressTasks.length} tarea(s) IN-PROGRESS que deben completarse primero. Selecciona una de ellas (ya está en in-progress, NO cambies su estado). Prioriza la de mayor eficiencia (bizPoints/estimatedTokens). Devuélveme los detalles en JSON.
+    \n\nAquí están las tareas elegibles, ordenadas por eficiencia (mayor primero):\n${eligibleTasks.map(t => `- ID: ${t.id}, Título: "${t.title}", Puntos de Negocio: ${t.bizPoints}, Puntos de Desarrollo: ${t.devPoints}, Tokens Estimados: ${t.estimatedTokens}, Eficiencia (Biz/Tokens): ${t.efficiency.toFixed(5)}`).join('\n')}`;
+  } else if (eligibleTasks.length > 0) {
+    userPrompt = `Analiza el backlog del proyecto "${projectId}" y elige la siguiente tarea a implementar. Prioriza la de mayor eficiencia (bizPoints/estimatedTokens). Cambia su estado a in-progress y devuélveme los detalles en JSON.
+    \n\nAquí están las tareas elegibles, ordenadas por eficiencia (mayor primero):\n${eligibleTasks.map(t => `- ID: ${t.id}, Título: "${t.title}", Puntos de Negocio: ${t.bizPoints}, Puntos de Desarrollo: ${t.devPoints}, Tokens Estimados: ${t.estimatedTokens}, Eficiencia (Biz/Tokens): ${t.efficiency.toFixed(5)}`).join('\n')}`;
+  } else {
+    logger.info('No hay tareas pendientes en el backlog.', 'PLANNER');
+    return { success: true, task: null, cost: null, duration: 0 };
   }
 
   if (affinityHint) {

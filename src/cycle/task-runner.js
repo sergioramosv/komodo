@@ -313,7 +313,7 @@ export async function runTask(projectId, cwd) {
     // --- Rate Limit Awareness Check ---
     const estimatedTokens = estimateTaskTokens(taskSpec).total;
     const headroom = getRateLimitHeadroom();
-    const requiredHeadroom = estimatedTokens * 1.2; // Require 20% buffer (headroom must cover 120% of estimated)
+    const requiredHeadroom = estimatedTokens / 0.8; // If estimated tokens > 80% of available headroom, then wait.
 
     if (headroom.availableTokens < requiredHeadroom) {
       logger.warn(

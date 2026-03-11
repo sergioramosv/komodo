@@ -119,6 +119,21 @@ export const config = {
   forceModel_REVIEWER: _dashboardConfig?.agents?.reviewer?.model || process.env.FORCE_MODEL_REVIEWER || '',
   forceModel_QA: process.env.FORCE_MODEL_QA || '',
 
+
+  // Token Estimation
+  tokenEstimates: {
+    trivial: parseInt(process.env.TOKEN_ESTIMATE_TRIVIAL || '8000', 10),
+    standard: parseInt(process.env.TOKEN_ESTIMATE_STANDARD || '25000', 10),
+    complex: parseInt(process.env.TOKEN_ESTIMATE_COMPLEX || '60000', 10),
+  },
+  tokenBreakdownPercentages: {
+    architect: parseFloat(process.env.TOKEN_BREAKDOWN_ARCHITECT || '0.20'), // 20%
+    coder: parseFloat(process.env.TOKEN_BREAKDOWN_CODER || '0.40'),      // 40%
+    security: parseFloat(process.env.TOKEN_BREAKDOWN_SECURITY || '0.10'),    // 10%
+    reviewer: parseFloat(process.env.TOKEN_BREAKDOWN_REVIEWER || '0.20'),    // 20%
+    overhead: parseFloat(process.env.TOKEN_BREAKDOWN_OVERHEAD || '0.10'),    // 10%
+  },
+
   // Rate limit fallback
   rateLimitFallback: process.env.RATE_LIMIT_FALLBACK !== 'false', // default: true
   fallbackCliOrder: (process.env.FALLBACK_CLI_ORDER || 'claude,codex,gemini')
