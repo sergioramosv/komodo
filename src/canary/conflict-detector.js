@@ -56,7 +56,6 @@ export function detectParallelConflicts(taskId, filesChanged) {
     return { conflicts: [] };
   }
 
-  const incoming = new Set(filesChanged);
   const conflicts = [];
 
   for (const [otherTaskId, otherFiles] of activeTaskFiles) {

@@ -35,9 +35,12 @@ describe('conflict-detector', () => {
   describe('registerActiveTaskFiles', () => {
     it('registers files for a task', () => {
       registerActiveTaskFiles('task-A', ['src/foo.js', 'src/bar.js']);
-      const result = detectParallelConflicts('task-X', ['src/foo.js']);
-      // task-A is registered, task-X should conflict with it
-      // but task-X is not registered yet, so we test via conflict detection below
+      const { conflicts } = detectParallelConflicts('task-X', ['src/foo.js']);
+
+      expect(conflicts).toHaveLength(1);
+      expect(conflicts[0].conflictingTaskId).toBe('task-A');
+      expect(conflicts[0].files).toEqual(['src/foo.js']);
+
       unregisterActiveTaskFiles('task-A');
     });
 

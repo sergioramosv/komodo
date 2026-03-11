@@ -16,7 +16,7 @@ import { classifyAndEmit } from '../triage/complexity-classifier.js';
 async function fetchSprintOrder(projectId) {
   const allSprints = await getAll('sprints');
   return allSprints
-    .filter(s => s.projectId === projectId && (s.status === 'active' || s.status === 'planned'))
+    .filter(s => s.projectId === projectId && (s.status === 'active' || s.status === 'planned') && s.startDate)
     .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
     .map((s, index) => ({ id: s.id, name: s.name, order: index, startDate: s.startDate }));
 }
