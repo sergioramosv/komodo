@@ -19,6 +19,7 @@ import { fallbackManager } from '../agents/fallback-manager.js';
 import { withWatchdog } from '../watchdog/watchdog.js';
 import { createTechDebtTasks } from '../tech-debt/tech-debt-tracker.js';
 import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
+import { estimateTaskTokens, getRateLimitHeadroom, recordTokenConsumption } from '../estimation/token-estimator.js';
 import { recordModelPerformance } from '../metrics/model-performance-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
@@ -289,12 +290,74 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    // --- Rate Limit Awareness Check ---
+    const estimatedTokens = estimateTaskTokens(taskSpec).total;
+    const headroom = getRateLimitHeadroom();
+    const requiredHeadroom = estimatedTokens * 1.2; // Require 20% buffer (headroom must cover 120% of estimated)
+
+    if (headroom.availableTokens < requiredHeadroom) {
+      logger.warn(
+        `Rate limit warning: Estimated task tokens (${estimatedTokens}) exceed 80% of available headroom (${headroom.availableTokens}). Entering preemptive wait.`,
+        'KOMODO',
+      );
+
+      const waitMs = Math.max(0, headroom.resetTime - Date.now());
+
+      eventBus.emitEvent(EVENT_TYPES.RATE_LIMIT_PREEMPTIVE_WAIT, {
+        metadata: {
+          taskId: taskSpec.taskId,
+          estimatedTokens,
+          availableTokens: headroom.availableTokens,
+          requiredHeadroom,
+          resetTime: headroom.resetTime,
+          waitMs,
+        },
+      });
+
+      // Rollback the task status (as pickNextTask already set it to in-progress)
+      await rollbackTask(taskSpec.taskId);
+
+      // Sleep until the window resets to avoid busy-looping in daemon mode
+      if (waitMs > 0) {
+        logger.info(`Waiting ${Math.round(waitMs / 1000)}s for rate limit window to reset...`, 'KOMODO');
+        await new Promise(r => setTimeout(r, waitMs));
+      }
+
+      return makeResult({
+        success: false,
+        taskSpec,
+        startTime,
+        error: 'Preemptive rate limit wait initiated.',
+      });
+    }
+
+    logger.info(
+      `Rate limit check passed. Estimated tokens: ${estimatedTokens}. Available headroom: ${headroom.availableTokens}.`,
+      'KOMODO',
+    );
+    // Record estimated token consumption in the sliding window
+    recordTokenConsumption(estimatedTokens);
+    // --- End Rate Limit Awareness Check ---
+
     // ── Decomposition triage: break large tasks into subtasks ──
     const decompositionCheck = shouldDecompose(taskSpec);
     if (decompositionCheck.shouldDecompose) {
       logger.info(`Task needs decomposition: ${decompositionCheck.reasons.join(', ')}`, 'KOMODO');
 
-      const decompResult = await decomposeTask(taskSpec, projectId);
+      // Run lightweight architect analysis to inform decomposition
+      let earlyArchitectPlan = null;
+      try {
+        const earlyArchitectModel = selectModel(config.cliArchitect, 'ARCHITECT', 'standard');
+        const earlyArchitectResult = await analyzeTask(taskSpec, cwd, { model: earlyArchitectModel });
+        if (earlyArchitectResult.success && earlyArchitectResult.plan) {
+          earlyArchitectPlan = earlyArchitectResult.plan;
+          logger.info(`Architect plan for decomposition: ${earlyArchitectPlan.filesToCreate.length} create, ${earlyArchitectPlan.filesToModify.length} modify`, 'KOMODO');
+        }
+      } catch (err) {
+        logger.warn(`Early architect analysis failed (${err.message}), decomposing without plan`, 'KOMODO');
+      }
+
+      const decompResult = await decomposeTask(taskSpec, projectId, { architectPlan: earlyArchitectPlan });
       if (decompResult.success) {
         // Rollback the parent task status (it was set to in-progress by Planner)
         // The decomposeTask agent already marks it as "done" with decomposed=true.
@@ -345,6 +408,7 @@ export async function runTask(projectId, cwd) {
 
     komodoState.updatePhase(PHASES.PLANNING, { currentTask: taskSpec.taskId });
 
+    const tokenEstimation = estimateTaskTokens(taskSpec);
     eventBus.emitEvent(EVENT_TYPES.TASK_STARTED, {
       metadata: {
         taskId: taskSpec.taskId,
@@ -352,6 +416,8 @@ export async function runTask(projectId, cwd) {
         branchName: taskSpec.branchName,
         repo,
         priority: taskSpec.bizPoints || null,
+        estimatedTokens: tokenEstimation.total,
+        tokenBreakdown: tokenEstimation.breakdown,
         taskDetails: {
           id: taskSpec.taskId,
           title: taskSpec.title,

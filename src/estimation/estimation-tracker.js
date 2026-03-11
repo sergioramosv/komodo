@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { getDb } from '../../skills/planning-task-mcp/src/firebase.js';
+import { estimateTaskTokens } from './token-estimator.js';
 
 const AGENT_TAG = 'ESTIMATION';
 
@@ -40,10 +41,13 @@ export async function recordTaskMetrics({
     return { recorded: false };
   }
 
+  const estimatedTokens = estimateTaskTokens({ devPoints: estimatedDevPoints || 0 }).total;
+
   const metrics = {
     taskId,
     projectId,
     estimatedDevPoints: estimatedDevPoints || 0,
+    estimatedTokens,
     totalDurationSeconds: totalDuration,
     reviewCycles,
     approved,
@@ -63,6 +67,7 @@ export async function recordTaskMetrics({
         taskId,
         projectId,
         estimatedDevPoints,
+        estimatedTokens,
         totalDurationSeconds: totalDuration,
         reviewCycles,
       },

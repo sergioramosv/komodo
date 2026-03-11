@@ -126,6 +126,8 @@ export const config = {
     .map(s => s.trim())
     .filter(Boolean),
   rateLimitCooldownMinutes: parseInt(process.env.RATE_LIMIT_COOLDOWN_MINUTES || '15', 10),
+  rateLimitTokenWindowMs: parseInt(process.env.RATE_LIMIT_TOKEN_WINDOW_MS || '300000', 10), // default: 5 minutes
+  rateLimitTokenBudget: parseInt(process.env.RATE_LIMIT_TOKEN_BUDGET || '400000', 10), // default: 400K tokens (Claude Pro)
 
   // Heartbeat monitor (ping rate-limited CLIs to detect recovery)
   heartbeatEnabled: process.env.HEARTBEAT_ENABLED !== 'false', // default: true

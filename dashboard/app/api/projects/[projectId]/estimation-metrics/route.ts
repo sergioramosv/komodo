@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/firebase';
 
+const TOKEN_TIERS: Record<string, number> = {
+  trivial: 8000,
+  standard: 25000,
+  complex: 60000,
+};
+
 interface TaskMetric {
   taskId: string;
   projectId: string;
   estimatedDevPoints: number;
+  estimatedTokens?: number;
   totalDurationSeconds: number;
   reviewCycles: number;
   approved: boolean;
@@ -107,11 +114,43 @@ export async function GET(
       completedAt: m.completedAt,
     }));
 
+    // Build tokenRatios: per-tier token stats with avg efficiency (bizPoints/estimatedTokens)
+    const tokenRatios: Record<string, {
+      estimatedTokens: number;
+      avgEstimatedTokens: number | null;
+      avgEfficiency: number | null;
+      taskCount: number;
+    }> = {};
+
+    for (const [rangeName, stats] of Object.entries(ratios)) {
+      const tierTasks = metrics.filter((m) => {
+        const pts = m.estimatedDevPoints || 0;
+        if (rangeName === 'trivial') return pts >= 1 && pts <= 2;
+        if (rangeName === 'standard') return pts >= 3 && pts <= 5;
+        if (rangeName === 'complex') return pts >= 8;
+        return false;
+      });
+
+      const tasksWithTokens = tierTasks.filter((m) => m.estimatedTokens != null && m.estimatedTokens > 0);
+      const avgEstimatedTokens =
+        tasksWithTokens.length > 0
+          ? tasksWithTokens.reduce((s, t) => s + (t.estimatedTokens ?? 0), 0) / tasksWithTokens.length
+          : null;
+
+      tokenRatios[rangeName] = {
+        estimatedTokens: TOKEN_TIERS[rangeName] ?? 0,
+        avgEstimatedTokens: avgEstimatedTokens !== null ? Math.round(avgEstimatedTokens) : null,
+        avgEfficiency: stats ? Math.round(((stats.avgDevPoints ?? 0) / (TOKEN_TIERS[rangeName] ?? 1)) * 1e6) / 1e6 : null,
+        taskCount: tierTasks.length,
+      };
+    }
+
     return NextResponse.json({
       metrics: chartData,
       ratios,
       warnings,
       totalTasks: metrics.length,
+      tokenRatios,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
