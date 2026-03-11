@@ -25,6 +25,7 @@ import { z } from 'zod';
 // ─── Dynamic imports (env already loaded by index.js) ─────────────────
 
 const { pickNextTask } = await import('../../../src/agents/planner.js');
+const { analyzeTask } = await import('../../../src/agents/architect.js');
 const { implementTask, fixReviewIssues } = await import('../../../src/agents/coder.js');
 const { reviewPR } = await import('../../../src/agents/reviewer.js');
 const { run, resume } = await import('../../../src/orchestrator.js');
@@ -346,7 +347,44 @@ export const tools = {
         },
       });
 
-      const result = await implementTask(taskSpec, params.cwd);
+      // ARCHITECT: analyze codebase and generate implementation plan
+      let architectPlan = null;
+      try {
+        komodoState.updateAgent('ARCHITECT', { status: 'working', currentTask: params.title });
+        eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+          agentName: 'ARCHITECT',
+          previousState: 'idle',
+          newState: 'working',
+          metadata: { phase: 'architecting', taskId: params.taskId, taskTitle: params.title },
+        });
+
+        const architectResult = await analyzeTask(taskSpec, params.cwd, {
+          model: selectModel(config.cliArchitect, 'ARCHITECT', 'standard'),
+        });
+
+        komodoState.updateAgent('ARCHITECT', { status: 'idle', currentTask: null });
+        eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+          agentName: 'ARCHITECT',
+          previousState: 'working',
+          newState: 'idle',
+          metadata: { phase: 'idle' },
+        });
+
+        if (architectResult.success && architectResult.plan) {
+          architectPlan = architectResult.plan;
+        }
+      } catch {
+        // Non-blocking: if ARCHITECT fails, proceed without plan
+        komodoState.updateAgent('ARCHITECT', { status: 'idle', currentTask: null });
+        eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+          agentName: 'ARCHITECT',
+          previousState: 'working',
+          newState: 'idle',
+          metadata: { phase: 'idle' },
+        });
+      }
+
+      const result = await implementTask({ ...taskSpec, architectPlan }, params.cwd);
 
       komodoState.updateAgent('CODER', { status: 'idle', currentTask: null });
 

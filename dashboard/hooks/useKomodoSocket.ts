@@ -218,6 +218,10 @@ function applyEvent(
           status: (event.newState as KomodoSnapshot['agents']['PLANNER']['status']) ?? next.agents[name].status,
         };
       }
+      const phase = (event.metadata as { phase?: string } | undefined)?.phase;
+      if (phase) {
+        next.phase = phase;
+      }
       break;
     }
     case 'task:started':

@@ -473,6 +473,12 @@ export async function runTask(projectId, cwd) {
     komodoState.updatePhase(PHASES.ARCHITECTING, { currentTask: taskSpec.taskId });
     komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId });
     eventBus.emitAgentEvent('ARCHITECT', 'working', { taskId: taskSpec.taskId });
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'ARCHITECT',
+      previousState: AGENT_STATES.IDLE,
+      newState: AGENT_STATES.WORKING,
+      metadata: { phase: 'architecting', taskId: taskSpec.taskId, taskTitle: taskSpec.title },
+    });
 
     let architectPlan = null;
     const architectResult = await withWatchdog(
@@ -487,6 +493,13 @@ export async function runTask(projectId, cwd) {
     );
 
     eventBus.emitAgentEvent('ARCHITECT', 'done');
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'ARCHITECT',
+      previousState: AGENT_STATES.WORKING,
+      newState: AGENT_STATES.IDLE,
+      metadata: { phase: 'idle' },
+    });
+    eventBus.emitAgentEvent('ARCHITECT', 'idle');
     komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
     if (architectResult.cost) {
