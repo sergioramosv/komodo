@@ -284,7 +284,7 @@ function spawnCli(command, args, options = {}) {
     const child = spawn(command, args, {
       cwd: options.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env: (() => { const e = { ...process.env }; delete e.CLAUDECODE; return e; })(),
       // Windows needs shell to resolve .cmd files (claude.cmd, etc.)
       // Unix does not need shell.
       shell: process.platform === 'win32',
