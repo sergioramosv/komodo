@@ -8,8 +8,8 @@ import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 
 const AGENT_TAG = 'CODEBASE-INDEX';
 
-/** Cache TTL: regenerate index after 5 minutes regardless of checksum */
-const CACHE_TTL_MS = 5 * 60 * 1000;
+/** Cache TTL: regenerate index after configurable duration (default 5 minutes) */
+const CACHE_TTL_MS = config.cacheIndexTtlMs || 5 * 60 * 1000;
 
 /**
  * Language-specific parsers for extracting exports, imports, and functions.

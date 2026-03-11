@@ -111,26 +111,13 @@ export function getTopPatterns({ limit = 5 } = {}) {
  * @param {number} [options.limit=5] - Max patterns to include
  * @returns {string} Formatted section or empty string if no patterns
  */
-export function formatFeedbackSection({ limit = 5 } = {}) {
-  const topPatterns = getTopPatterns({ limit });
-
-  if (topPatterns.length === 0) return '';
-
-  const lines = topPatterns.map(({ pattern, percentage }, i) => {
-    const resolution = pattern.resolution ? ` — ${pattern.resolution}` : '';
-    return `${i + 1}. ${pattern.description} (found in ${percentage}% of reviews)${resolution}`;
-  });
-
-  return `COMMON MISTAKES TO AVOID:\n${lines.join('\n')}`;
-}
-
 /**
  * Extracts lowercase keywords from a task spec for relevance matching.
  *
  * @param {Object} taskSpec - Task specification object
  * @returns {string[]} Array of meaningful keywords (length > 3)
  */
-function extractTaskKeywords(taskSpec) {
+export function extractTaskKeywords(taskSpec) {
   if (!taskSpec) return [];
   const text = [
     taskSpec.title || '',
@@ -148,7 +135,7 @@ function extractTaskKeywords(taskSpec) {
  * @param {string[]} taskKeywords - Keywords extracted from task spec
  * @returns {number} Relevance score (0 = unrelated, higher = more relevant)
  */
-function scorePatternRelevance(pattern, taskKeywords) {
+export function scorePatternRelevance(pattern, taskKeywords) {
   if (taskKeywords.length === 0) return 1;
   const patternText = [pattern.description || '', ...(pattern.tags || [])].join(' ').toLowerCase();
   return taskKeywords.reduce((count, kw) => count + (patternText.includes(kw) ? 1 : 0), 0);

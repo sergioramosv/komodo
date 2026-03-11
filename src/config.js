@@ -175,6 +175,7 @@ export const config = {
   // Codebase Knowledge Index (semantic map injected into Coder prompt)
   codebaseIndexEnabled: process.env.CODEBASE_INDEX_ENABLED !== 'false', // default: true
   codebaseContextMaxTokens: parseInt(process.env.CODEBASE_CONTEXT_MAX_TOKENS || '2000', 10),
+  cacheIndexTtlMs: parseInt(process.env.CACHE_INDEX_TTL_MS || '300000', 10), // default: 5 minutes
 
   // Style Guide Detector (auto-detected conventions injected into Coder prompt)
   styleDetectorEnabled: process.env.STYLE_DETECTOR_ENABLED !== 'false', // default: true
