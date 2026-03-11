@@ -19,6 +19,7 @@ import { fallbackManager } from '../agents/fallback-manager.js';
 import { withWatchdog } from '../watchdog/watchdog.js';
 import { createTechDebtTasks } from '../tech-debt/tech-debt-tracker.js';
 import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
+import { estimateTaskTokens, getRateLimitHeadroom } from '../estimation/token-estimator.js';
 import { recordModelPerformance } from '../metrics/model-performance-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
@@ -288,6 +289,37 @@ export async function runTask(projectId, cwd) {
     taskSpec = plannerResult.task;
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
+
+    // --- Rate Limit Awareness Check ---
+    const estimatedTokens = estimateTaskTokens(taskSpec).total;
+    const headroom = await getRateLimitHeadroom();
+    const requiredHeadroom = estimatedTokens * 1.2; // Require 20% buffer
+
+    if (headroom.availableTokens < requiredHeadroom) {
+      logger.warn(`Rate limit warning: Estimated task tokens (${estimatedTokens}) exceed 80% of available headroom (${headroom.availableTokens}). Entering preemptive wait.`, 'KOMODO');
+      eventBus.emitEvent(EVENT_TYPES.RATE_LIMIT_PREEMPTIVE_WAIT, {
+        metadata: {
+          taskId: taskSpec.taskId,
+          estimatedTokens,
+          availableTokens: headroom.availableTokens,
+          requiredHeadroom,
+          resetTime: headroom.resetTime
+        }
+      });
+
+      // Rollback the task status (as pickNextTask already set it to in-progress)
+      await rollbackTask(taskSpec.taskId);
+
+      // Exit the current runTask, letting the outer `run` loop handle re-picking.
+      return makeResult({
+        success: false,
+        taskSpec,
+        startTime,
+        error: 'Preemptive rate limit wait initiated.',
+      });
+    }
+    logger.info(`Rate limit check passed. Estimated tokens: ${estimatedTokens}. Available headroom: ${headroom.availableTokens}.`, 'KOMODO');
+    // --- End Rate Limit Awareness Check ---
 
     // ── Decomposition triage: break large tasks into subtasks ──
     const decompositionCheck = shouldDecompose(taskSpec);

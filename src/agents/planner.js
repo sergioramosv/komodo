@@ -6,6 +6,7 @@ import { validateAgentResponse } from '../utils/parser.js';
 import { getAll } from '../../skills/planning-task-mcp/src/firebase.js';
 import { komodoState } from '../state/komodo-state.js';
 import { rankWithContextAffinity, buildAffinityHint } from '../smart-ordering/context-affinity.js';
+import { estimateTaskTokens } from '../estimation/token-estimator.js';
 
 /**
  * Fetches all tasks for a project from Firebase RTDB.
@@ -116,12 +117,26 @@ export async function pickNextTask(projectId, { model } = {}) {
         logger.info(`Filtered out ${blocked.length} blocked task(s), ${eligible.length} eligible`, 'PLANNER');
       }
 
-      eligibleTaskIds = eligible.map(t => t.id);
+      // Calculate estimated tokens and efficiency for eligible tasks
+      let eligibleTasksWithMetrics = eligible.map(task => {
+        const { total: estimatedTokens } = estimateTaskTokens({ devPoints: task.devPoints });
+        const efficiency = estimatedTokens > 0 ? (task.bizPoints || 0) / estimatedTokens : 0;
+        return {
+          ...task,
+          estimatedTokens,
+          efficiency: parseFloat(efficiency.toFixed(2)) // Round for readability
+        };
+      });
+
+      // Sort by efficiency (highest first)
+      eligibleTasksWithMetrics.sort((a, b) => b.efficiency - a.efficiency);
+
+      eligibleTaskIds = eligibleTasksWithMetrics.map(t => t.id);
 
       // ── Step 1b: Context affinity boost ──
       const previousContext = komodoState.lastCompletedTaskContext;
       if (previousContext && previousContext.filesChanged?.length > 0) {
-        const ranked = rankWithContextAffinity(eligible, previousContext);
+        const ranked = rankWithContextAffinity(eligibleTasksWithMetrics, previousContext); // Use eligibleTasksWithMetrics here
         affinityHint = buildAffinityHint(ranked);
       }
     }
@@ -140,8 +155,11 @@ export async function pickNextTask(projectId, { model } = {}) {
     ? `Hay ${inProgressTasks.length} tarea(s) IN-PROGRESS que deben completarse primero. Selecciona una de ellas (ya está en in-progress, NO cambies su estado). Devuélveme los detalles en JSON.`
     : `Analiza el backlog del proyecto "${projectId}" y elige la siguiente tarea a implementar. Cambia su estado a in-progress y devuélveme los detalles en JSON.`;
 
-  if (eligibleTaskIds) {
-    userPrompt += `\n\nIMPORTANTE — Dependencias pre-filtradas: las siguientes tareas son las ÚNICAS elegibles (sus dependencias ya están resueltas). Solo selecciona de esta lista:\n${eligibleTaskIds.map(id => `- ${id}`).join('\n')}`;
+  if (eligibleTaskIds && eligibleTasksWithMetrics) { // Ensure eligibleTasksWithMetrics is available
+    userPrompt += `\n\nIMPORTANTE — Dependencias pre-filtradas: las siguientes tareas son las ÚNICAS elegibles (sus dependencias ya están resueltas). Están ordenadas por eficiencia (bizPoints / estimatedTokens), de mayor a menor. Solo selecciona de esta lista:`;
+    userPrompt += `\n${eligibleTasksWithMetrics.map(t =>
+      `- ${t.id} (BizPoints: ${t.bizPoints || 'N/A'}, DevPoints: ${t.devPoints || 'N/A'}, Est. Tokens: ${t.estimatedTokens}, Eficiencia: ${t.efficiency}) - ${t.title}`
+    ).join('\n')}`;
   }
 
   if (affinityHint) {

@@ -29,6 +29,7 @@ export const EVENT_TYPES = {
 
   // Rate limit detection
   RATE_LIMIT_DETECTED: 'agent:rate-limit',
+  RATE_LIMIT_PREEMPTIVE_WAIT: 'rate-limit:preemptive-wait',
 
   // Agent fallback on rate limit
   AGENT_FALLBACK: 'agent:fallback',
