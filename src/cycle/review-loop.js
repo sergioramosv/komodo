@@ -89,6 +89,13 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
       );
     }
 
+    if (reviewResult.reviewDepth) {
+      logger.info(`Review depth: ${reviewResult.reviewDepth}`, 'REVIEWER');
+      if (reviewResult.reviewDepth in depthBreakdown) {
+        depthBreakdown[reviewResult.reviewDepth]++;
+      }
+    }
+
     eventBus.emitAgentEvent('REVIEWER', 'done');
     eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
       agentName: 'REVIEWER',
@@ -139,6 +146,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
         cost: totalCost,
         sonarReport,
         escalatedCoderModel,
+        depthBreakdown,
       };
     }
 
@@ -288,6 +296,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
     cost: totalCost,
     sonarReport,
     escalatedCoderModel,
+    depthBreakdown,
     error: `PR no aprobada después de ${maxCycles} ciclos`,
   };
 }
