@@ -122,10 +122,10 @@ Implementa la siguiente tarea:
 ${(taskSpec.acceptanceCriteria || []).map((c, i) => `${i + 1}. ${c}`).join('\n')}
 
 ## Instrucciones
-1. Crea la branch "${taskSpec.branchName}" desde main usando create_branch con repo "${extractOwnerRepo(taskSpec.repoUrl)}"
-2. Implementa el código necesario
+1. Crea la branch "${taskSpec.branchName}" desde main usando create_branch con repo "${extractOwnerRepo(taskSpec.repoUrl)}". Si la branch ya existe (error al crear), haz checkout a ella con \`git checkout ${taskSpec.branchName}\` y continúa desde el código existente.
+2. Implementa el código necesario (revisa si ya hay trabajo previo en la branch y continúa desde ahí)
 3. Commitea y haz push a la branch
-4. Abre una PR con create_pr
+4. Si ya existe una PR abierta para esta branch, reutilízala. Si no, abre una PR con create_pr
 5. **NO MERGEES LA PR**. Solo ábrela y devuelve el resultado. El merge lo hace otro agente después del review.
 ${architectSection}
 Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, summary.`;
