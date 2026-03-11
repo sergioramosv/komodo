@@ -40,3 +40,12 @@ Thumbs.db
 
 # SonarQube
 .scannerwork/
+
+#checkpoints
+.komodo/checkpoints/
+
+#_debug
+*_debug_*.txt
+
+# Runtime heartbeat
+heartbeat.json

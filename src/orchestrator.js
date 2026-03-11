@@ -35,7 +35,7 @@ export { eventBus, EVENT_TYPES, AGENT_STATES, KomodoWsServer, komodoState, PHASE
  * }>}
  */
 export async function run(projectId, options = {}) {
-  const { tasks: maxTasks = 1, cwd, dryRun = false, skipServers = false } = options;
+  const { tasks: maxTasks = 1, cwd, dryRun = false, skipServers = false, skipHeartbeat = false } = options;
   const continuous = maxTasks === 0;
 
   // Validar configuración
@@ -89,8 +89,11 @@ export async function run(projectId, options = {}) {
   // Start checkpoint manager for rate limit recovery
   checkpointManager.start();
 
-  // Start heartbeat monitor for auto-recovery from rate limits
-  heartbeatMonitor.start();
+  // Start heartbeat monitor for auto-recovery from rate limits.
+  // Skipped when running via MCP — auto-resume spawns invisible CLIs.
+  if (!skipHeartbeat) {
+    heartbeatMonitor.start();
+  }
 
   // Start resilience manager (circuit breakers, error budget, DLQ)
   resilienceManager.start();
@@ -288,7 +291,7 @@ export async function checkForPendingCheckpoints(options = {}) {
   }
 
   // Resume the task
-  const result = await _executeResume(checkpoint, filepath, options.cwd);
+  const result = await _executeResume(checkpoint, filepath, options.cwd, { skipHeartbeat: options.skipHeartbeat });
   return { resumed: true, result };
 }
 
@@ -304,7 +307,7 @@ export async function checkForPendingCheckpoints(options = {}) {
  * }>}
  */
 export async function resume(options = {}) {
-  const { cwd } = options;
+  const { cwd, skipHeartbeat = false } = options;
 
   // Validar configuración
   const errors = validateConfig();
@@ -326,7 +329,7 @@ export async function resume(options = {}) {
   logger.info(`Reanudando tarea: "${checkpoint.taskTitle}"`, 'KOMODO');
   logger.info(`Paso: ${checkpoint.flowStep}`, 'KOMODO');
 
-  const result = await _executeResume(checkpoint, filepath, cwd);
+  const result = await _executeResume(checkpoint, filepath, cwd, { skipHeartbeat });
 
   return {
     tasksCompleted: result.success ? 1 : 0,
@@ -344,7 +347,7 @@ export async function resume(options = {}) {
  * @returns {Promise<Object>} Task result
  * @private
  */
-async function _executeResume(checkpoint, filepath, cwd) {
+async function _executeResume(checkpoint, filepath, cwd, { skipHeartbeat = false } = {}) {
   // Reset state for the resume
   komodoState.updatePhase(PHASES.IDLE, {
     currentTask: null,
@@ -353,9 +356,13 @@ async function _executeResume(checkpoint, filepath, cwd) {
   });
   komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
 
-  // Start checkpoint manager and heartbeat for new rate limits during resume
+  // Start checkpoint manager for new rate limits during resume
   checkpointManager.start();
-  heartbeatMonitor.start();
+
+  // Heartbeat auto-resume spawns invisible CLI processes — skip when via MCP
+  if (!skipHeartbeat) {
+    heartbeatMonitor.start();
+  }
 
   // Start WebSocket server
   const wsServer = new KomodoWsServer();

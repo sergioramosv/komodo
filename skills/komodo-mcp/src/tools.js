@@ -89,8 +89,11 @@ async function handleRateLimitIfNeeded(result, { taskId, title, branchName, repo
     await checkpointManager.saveCheckpoint(flowStep, config.cliCoder);
     komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
 
-    // Start heartbeat monitor so it can detect recovery
-    heartbeatMonitor.start();
+    // Do NOT start heartbeat monitor when running via MCP.
+    // The heartbeat auto-resume spawns invisible CLI processes that
+    // the user cannot see or interact with. Instead, return control
+    // to the MCP caller so they can invoke komodo_resume manually
+    // from their own terminal session.
   } catch (err) {
     // Best effort — checkpoint save failed but we still report the rate limit
   }
@@ -105,7 +108,7 @@ async function handleRateLimitIfNeeded(result, { taskId, title, branchName, repo
     branchName,
     prNumber: prNumber || null,
     error: errorText,
-    message: `Rate limit detectado. Checkpoint guardado en paso "${flowStep}". Usa komodo_resume para reanudar cuando el CLI se recupere, o espera al auto-resume del heartbeat monitor.`,
+    message: `Rate limit detectado. Checkpoint guardado en paso "${flowStep}". Usa komodo_resume para reanudar cuando el CLI se recupere.`,
   };
 }
 
@@ -878,6 +881,7 @@ export const tools = {
         cwd: params.cwd,
         dryRun: params.dryRun ?? false,
         skipServers: true,
+        skipHeartbeat: true, // Don't auto-resume in background — invisible to MCP user
       });
 
       return result;
@@ -927,7 +931,7 @@ export const tools = {
         };
       }
 
-      const result = await resume({ cwd: params.cwd });
+      const result = await resume({ cwd: params.cwd, skipHeartbeat: true });
 
       return {
         success: result.tasksCompleted > 0,

@@ -111,6 +111,17 @@ export async function runSonarScan({ cwd, prNumber, branch, baseBranch = 'main' 
     logger.success('Análisis SonarQube completado', AGENT);
     return { success: true, skipped: false, output: stdout };
   } catch (err) {
+    // sonar-scanner may exit with non-zero code even when the analysis was
+    // successfully uploaded (common on Windows). Check stdout for success
+    // indicators before declaring failure.
+    const output = err.stdout || '';
+    const uploaded = /analysis report uploaded/i.test(output) || /EXECUTION SUCCESS/i.test(output);
+
+    if (uploaded) {
+      logger.warn('sonar-scanner exited with error but analysis was uploaded — treating as success', AGENT);
+      return { success: true, skipped: false, output };
+    }
+
     logger.error(`Error en sonar-scanner: ${err.message}`, AGENT);
     return { success: false, skipped: false, reason: err.message };
   }
