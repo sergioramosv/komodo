@@ -6,11 +6,13 @@ import { validateAgentResponse } from '../utils/parser.js';
 import { getAll } from '../../skills/planning-task-mcp/src/firebase.js';
 import { komodoState } from '../state/komodo-state.js';
 import { rankWithContextAffinity, buildAffinityHint } from '../smart-ordering/context-affinity.js';
+import { estimateTaskTokens } from '../estimation/token-estimator.js'; // Import new estimation
+import { classifyAndEmit } from '../triage/complexity-classifier.js'; // Import complexity classifier
 
 /**
  * Fetches all tasks for a project from Firebase RTDB.
  * @param {string} projectId
- * @returns {Promise<Array<{id: string, status: string, blockedBy?: string[], title: string, priority?: number}>>}
+ * @returns {Promise<Array<{id: string, status: string, blockedBy?: string[], title: string, priority?: number, devPoints?: number, bizPoints?: number}>>}
  */
 export async function fetchProjectTasks(projectId) {
   const allTasks = await getAll('tasks');
@@ -76,58 +78,69 @@ export function filterBlockedTasks(todoTasks, allTasks) {
 export async function pickNextTask(projectId, { model } = {}) {
   logger.taskHeader('PLANNER - Seleccionando siguiente tarea');
 
-  // ── Step 1: Check for in-progress tasks FIRST (priority resume) ──
-  let eligibleTaskIds = null;
-  let inProgressTasks = [];
+  // ── Step 1: Fetch and filter tasks ──
+  const allTasks = await fetchProjectTasks(projectId);
+  let eligibleTasks = [];
   let affinityHint = '';
-  try {
-    const allTasks = await fetchProjectTasks(projectId);
 
-    // Priority: in-progress tasks should be completed before picking new ones
-    inProgressTasks = allTasks.filter(t => t.status === 'in-progress');
-    if (inProgressTasks.length > 0) {
-      logger.info(`Found ${inProgressTasks.length} in-progress task(s) — prioritizing these`, 'PLANNER');
-      eligibleTaskIds = inProgressTasks.map(t => t.id);
-    } else {
-      // No in-progress tasks, fall back to to-do
-      const todoTasks = allTasks.filter(t => t.status === 'to-do');
+  // Priority: in-progress tasks should be completed before picking new ones
+  const inProgressTasks = allTasks.filter(t => t.status === 'in-progress');
+  if (inProgressTasks.length > 0) {
+    logger.info(`Found ${inProgressTasks.length} in-progress task(s) — prioritizing these`, 'PLANNER');
+    // For in-progress tasks, we only care about their IDs for the prompt,
+    // as the Planner should just re-select one of them.
+    eligibleTasks = inProgressTasks.map(task => ({
+      ...task,
+      estimatedTokens: 0, // Not relevant for in-progress re-selection
+      efficiency: 0,
+    }));
+  } else {
+    // No in-progress tasks, fall back to to-do
+    const todoTasks = allTasks.filter(t => t.status === 'to-do');
 
-      if (todoTasks.length === 0) {
-        logger.info('No hay tareas to-do en el backlog', 'PLANNER');
-        return { success: true, task: null, cost: null, duration: 0 };
-      }
-
-      const { eligible, blocked } = filterBlockedTasks(todoTasks, allTasks);
-
-      if (eligible.length === 0 && blocked.length > 0) {
-        const blockedInfo = blocked.map(({ task, unresolvedBlockers }) => {
-          const blockerList = unresolvedBlockers
-            .map(b => `"${b.title}" (status: ${b.status})`)
-            .join(', ');
-          return `- "${task.title}" (${task.id}) blocked by: ${blockerList}`;
-        }).join('\n');
-
-        const message = `All to-do tasks are blocked by unfinished dependencies:\n${blockedInfo}`;
-        logger.info(message, 'PLANNER');
-        return { success: true, task: null, cost: null, duration: 0 };
-      }
-
-      if (blocked.length > 0) {
-        logger.info(`Filtered out ${blocked.length} blocked task(s), ${eligible.length} eligible`, 'PLANNER');
-      }
-
-      eligibleTaskIds = eligible.map(t => t.id);
-
-      // ── Step 1b: Context affinity boost ──
-      const previousContext = komodoState.lastCompletedTaskContext;
-      if (previousContext && previousContext.filesChanged?.length > 0) {
-        const ranked = rankWithContextAffinity(eligible, previousContext);
-        affinityHint = buildAffinityHint(ranked);
-      }
+    if (todoTasks.length === 0) {
+      logger.info('No hay tareas to-do en el backlog', 'PLANNER');
+      return { success: true, task: null, cost: null, duration: 0 };
     }
-  } catch (err) {
-    logger.warn(`Could not pre-filter blocked tasks: ${err.message}. Proceeding without filter.`, 'PLANNER');
+
+    const { eligible, blocked } = filterBlockedTasks(todoTasks, allTasks);
+
+    if (eligible.length === 0 && blocked.length > 0) {
+      const blockedInfo = blocked.map(({ task, unresolvedBlockers }) => {
+        const blockerList = unresolvedBlockers
+          .map(b => `"${b.title}" (status: ${b.status})`)
+          .join(', ');
+        return `- "${task.title}" (${task.id}) blocked by: ${blockerList}`;
+      }).join('\n');
+
+      const message = `All to-do tasks are blocked by unfinished dependencies:\n${blockedInfo}`;
+      logger.info(message, 'PLANNER');
+      return { success: true, task: null, cost: null, duration: 0 };
+    }
+
+    if (blocked.length > 0) {
+      logger.info(`Filtered out ${blocked.length} blocked task(s), ${eligible.length} eligible`, 'PLANNER');
+    }
+
+    // Calculate estimated tokens and efficiency for eligible tasks
+    eligibleTasks = eligible.map(task => {
+      const classification = classifyAndEmit(task);
+      const complexityLevel = classification.level;
+      const estimatedTokens = estimateTaskTokens(task, complexityLevel).total;
+      const efficiency = task.bizPoints > 0 ? (task.bizPoints / estimatedTokens) : 0;
+      return { ...task, estimatedTokens, efficiency, complexityLevel };
+    });
+
+    // ── Step 1b: Context affinity boost ──
+    const previousContext = komodoState.lastCompletedTaskContext;
+    if (previousContext && previousContext.filesChanged?.length > 0) {
+      const ranked = rankWithContextAffinity(eligibleTasks, previousContext);
+      affinityHint = buildAffinityHint(ranked);
+    }
   }
+
+  // Sort eligible tasks by efficiency (bizPoints / estimatedTokens) DESC
+  eligibleTasks.sort((a, b) => b.efficiency - a.efficiency);
 
   // ── Step 2: Run the Planner agent with eligible task context ──
   const systemPrompt = getPlannerSystemPrompt({
@@ -136,12 +149,20 @@ export async function pickNextTask(projectId, { model } = {}) {
     defaultUserName: config.defaultUserName,
   });
 
-  let userPrompt = inProgressTasks.length > 0
-    ? `Hay ${inProgressTasks.length} tarea(s) IN-PROGRESS que deben completarse primero. Selecciona una de ellas (ya está en in-progress, NO cambies su estado). Devuélveme los detalles en JSON.`
-    : `Analiza el backlog del proyecto "${projectId}" y elige la siguiente tarea a implementar. Cambia su estado a in-progress y devuélveme los detalles en JSON.`;
+  let userPrompt = '';
+  if (inProgressTasks.length > 0) {
+    userPrompt = `Hay ${inProgressTasks.length} tarea(s) IN-PROGRESS que deben completarse primero. Selecciona una de ellas (ya está en in-progress, NO cambies su estado). Devuélveme los detalles en JSON.
 
-  if (eligibleTaskIds) {
-    userPrompt += `\n\nIMPORTANTE — Dependencias pre-filtradas: las siguientes tareas son las ÚNICAS elegibles (sus dependencias ya están resueltas). Solo selecciona de esta lista:\n${eligibleTaskIds.map(id => `- ${id}`).join('\n')}`;
+Tareas IN-PROGRESS:
+${inProgressTasks.map(t => `- ID: ${t.id}, Título: "${t.title}"`).join('\n')}`;
+  } else {
+    userPrompt = `Analiza el backlog del proyecto "${projectId}" y elige la siguiente tarea a implementar. Cambia su estado a in-progress y devuélveme los detalles en JSON.
+
+Prioriza las tareas con la mayor "eficiencia" (bizPoints / estimatedTokens).
+Si varias tareas tienen eficiencia similar, considera la prioridad inherente (bizPoints/devPoints) y la afinidad de contexto.
+
+Tareas elegibles (ordenadas por eficiencia decreciente):
+${eligibleTasks.map(t => `- ID: ${t.id}, Título: "${t.title}", BizPoints: ${t.bizPoints}, DevPoints: ${t.devPoints}, EstimatedTokens: ${t.estimatedTokens}, Eficiencia: ${t.efficiency.toFixed(3)}, Complejidad: ${t.complexityLevel}`).join('\n')}`;
   }
 
   if (affinityHint) {

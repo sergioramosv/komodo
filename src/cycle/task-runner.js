@@ -443,7 +443,7 @@ export async function runTask(projectId, cwd) {
 
     komodoState.updatePhase(PHASES.PLANNING, { currentTask: taskSpec.taskId });
 
-    const tokenEstimation = estimateTaskTokens(taskSpec);
+    const tokenEstimation = estimateTaskTokens(taskSpec, complexityLevel);
     eventBus.emitEvent(EVENT_TYPES.TASK_STARTED, {
       metadata: {
         taskId: taskSpec.taskId,
