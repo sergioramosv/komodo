@@ -154,7 +154,7 @@ describe('loadModuleLessons', () => {
     expect(lessons).toContain('Added auth module');
   });
 
-  it('caps lessons entries at 20 per module', () => {
+  it('caps lessons entries at 20 per module', async () => {
     // Save 25 tasks worth of lessons
     for (let i = 0; i < 25; i++) {
       const tid = `task-${i}`;
@@ -165,10 +165,8 @@ describe('loadModuleLessons', () => {
       extractAndSaveLessons(PROJECT_ID, tid, 'shared-module');
     }
 
-    const { readFileSync } = await import('fs');
-    const { join: pathJoin } = await import('path');
     const data = JSON.parse(
-      readFileSync(pathJoin(TEST_DIR, PROJECT_ID, 'lessons', 'shared-module.json'), 'utf-8'),
+      readFileSync(join(TEST_DIR, PROJECT_ID, 'lessons', 'shared-module.json'), 'utf-8'),
     );
     expect(data.lessons.length).toBeLessThanOrEqual(20);
   });

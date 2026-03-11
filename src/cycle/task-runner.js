@@ -305,6 +305,19 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    // KG: save planner section for downstream agents
+    try {
+      saveSection(projectId, taskSpec.taskId, 'planner', {
+        title: taskSpec.title,
+        userStory: taskSpec.userStory,
+        acceptanceCriteria: taskSpec.acceptanceCriteria,
+        tags: taskSpec.tags,
+        branchName: taskSpec.branchName,
+      });
+    } catch (err) {
+      logger.warn(`KG saveSection planner failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
     // --- Rate Limit Awareness Check ---
     const estimatedTokens = estimateTaskTokens(taskSpec).total;
     const headroom = getRateLimitHeadroom();
@@ -521,10 +534,14 @@ export async function runTask(projectId, cwd) {
 
     eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
 
-    // KG: derive module from task tags or first path segment of most-modified file
+    // KG: derive module from task tags or subdirectory of most-modified file.
+    // Only use path segment [1] when the file is nested in a subdirectory (≥3 parts),
+    // e.g. src/agents/coder.js → 'agents'. Files directly in top-level dir like
+    // src/config.js (2 parts) fall through to 'general' to avoid using the filename as module.
+    const deriveModule = (p) => { const parts = p?.split('/'); return parts?.length >= 3 ? parts[1] : null; };
     const taskModule = taskSpec.tags?.[0]
-      || (architectPlan?.filesToModify?.[0]?.path?.split('/')?.[1])
-      || (architectPlan?.filesToCreate?.[0]?.path?.split('/')?.[1])
+      || deriveModule(architectPlan?.filesToModify?.[0]?.path)
+      || deriveModule(architectPlan?.filesToCreate?.[0]?.path)
       || 'general';
 
     // KG: build compact context for Coder and load cross-task lessons
