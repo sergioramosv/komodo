@@ -73,10 +73,10 @@ export async function implementTask(taskSpec, cwd, { model, codingGuidelines, ar
     }
   }
 
-  // Build review feedback context (common mistakes from past reviews)
+  // Build review feedback context (top 5 patterns relevant to this specific task)
   let feedbackSection = '';
   try {
-    const { summary } = getReviewFeedbackContext();
+    const { summary } = getReviewFeedbackContext({ taskSpec });
     if (summary) {
       feedbackSection = `\n## ${summary}\n`;
     }
@@ -90,7 +90,14 @@ export async function implementTask(taskSpec, cwd, { model, codingGuidelines, ar
     guidelinesSection = `\n## Project Coding Guidelines (MANDATORY)\n${codingGuidelines}\n`;
   }
 
-  const userPrompt = `Implementa la siguiente tarea:
+  // Prompt prefix sharing: static/reusable context sections go FIRST so they can be
+  // cached across consecutive invocations. Dynamic task-specific content goes at the END.
+  const staticPrefix = [codebaseSection, styleSection, feedbackSection, guidelinesSection]
+    .filter(Boolean)
+    .join('');
+
+  const userPrompt = `${staticPrefix}
+Implementa la siguiente tarea:
 
 ## Tarea
 - **ID**: ${taskSpec.taskId}
@@ -110,7 +117,7 @@ ${(taskSpec.acceptanceCriteria || []).map((c, i) => `${i + 1}. ${c}`).join('\n')
 3. Commitea y haz push a la branch
 4. Abre una PR con create_pr
 5. **NO MERGEES LA PR**. Solo ábrela y devuelve el resultado. El merge lo hace otro agente después del review.
-${architectSection}${codebaseSection}${styleSection}${feedbackSection}${guidelinesSection}
+${architectSection}
 Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, summary.`;
 
   const result = await runAgent({
@@ -187,10 +194,21 @@ export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, {
     .map((issue, i) => `${i + 1}. ${typeof issue === 'string' ? issue : issue.description || JSON.stringify(issue)}`)
     .join('\n');
 
-  // Build review feedback context (common mistakes to watch for while fixing)
+  // Diff-only context: extract file paths mentioned in issues so the Coder reads
+  // only the relevant files instead of exploring the full codebase.
+  const mentionedFiles = extractFilesFromIssues(reviewFeedback.issues || []);
+  const diffContextSection = mentionedFiles.length > 0
+    ? `\n## Files to fix (diff-only context — read ONLY these files, do NOT explore the entire codebase)\n${mentionedFiles.map(f => `- ${f}`).join('\n')}\n`
+    : '';
+
+  if (mentionedFiles.length > 0) {
+    logger.info(`Diff-only context: injecting ${mentionedFiles.length} file(s) mentioned in review issues`, 'CODER');
+  }
+
+  // Build review feedback context (task-relevant patterns to watch for while fixing)
   let feedbackSection = '';
   try {
-    const { summary } = getReviewFeedbackContext();
+    const { summary } = getReviewFeedbackContext({ taskSpec });
     if (summary) {
       feedbackSection = `\n## ${summary}\n`;
     }
@@ -211,14 +229,14 @@ ${reviewFeedback.summary || 'Sin resumen'}
 
 ## Issues a resolver
 ${issuesList || 'Sin issues específicos'}
-
+${diffContextSection}
 ## Contexto de la tarea original
 - **Título**: ${taskSpec.title}
 - **Branch**: ${taskSpec.branchName}
 - **Repo**: ${extractOwnerRepo(taskSpec.repoUrl)}
 ${feedbackSection}${guidelinesSection}
 ## Instrucciones
-1. Lee el código actual en la branch
+1. Lee SOLO los archivos mencionados en "Files to fix" (si están listados)
 2. Arregla CADA issue listado arriba
 3. Commitea con mensaje descriptivo (fix: ...)
 4. Haz push al branch "${taskSpec.branchName}"
@@ -277,4 +295,31 @@ function extractOwnerRepo(repoUrl) {
   if (!repoUrl) return '';
   const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
   return match ? match[1].replace(/\.git$/, '') : repoUrl;
+}
+
+/**
+ * Extracts file paths mentioned in review issues for diff-only context injection.
+ * Looks for common file path patterns (e.g. src/foo.js, path/to/file.ts).
+ *
+ * @param {Array} issues - Review issues (strings or objects with .description)
+ * @returns {string[]} Unique file paths found in issue text
+ */
+function extractFilesFromIssues(issues) {
+  const FILE_PATH_RE = /(?:^|[\s`'"(])([a-zA-Z0-9_][a-zA-Z0-9._/-]*\/[a-zA-Z0-9._/-]+\.(?:js|mjs|ts|tsx|jsx|py|go|json|css|scss|md))/g;
+  const files = new Set();
+
+  for (const issue of issues) {
+    const text = typeof issue === 'string' ? issue : (issue.description || issue.file || JSON.stringify(issue));
+    // Also capture direct .file references from structured issue objects
+    if (issue && typeof issue === 'object' && issue.file) {
+      files.add(issue.file);
+    }
+    let match;
+    FILE_PATH_RE.lastIndex = 0;
+    while ((match = FILE_PATH_RE.exec(text)) !== null) {
+      files.add(match[1].trim());
+    }
+  }
+
+  return [...files];
 }
