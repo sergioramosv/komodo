@@ -252,6 +252,13 @@ function applyEvent(
         next.executionState = (event.metadata as { current: string }).current as KomodoSnapshot['executionState'];
       }
       break;
+    case 'phase:change': {
+      const current = (event.metadata as { current?: string }).current;
+      if (current) {
+        next.phase = current as KomodoSnapshot['phase'];
+      }
+      break;
+    }
     case 'browser:check': {
       const agent = event.agentName as keyof typeof next.agents | null;
       if (agent && next.agents[agent]) {
@@ -372,6 +379,9 @@ function formatEvent(event: WsEventMessage['data']): DashboardEvent | null {
       break;
     case 'execution:state-change':
       message = `Execution state changed to ${meta.current ?? 'unknown'}`;
+      break;
+    case 'phase:change':
+      message = `Phase changed to ${meta.current ?? 'unknown'}`;
       break;
     case 'browser:check': {
       const url = meta.url as string | undefined;

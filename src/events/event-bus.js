@@ -157,6 +157,9 @@ export const EVENT_TYPES = {
   // Dead letter queue events
   DEAD_LETTER_QUEUED: 'dead-letter:queued',
 
+  // Phase change events
+  PHASE_CHANGE: 'phase:change',
+
   // Execution control events
   EXECUTION_STATE_CHANGE: 'execution:state-change',
 
