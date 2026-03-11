@@ -514,6 +514,12 @@ export async function runAgent({
       onStderr,
     });
 
+    // DEBUG: dump raw output to file for diagnosis
+    try {
+      const { writeFileSync } = await import('fs');
+      writeFileSync(`C:/Users/Ramos/Documents/komodo/_debug_${name}_stdout.txt`, stdout || '(empty)');
+    } catch {}
+
     // Parse CLI output
     const { rawResult, cost, turns } = adapter.parseOutput(stdout);
     const result = extractJSON(rawResult);
@@ -544,6 +550,11 @@ export async function runAgent({
       rateLimited: rateLimitInResult,
     };
   } catch (err) {
+    // DEBUG: dump error to file
+    try {
+      const { writeFileSync } = await import('fs');
+      writeFileSync(`C:/Users/Ramos/Documents/komodo/_debug_${name}_error.txt`, err.message || '(empty)');
+    } catch {}
     const duration = (Date.now() - startTime) / 1000;
     logger.error(`Error after ${duration.toFixed(1)}s: ${err.message}`, name);
 
