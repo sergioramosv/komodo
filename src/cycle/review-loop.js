@@ -7,6 +7,7 @@ import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
 import { komodoState, DASHBOARD_AGENT_STATES } from '../state/komodo-state.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
 import { recordReviewIssues, recordAvoidedPatterns } from './review-feedback-recorder.js';
+import { getEscalationModel } from '../triage/smart-model-router.js';
 
 /**
  * Ejecuta el bucle Coder ↔ Reviewer.
@@ -29,13 +30,14 @@ import { recordReviewIssues, recordAvoidedPatterns } from './review-feedback-rec
  *   error?: string
  * }>}
  */
-export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: initialSonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues }) {
+export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: initialSonarReport, coverageReport, qaReport, reviewerModel, coderModel, coderCli, codingGuidelines, pluginIssues }) {
   let sonarReport = initialSonarReport;
   const maxCycles = config.maxReviewCycles;
   let cycles = 0;
   let lastReview = null;
   let lastReviewSHA = null;
   let totalCost = 0;
+  let activeCoderModel = coderModel;
 
   for (let i = 1; i <= maxCycles; i++) {
     cycles = i;
@@ -173,6 +175,32 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
       logger.warn(`Could not record review issues: ${err.message}`, 'KOMODO');
     }
 
+    // === AUTO-ESCALATION: upgrade Coder model if score is below threshold ===
+    if (config.smartModelRouting && coderCli && lastReview.score != null) {
+      const escalationThreshold = config.smartModelRoutingEscalationThreshold;
+      if (lastReview.score < escalationThreshold) {
+        const escalated = getEscalationModel(coderCli, activeCoderModel);
+        if (escalated !== activeCoderModel) {
+          logger.info(
+            `Auto-escalating Coder model: "${activeCoderModel}" → "${escalated}" (review score ${lastReview.score} < threshold ${escalationThreshold})`,
+            'KOMODO',
+          );
+          eventBus.emitEvent(EVENT_TYPES.MODEL_ESCALATED, {
+            metadata: {
+              agentRole: 'CODER',
+              cliType: coderCli,
+              fromModel: activeCoderModel,
+              toModel: escalated,
+              triggerScore: lastReview.score,
+              threshold: escalationThreshold,
+              cycle: i,
+            },
+          });
+          activeCoderModel = escalated;
+        }
+      }
+    }
+
     // === CODER FIX ===
     checkpointManager.setFlowContext({ flowStep: 'fix', reviewIssues: lastReview.issues || [] });
     logger.info(`Coder arreglando ${(lastReview.issues || []).length} issues...`, 'KOMODO');
@@ -186,7 +214,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
     });
     eventBus.emitAgentEvent('CODER', 'working', { cycle: i, fixing: true });
 
-    const fixResult = await fixReviewIssues(taskSpec, prNumber, lastReview, cwd, { model: coderModel, codingGuidelines });
+    const fixResult = await fixReviewIssues(taskSpec, prNumber, lastReview, cwd, { model: activeCoderModel, codingGuidelines });
 
     if (fixResult.cost) {
       totalCost += fixResult.cost;

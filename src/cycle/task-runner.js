@@ -13,7 +13,8 @@ import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
 import { komodoState, PHASES, DASHBOARD_AGENT_STATES, EXECUTION_STATES } from '../state/komodo-state.js';
 import { checkpointManager } from '../state/checkpoint-manager.js';
 import { classifyAndEmit } from '../triage/complexity-classifier.js';
-import { selectModel } from '../triage/model-selector.js';
+import { selectModel, selectModelWithLearning } from '../triage/model-selector.js';
+import { recordRoutingMetrics } from '../triage/smart-model-router.js';
 import { shouldDecompose, decomposeTask } from '../triage/task-decomposer.js';
 import { fallbackManager } from '../agents/fallback-manager.js';
 import { withWatchdog } from '../watchdog/watchdog.js';
@@ -49,6 +50,26 @@ function extractOwnerRepo(repoUrl) {
   if (!repoUrl) return '';
   const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
   return match ? match[1].replace(/\.git$/, '') : repoUrl;
+}
+
+/**
+ * Checks if a PR has merge conflicts using the GitHub API.
+ * Returns { mergeable, conflicting } where conflicting is true if there are conflicts.
+ */
+function checkMergeConflicts(repo, prNumber) {
+  try {
+    const pr = runGh(
+      ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus'],
+      { json: true },
+    );
+    if (!pr || typeof pr !== 'object') return { mergeable: true, conflicting: false };
+
+    const conflicting = pr.mergeable === 'CONFLICTING' || pr.mergeStateStatus === 'DIRTY';
+    return { mergeable: !conflicting, conflicting };
+  } catch (err) {
+    logger.warn(`Could not check merge conflicts for PR #${prNumber}: ${err.message}`, 'KOMODO');
+    return { mergeable: true, conflicting: false };
+  }
 }
 
 /**
@@ -326,9 +347,14 @@ export async function runTask(projectId, cwd) {
     const coderCli = config.cliCoder;
     const reviewerCli = config.cliReviewer;
 
+    const smartOptions = {
+      projectId: projectId || config.defaultProjectId,
+      taskType: taskSpec.taskType || undefined,
+    };
+
     const architectModel = selectModel(architectCli, 'ARCHITECT', complexityLevel, taskModelOverride);
-    const coderModel = selectModel(coderCli, 'CODER', complexityLevel, taskModelOverride);
-    const reviewerModel = selectModel(reviewerCli, 'REVIEWER', complexityLevel, taskModelOverride);
+    const coderModel = await selectModelWithLearning(coderCli, 'CODER', complexityLevel, taskModelOverride, smartOptions);
+    const reviewerModel = await selectModelWithLearning(reviewerCli, 'REVIEWER', complexityLevel, taskModelOverride, smartOptions);
 
     // Fetch project coding guidelines for injection into agent prompts
     const codingGuidelines = await fetchCodingGuidelines(projectId);
@@ -723,6 +749,22 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     logger.logStep(5, 6, 'Review loop...', 'KOMODO');
 
+    // Check for merge conflicts before starting review
+    const conflictCheck = checkMergeConflicts(repo, prNumber);
+    if (conflictCheck.conflicting) {
+      logger.error(`PR #${prNumber} has merge conflicts. Cannot proceed with review.`, 'KOMODO');
+      closePR(repo, prNumber, 'Merge conflicts detected. PR needs rebase before review.');
+      await rollbackTask(taskSpec.taskId);
+      return makeResult({
+        success: false,
+        taskSpec,
+        prNumber,
+        startTime,
+        error: 'Merge conflicts detected. PR closed.',
+        reviewResult: null,
+      });
+    }
+
     komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
     komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING });
 
@@ -742,7 +784,7 @@ export async function runTask(projectId, cwd) {
     const pluginIssues = beforeReviewPluginResults.flatMap(r => r.issues || []);
 
     const reviewResult = await withWatchdog(
-      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues }),
+      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, coderCli, codingGuidelines, pluginIssues }),
       { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
     );
 
@@ -834,8 +876,8 @@ export async function runTask(projectId, cwd) {
     // Use the latest sonarReport from the review loop (may have been refreshed after fixes)
     const finalSonarReport = reviewResult.sonarReport || sonarReport;
 
-    // Block merge if SonarQube quality gate failed
-    if (finalSonarReport?.success && finalSonarReport.qualityGate === 'ERROR') {
+    // Block merge if SonarQube quality gate failed (ERROR or any non-OK status)
+    if (finalSonarReport?.success && finalSonarReport.qualityGate && finalSonarReport.qualityGate !== 'OK') {
       const blockerCount = finalSonarReport.issues?.BLOCKER || 0;
       const criticalCount = finalSonarReport.issues?.CRITICAL || 0;
       logger.error(
@@ -858,6 +900,22 @@ export async function runTask(projectId, cwd) {
     }
 
     let merged = false;
+
+    // Check for merge conflicts before attempting merge
+    const preMergeConflictCheck = checkMergeConflicts(repo, prNumber);
+    if (preMergeConflictCheck.conflicting) {
+      logger.error(`PR #${prNumber} has merge conflicts. Cannot merge.`, 'KOMODO');
+      closePR(repo, prNumber, 'Merge conflicts detected at merge time. PR needs rebase.');
+      await rollbackTask(taskSpec.taskId);
+      return makeResult({
+        success: false,
+        taskSpec,
+        prNumber,
+        startTime,
+        error: 'Merge conflicts detected at merge time. PR closed.',
+        reviewResult,
+      });
+    }
 
     if (config.autoMerge) {
       try {
@@ -1005,6 +1063,38 @@ export async function runTask(projectId, cwd) {
       });
     } catch (err) {
       logger.warn(`Model performance tracking failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
+    // Record smart routing metrics (best effort)
+    try {
+      const approvedFirstCycle = reviewResult.approved && reviewResult.cycles === 1;
+      const routingProjectId = projectId || config.defaultProjectId;
+      await Promise.all([
+        coderModel && recordRoutingMetrics({
+          taskId: taskSpec.taskId,
+          projectId: routingProjectId,
+          cliType: coderCli,
+          agentRole: 'CODER',
+          model: coderModel,
+          complexityLevel,
+          taskType: taskSpec.taskType || undefined,
+          approvedFirstCycle,
+          reviewScore: reviewResult.finalReview?.score ?? null,
+        }),
+        reviewerModel && recordRoutingMetrics({
+          taskId: taskSpec.taskId,
+          projectId: routingProjectId,
+          cliType: reviewerCli,
+          agentRole: 'REVIEWER',
+          model: reviewerModel,
+          complexityLevel,
+          taskType: taskSpec.taskType || undefined,
+          approvedFirstCycle,
+          reviewScore: reviewResult.finalReview?.score ?? null,
+        }),
+      ].filter(Boolean));
+    } catch (err) {
+      logger.warn(`Smart routing metrics recording failed (non-blocking): ${err.message}`, 'KOMODO');
     }
 
     // Record context for smart task ordering (context affinity)
