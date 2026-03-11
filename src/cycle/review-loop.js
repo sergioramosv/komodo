@@ -50,12 +50,11 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
 
     // === REVIEWER ===
     checkpointManager.setFlowContext({ flowStep: 'review', reviewIssues: null });
-    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING });
-
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'REVIEWER',
-      previousState: i === 1 ? AGENT_STATES.WORKING : AGENT_STATES.WAITING,
-      newState: AGENT_STATES.WORKING,
+    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING }, {
+      cycle: i,
+      maxCycles,
+      prNumber,
+      repo
     });
     eventBus.emitAgentEvent('REVIEWER', 'working', { cycle: i });
 

@@ -189,9 +189,10 @@ export class KomodoState {
    * @param {string} [updates.status] - Nuevo status (idle|walking|working|done)
    * @param {string|null} [updates.currentTask] - Tarea actual
    * @param {string|null} [updates.startedAt] - Timestamp de inicio
+   * @param {Object} [metadata] - Metadatos para el evento de cambio de estado
    * @returns {Object} Estado actualizado del agente
    */
-  updateAgent(agentName, updates) {
+  updateAgent(agentName, updates, metadata = {}) {
     const agent = this.agents[agentName];
     if (!agent) {
       throw new Error(`Agente desconocido: ${agentName}`);
@@ -202,14 +203,16 @@ export class KomodoState {
 
     if (updates.status && updates.status !== previousStatus) {
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName,
+        agentName: agentName,
         previousState: previousStatus,
         newState: updates.status,
+        metadata,
       });
     }
 
     return { ...agent };
   }
+
 
   /**
    * Actualiza la fase global del orquestador.

@@ -26,7 +26,7 @@ vi.mock('../events/event-bus.js', () => ({
   },
 }));
 
-import { classifyComplexity, classifyAndEmit } from './complexity-classifier.js';
+import { classifyComplexity, classifyAndEmit, calculateRealComplexity } from './complexity-classifier.js';
 import { eventBus } from '../events/event-bus.js';
 import { logger } from '../utils/logger.js';
 
@@ -281,6 +281,176 @@ describe('complexity-classifier', () => {
       expect(eventBus.emitEvent).toHaveBeenCalledWith('task:classified', {
         metadata: expect.objectContaining({ taskId: null }),
       });
+    });
+  });
+
+  // ── calculateRealComplexity ──────────────────────────────────
+
+  describe('calculateRealComplexity', () => {
+    it('falls back to devPoints-based scoring when no plan data exists', () => {
+      const task = { taskId: 'no-plan', devPoints: 5, acceptanceCriteria: ['a', 'b'] };
+
+      const result = calculateRealComplexity(task);
+
+      expect(result.signals.noPlanData).toBe(true);
+      expect(result.score).toBeGreaterThanOrEqual(1);
+      expect(result.score).toBeLessThanOrEqual(10);
+      expect(result.reasoning).toContain('No plan data');
+    });
+
+    it('calculates real complexity from architectPlan data', () => {
+      const task = {
+        taskId: 'with-arch-plan',
+        devPoints: 8,
+        acceptanceCriteria: ['a', 'b', 'c', 'd', 'e'],
+        architectPlan: {
+          filesToCreate: [
+            { path: 'src/new-module.js', purpose: 'New module' },
+            { path: 'src/new-helper.js', purpose: 'Helper' },
+          ],
+          filesToModify: [
+            { path: 'src/existing.js', changes: 'Add import' },
+            { path: 'src/config.js', changes: 'Add config key' },
+            { path: 'src/index.js', changes: 'Register module' },
+          ],
+          dependencies: ['zod', 'lodash'],
+          dataModelChanges: 'Add new schema for user permissions with roles table',
+          apiChanges: 'New POST /api/permissions endpoint with auth middleware',
+          implementationOrder: ['Create schema', 'Build endpoint', 'Add tests'],
+          risks: ['Breaking change to auth flow', 'Migration risk'],
+        },
+      };
+
+      const result = calculateRealComplexity(task);
+
+      expect(result.signals.noPlanData).toBeUndefined();
+      expect(result.signals.filesAffected).toBe(5);
+      expect(result.signals.dependencies).toBe(2);
+      expect(result.signals.dataModelChanges).toBe(true);
+      expect(result.signals.apiChanges).toBe(true);
+      expect(result.signals.risks).toBe(2);
+      expect(result.score).toBeGreaterThanOrEqual(5);
+      expect(result.reasoning).toContain('Real complexity');
+      expect(result.reasoning).toContain('files=5');
+    });
+
+    it('uses implementationPlan as fallback when architectPlan is absent', () => {
+      const task = {
+        taskId: 'with-impl-plan',
+        devPoints: 5,
+        implementationPlan: {
+          filesToCreate: [{ path: 'src/feature.js', purpose: 'Feature' }],
+          filesToModify: [{ path: 'src/app.js', changes: 'Import feature' }],
+          dependencies: [],
+          dataModelChanges: 'None',
+          apiChanges: '',
+          risks: [],
+          steps: ['Step 1', 'Step 2'],
+        },
+      };
+
+      const result = calculateRealComplexity(task);
+
+      expect(result.signals.noPlanData).toBeUndefined();
+      expect(result.signals.filesAffected).toBe(2);
+      expect(result.signals.dataModelChanges).toBe(false);
+      expect(result.signals.apiChanges).toBe(false);
+    });
+
+    it('prefers architectPlan over implementationPlan', () => {
+      const task = {
+        taskId: 'both-plans',
+        devPoints: 8,
+        architectPlan: {
+          filesToCreate: [{ path: 'a.js' }, { path: 'b.js' }, { path: 'c.js' }],
+          filesToModify: [],
+          dependencies: ['pkg1'],
+          risks: ['risk1'],
+        },
+        implementationPlan: {
+          filesToCreate: [{ path: 'x.js' }],
+          filesToModify: [],
+          dependencies: [],
+          risks: [],
+        },
+      };
+
+      const result = calculateRealComplexity(task);
+
+      // Should use architectPlan (3 files, 1 dep, 1 risk) not implementationPlan (1 file)
+      expect(result.signals.filesAffected).toBe(3);
+      expect(result.signals.dependencies).toBe(1);
+      expect(result.signals.risks).toBe(1);
+    });
+
+    it('handles string risks in implementationPlan', () => {
+      const task = {
+        taskId: 'string-risks',
+        devPoints: 5,
+        implementationPlan: {
+          filesToCreate: [{ path: 'src/a.js' }],
+          filesToModify: [],
+          risks: 'Risk 1\nRisk 2\nRisk 3',
+        },
+      };
+
+      const result = calculateRealComplexity(task);
+
+      expect(result.signals.risks).toBe(3);
+    });
+
+    it('scores higher for tasks with many files, deps, and changes', () => {
+      const simpleTask = {
+        taskId: 'simple',
+        devPoints: 3,
+        architectPlan: {
+          filesToCreate: [{ path: 'a.js' }],
+          filesToModify: [],
+          dependencies: [],
+          risks: [],
+        },
+      };
+
+      const complexTask = {
+        taskId: 'complex',
+        devPoints: 13,
+        acceptanceCriteria: new Array(10).fill('criterion'),
+        architectPlan: {
+          filesToCreate: Array.from({ length: 5 }, (_, i) => ({ path: `src/new${i}.js` })),
+          filesToModify: Array.from({ length: 8 }, (_, i) => ({ path: `src/mod${i}.js` })),
+          dependencies: ['pkg1', 'pkg2', 'pkg3', 'pkg4'],
+          dataModelChanges: 'Major schema overhaul with 5 new tables and foreign key constraints across all entities',
+          apiChanges: 'New REST API with 10 endpoints, authentication overhaul, rate limiting per endpoint',
+          risks: ['Data migration', 'Breaking API changes', 'Performance regression', 'Auth bypass risk'],
+        },
+      };
+
+      const simpleResult = calculateRealComplexity(simpleTask);
+      const complexResult = calculateRealComplexity(complexTask);
+
+      expect(complexResult.score).toBeGreaterThan(simpleResult.score);
+    });
+
+    it('returns score clamped between 1 and 10', () => {
+      const minResult = calculateRealComplexity({ taskId: 'min' });
+      expect(minResult.score).toBeGreaterThanOrEqual(1);
+      expect(minResult.score).toBeLessThanOrEqual(10);
+
+      const maxResult = calculateRealComplexity({
+        taskId: 'max',
+        devPoints: 13,
+        acceptanceCriteria: new Array(15).fill('c'),
+        architectPlan: {
+          filesToCreate: Array.from({ length: 10 }, (_, i) => ({ path: `f${i}.js` })),
+          filesToModify: Array.from({ length: 10 }, (_, i) => ({ path: `m${i}.js` })),
+          dependencies: ['a', 'b', 'c', 'd', 'e', 'f'],
+          dataModelChanges: 'x'.repeat(200),
+          apiChanges: 'y'.repeat(200),
+          risks: ['r1', 'r2', 'r3', 'r4', 'r5'],
+        },
+      });
+      expect(maxResult.score).toBeGreaterThanOrEqual(1);
+      expect(maxResult.score).toBeLessThanOrEqual(10);
     });
   });
 });

@@ -4,16 +4,16 @@
       "style": "spaces",
       "size": 2
     },
-    "quotes": "single",
+    "quotes": "mixed",
     "semicolons": "always",
     "naming": "camelCase",
     "imports": "esm",
     "testFramework": "vitest",
-    "validation": null,
+    "validation": "zod",
     "errorHandling": "mixed",
     "primaryLanguage": "js"
   },
-  "summary": "Style: camelCase functions, 2-space indent, single quotes, semicolons, ES modules (import/export), vitest for tests, mixed error handling",
-  "checksum": "de556fe003a2bd851b05ceec0faed200e9b092ef66f5043c7dff4f154dc52c5e",
-  "generatedAt": "2026-03-10T20:53:29.288Z"
+  "summary": "Style: camelCase functions, 2-space indent, mixed quotes, semicolons, ES modules (import/export), vitest for tests, zod for validation, mixed error handling",
+  "checksum": "e38308106c5e661afdcf6c6bdcc7573420ad5ee896b153bf0853b1f11dfa7a51",
+  "generatedAt": "2026-03-11T14:18:49.635Z"
 }

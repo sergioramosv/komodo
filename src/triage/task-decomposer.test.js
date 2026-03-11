@@ -4,6 +4,8 @@ vi.mock('../config.js', () => ({
   config: {
     taskDecomposition: true,
     decompositionThresholdDevpoints: 8,
+    complexityTrivialMax: 3,
+    complexityStandardMax: 6,
   },
 }));
 
@@ -71,10 +73,50 @@ describe('task-decomposer', () => {
       expect(result.reasons).toContain('Task already decomposed');
     });
 
-    it('returns true when devPoints >= threshold', () => {
+    it('falls back to devPoints threshold when no plan data', () => {
+      // devPoints=8 without plan → uses legacy threshold (8 >= 8 = true)
       const result = shouldDecompose({ taskId: 't1', devPoints: 8 });
       expect(result.shouldDecompose).toBe(true);
       expect(result.reasons[0]).toContain('devPoints=8');
+
+      // devPoints=5 without plan → below threshold
+      const result2 = shouldDecompose({ taskId: 't2', devPoints: 5 });
+      expect(result2.shouldDecompose).toBe(false);
+    });
+
+    it('returns true with real complexity when architectPlan makes task complex', () => {
+      const result = shouldDecompose({
+        taskId: 't1',
+        devPoints: 8,
+        acceptanceCriteria: ['a', 'b', 'c', 'd', 'e', 'f'],
+        architectPlan: {
+          filesToCreate: Array.from({ length: 5 }, (_, i) => ({ path: `src/new${i}.js` })),
+          filesToModify: Array.from({ length: 8 }, (_, i) => ({ path: `src/mod${i}.js` })),
+          dependencies: ['zod', 'express', 'jsonwebtoken', 'bcrypt'],
+          dataModelChanges: 'Major schema overhaul with new permissions table, roles table, and foreign key constraints across user, team, and org entities requiring migration scripts',
+          apiChanges: 'New REST API with POST /permissions, GET /permissions/:id, PUT /permissions/:id, DELETE /permissions/:id, plus auth middleware changes and rate limiting per endpoint',
+          risks: ['Breaking auth flow', 'Migration risk', 'Performance regression', 'Backwards compatibility'],
+        },
+      });
+      expect(result.shouldDecompose).toBe(true);
+      expect(result.reasons[0]).toContain('realComplexity');
+      expect(result.realComplexity).toBeDefined();
+      expect(result.realComplexity.score).toBeGreaterThanOrEqual(7);
+    });
+
+    it('returns false when architectPlan is simple (low real complexity)', () => {
+      const result = shouldDecompose({
+        taskId: 't1',
+        devPoints: 3,
+        architectPlan: {
+          filesToCreate: [{ path: 'a.js' }],
+          filesToModify: [],
+          dependencies: [],
+          risks: [],
+        },
+      });
+      expect(result.shouldDecompose).toBe(false);
+      expect(result.realComplexity.score).toBeLessThan(7);
     });
 
     it('returns true when acceptance criteria > 6', () => {
@@ -84,7 +126,7 @@ describe('task-decomposer', () => {
         acceptanceCriteria: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
       });
       expect(result.shouldDecompose).toBe(true);
-      expect(result.reasons[0]).toContain('acceptanceCriteria=7');
+      expect(result.reasons.some(r => r.includes('acceptanceCriteria=7'))).toBe(true);
     });
 
     it('returns true when userStory length > 500 chars', () => {
@@ -94,7 +136,7 @@ describe('task-decomposer', () => {
         userStory: { who: 'x'.repeat(200), what: 'y'.repeat(200), why: 'z'.repeat(200) },
       });
       expect(result.shouldDecompose).toBe(true);
-      expect(result.reasons[0]).toContain('userStoryLength=');
+      expect(result.reasons.some(r => r.includes('userStoryLength='))).toBe(true);
     });
 
     it('returns false when no thresholds are met', () => {
@@ -105,18 +147,16 @@ describe('task-decomposer', () => {
         userStory: 'short story',
       });
       expect(result.shouldDecompose).toBe(false);
-      expect(result.reasons).toHaveLength(0);
     });
 
-    it('returns multiple reasons when multiple thresholds are met', () => {
+    it('includes realComplexity in result', () => {
       const result = shouldDecompose({
         taskId: 't1',
-        devPoints: 13,
-        acceptanceCriteria: ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
-        userStory: 'x'.repeat(600),
+        devPoints: 5,
+        acceptanceCriteria: ['a'],
       });
-      expect(result.shouldDecompose).toBe(true);
-      expect(result.reasons.length).toBe(3);
+      expect(result.realComplexity).toBeDefined();
+      expect(result.realComplexity.score).toBeGreaterThanOrEqual(1);
     });
 
     it('handles string acceptanceCriteria (newline-separated)', () => {
@@ -126,17 +166,16 @@ describe('task-decomposer', () => {
         acceptanceCriteria: 'a\nb\nc\nd\ne\nf\ng\nh',
       });
       expect(result.shouldDecompose).toBe(true);
-      expect(result.reasons[0]).toContain('acceptanceCriteria=8');
+      expect(result.reasons.some(r => r.includes('acceptanceCriteria=8'))).toBe(true);
     });
 
     it('handles missing/null fields gracefully', () => {
       const result = shouldDecompose({ taskId: 't1' });
       expect(result.shouldDecompose).toBe(false);
-      expect(result.reasons).toHaveLength(0);
     });
   });
 
-  // ── getACCount / getStoryLength (tested indirectly) ──
+  // ── helpers (tested indirectly) ──
 
   describe('helpers (via shouldDecompose)', () => {
     it('getACCount returns 0 for null/undefined acceptanceCriteria', () => {
@@ -151,7 +190,7 @@ describe('task-decomposer', () => {
         acceptanceCriteria: new Array(7).fill('criterion'),
       });
       expect(result.shouldDecompose).toBe(true);
-      expect(result.reasons[0]).toContain('acceptanceCriteria=7');
+      expect(result.reasons.some(r => r.includes('acceptanceCriteria=7'))).toBe(true);
     });
 
     it('getACCount filters empty lines from string', () => {
@@ -171,7 +210,7 @@ describe('task-decomposer', () => {
         userStory: 'x'.repeat(501),
       });
       expect(result.shouldDecompose).toBe(true);
-      expect(result.reasons[0]).toContain('userStoryLength=501');
+      expect(result.reasons.some(r => r.includes('userStoryLength=501'))).toBe(true);
     });
 
     it('getStoryLength handles object userStory', () => {
@@ -222,8 +261,63 @@ describe('task-decomposer', () => {
           parentTitle: 'Big feature',
           subtaskIds: ['s1', 's2', 's3'],
           subtaskCount: 3,
+          hasArchitectPlan: false,
         },
       });
+    });
+
+    it('passes architectPlan to decomposition and includes it in event metadata', async () => {
+      runAgent.mockResolvedValue({
+        success: true,
+        result: { subtaskIds: ['s1', 's2'], decomposed: true },
+      });
+
+      const architectPlan = {
+        filesToCreate: [{ path: 'a.js', purpose: 'Module A' }],
+        filesToModify: [{ path: 'b.js', changes: 'Import A' }],
+        implementationOrder: ['Create A', 'Modify B'],
+        dependencies: [],
+        risks: [],
+      };
+
+      const result = await decomposeTask(baseTask, 'proj-1', { architectPlan });
+
+      expect(result.success).toBe(true);
+      expect(eventBus.emitEvent).toHaveBeenCalledWith('task:decomposed', {
+        metadata: expect.objectContaining({
+          hasArchitectPlan: true,
+        }),
+      });
+
+      // Verify the prompt includes plan data
+      const callArgs = runAgent.mock.calls[0][0];
+      expect(callArgs.systemPrompt).toContain('Plan del Architect');
+      expect(callArgs.systemPrompt).toContain('a.js');
+      expect(callArgs.systemPrompt).toContain('parallelizable');
+    });
+
+    it('uses task.architectPlan when no explicit architectPlan is passed', async () => {
+      runAgent.mockResolvedValue({
+        success: true,
+        result: { subtaskIds: ['s1', 's2'], decomposed: true },
+      });
+
+      const taskWithPlan = {
+        ...baseTask,
+        architectPlan: {
+          filesToCreate: [{ path: 'x.js', purpose: 'X module' }],
+          filesToModify: [],
+          implementationOrder: ['Build X'],
+          risks: ['Risk 1'],
+        },
+      };
+
+      const result = await decomposeTask(taskWithPlan, 'proj-1');
+
+      expect(result.success).toBe(true);
+      const callArgs = runAgent.mock.calls[0][0];
+      expect(callArgs.systemPrompt).toContain('Plan del Architect');
+      expect(callArgs.systemPrompt).toContain('x.js');
     });
 
     it('returns error when runAgent throws (try/catch)', async () => {

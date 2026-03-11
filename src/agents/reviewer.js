@@ -340,8 +340,8 @@ function normalizeVerdict(rawVerdict, score, issues = [], sonarReport, coverageR
   const hasCritical = issues.some(i => i.severity === 'critical');
   const hasMajor = issues.some(i => i.severity === 'major');
 
-  // Forzar REQUEST_CHANGES si Quality Gate falló con BLOCKERs
-  if (sonarReport?.success && sonarReport.qualityGate !== 'OK' && sonarReport.issues?.BLOCKER > 0) {
+  // Forzar REQUEST_CHANGES si Quality Gate falló (cualquier severidad)
+  if (sonarReport?.success && sonarReport.qualityGate !== 'OK') {
     return 'REQUEST_CHANGES';
   }
 

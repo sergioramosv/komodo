@@ -29,6 +29,7 @@ export const EVENT_TYPES = {
 
   // Rate limit detection
   RATE_LIMIT_DETECTED: 'agent:rate-limit',
+  RATE_LIMIT_PREEMPTIVE_WAIT: 'rate-limit:preemptive-wait',
 
   // Agent fallback on rate limit
   AGENT_FALLBACK: 'agent:fallback',
@@ -104,6 +105,7 @@ export const EVENT_TYPES = {
 
   // Estimation tracker events
   ESTIMATION_RECORDED: 'estimation:recorded',
+  TOKEN_ESTIMATION_RECORDED: 'token:estimation:recorded',
 
   // Model performance tracker events
   MODEL_PERFORMANCE_RECORDED: 'metrics:model-performance:recorded',

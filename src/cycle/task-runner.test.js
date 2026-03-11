@@ -42,6 +42,7 @@ vi.mock('../utils/logger.js', () => ({
     startSpinner: vi.fn(),
     stopSpinner: vi.fn(),
     sonarSummary: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 

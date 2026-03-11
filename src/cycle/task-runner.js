@@ -19,6 +19,7 @@ import { fallbackManager } from '../agents/fallback-manager.js';
 import { withWatchdog } from '../watchdog/watchdog.js';
 import { createTechDebtTasks } from '../tech-debt/tech-debt-tracker.js';
 import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
+import { estimateTaskTokens, getRateLimitHeadroom, recordTokenConsumption } from '../estimation/token-estimator.js';
 import { recordModelPerformance } from '../metrics/model-performance-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
@@ -49,6 +50,26 @@ function extractOwnerRepo(repoUrl) {
   if (!repoUrl) return '';
   const match = repoUrl.match(/github\.com\/([^/]+\/[^/]+)/);
   return match ? match[1].replace(/\.git$/, '') : repoUrl;
+}
+
+/**
+ * Checks if a PR has merge conflicts using the GitHub API.
+ * Returns { mergeable, conflicting } where conflicting is true if there are conflicts.
+ */
+function checkMergeConflicts(repo, prNumber) {
+  try {
+    const pr = runGh(
+      ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus'],
+      { json: true },
+    );
+    if (!pr || typeof pr !== 'object') return { mergeable: true, conflicting: false };
+
+    const conflicting = pr.mergeable === 'CONFLICTING' || pr.mergeStateStatus === 'DIRTY';
+    return { mergeable: !conflicting, conflicting };
+  } catch (err) {
+    logger.warn(`Could not check merge conflicts for PR #${prNumber}: ${err.message}`, 'KOMODO');
+    return { mergeable: true, conflicting: false };
+  }
 }
 
 /**
@@ -239,14 +260,7 @@ export async function runTask(projectId, cwd) {
     logger.logStep(1, 6, 'Planner eligiendo tarea...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.PLANNING);
-    komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.WORKING });
-
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'PLANNER',
-      previousState: AGENT_STATES.IDLE,
-      newState: AGENT_STATES.WORKING,
-      metadata: { phase: 'planning' },
-    });
+    komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.WORKING }, { phase: 'planning' });
     eventBus.emitAgentEvent('PLANNER', 'working');
 
     const plannerCli = config.cliPlanner;
@@ -289,12 +303,79 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    // --- Rate Limit Awareness Check ---
+    const estimatedTokens = estimateTaskTokens(taskSpec).total;
+    const headroom = getRateLimitHeadroom();
+    const requiredHeadroom = estimatedTokens * 1.2; // Require 20% buffer (headroom must cover 120% of estimated)
+
+    if (headroom.availableTokens < requiredHeadroom) {
+      logger.warn(
+        `Rate limit warning: Estimated task tokens (${estimatedTokens}) exceed 80% of available headroom (${headroom.availableTokens}). Entering preemptive wait.`,
+        'KOMODO',
+      );
+
+      const waitMs = Math.max(0, headroom.resetTime - Date.now());
+
+
+      eventBus.emitEvent(EVENT_TYPES.RATE_LIMIT_PREEMPTIVE_WAIT, {
+        metadata: {
+          taskId: taskSpec.taskId,
+          estimatedTokens,
+          availableTokens: headroom.availableTokens,
+          requiredHeadroom,
+          resetTime: headroom.resetTime,
+          waitMs,
+        },
+      });
+
+      // Rollback the task status (as pickNextTask already set it to in-progress)
+      await rollbackTask(taskSpec.taskId);
+
+      // Sleep until the window resets to avoid busy-looping in daemon mode
+      if (waitMs > 0) {
+        logger.info(`Waiting ${Math.round(waitMs / 1000)}s for rate limit window to reset...`, 'KOMODO');
+        await new Promise(r => setTimeout(r, waitMs));
+      }
+
+      return makeResult({
+        success: false,
+        taskSpec,
+        startTime,
+        error: 'Preemptive rate limit wait initiated.',
+      });
+    }
+
+    logger.info(
+      `Rate limit check passed. Estimated tokens: ${estimatedTokens}. Available headroom: ${headroom.availableTokens}.`,
+      'KOMODO',
+    );
+    // --- End Rate Limit Awareness Check ---
+
     // ── Decomposition triage: break large tasks into subtasks ──
+    
+    // Run lightweight architect analysis to inform decomposition (Early Architect)
+    let earlyArchitectPlan = null;
+    try {
+      const earlyArchitectModel = selectModel(config.cliArchitect, 'ARCHITECT', 'standard');
+      const earlyArchitectResult = await analyzeTask(taskSpec, cwd, { model: earlyArchitectModel });
+      if (earlyArchitectResult.success && earlyArchitectResult.plan) {
+        earlyArchitectPlan = earlyArchitectResult.plan;
+        // Inject plan into taskSpec so shouldDecompose/calculateRealComplexity can see it
+        taskSpec.architectPlan = earlyArchitectPlan;
+        
+        const createCount = earlyArchitectPlan.filesToCreate?.length ?? 0;
+        const modifyCount = earlyArchitectPlan.filesToModify?.length ?? 0;
+        logger.info(`Early architect plan generated: ${createCount} create, ${modifyCount} modify`, 'KOMODO');
+      }
+    } catch (err) {
+      logger.warn(`Early architect analysis failed (${err.message}), evaluating decomposition without plan`, 'KOMODO');
+    }
+
     const decompositionCheck = shouldDecompose(taskSpec);
     if (decompositionCheck.shouldDecompose) {
       logger.info(`Task needs decomposition: ${decompositionCheck.reasons.join(', ')}`, 'KOMODO');
 
-      const decompResult = await decomposeTask(taskSpec, projectId);
+      const decompResult = await decomposeTask(taskSpec, projectId, { architectPlan: earlyArchitectPlan });
       if (decompResult.success) {
         // Rollback the parent task status (it was set to in-progress by Planner)
         // The decomposeTask agent already marks it as "done" with decomposed=true.
@@ -316,6 +397,10 @@ export async function runTask(projectId, cwd) {
         logger.warn(`Decomposition failed (${decompResult.error}), proceeding with original task`, 'KOMODO');
       }
     }
+
+    // Record estimated token consumption only after decomposition check,
+    // so decomposed parent tasks don't pollute the sliding window
+    recordTokenConsumption(estimateTaskTokens(taskSpec).total);
 
     // ── Triage: classify complexity + select models ──
     const classification = classifyAndEmit(taskSpec);
@@ -345,6 +430,7 @@ export async function runTask(projectId, cwd) {
 
     komodoState.updatePhase(PHASES.PLANNING, { currentTask: taskSpec.taskId });
 
+    const tokenEstimation = estimateTaskTokens(taskSpec);
     eventBus.emitEvent(EVENT_TYPES.TASK_STARTED, {
       metadata: {
         taskId: taskSpec.taskId,
@@ -352,6 +438,8 @@ export async function runTask(projectId, cwd) {
         branchName: taskSpec.branchName,
         repo,
         priority: taskSpec.bizPoints || null,
+        estimatedTokens: tokenEstimation.total,
+        tokenBreakdown: tokenEstimation.breakdown,
         taskDetails: {
           id: taskSpec.taskId,
           title: taskSpec.title,
@@ -395,7 +483,9 @@ export async function runTask(projectId, cwd) {
 
     if (architectResult.success && architectResult.plan) {
       architectPlan = architectResult.plan;
-      logger.info(`Plan: ${architectPlan.filesToCreate.length} to create, ${architectPlan.filesToModify.length} to modify`, 'ARCHITECT');
+      const createCount = architectPlan.filesToCreate?.length ?? 0;
+      const modifyCount = architectPlan.filesToModify?.length ?? 0;
+      logger.info(`Plan: ${createCount} to create, ${modifyCount} to modify`, 'ARCHITECT');
     } else {
       logger.warn(`Architect failed (${architectResult.error}), proceeding without plan`, 'KOMODO');
     }
@@ -409,20 +499,14 @@ export async function runTask(projectId, cwd) {
     logger.logStep(3, 7, 'Coder implementando...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.CODING, { currentTask: taskSpec.taskId });
-    komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId });
-
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'CODER',
-      previousState: AGENT_STATES.IDLE,
-      newState: AGENT_STATES.WORKING,
-      metadata: {
-        phase: 'coding',
-        taskId: taskSpec.taskId,
-        taskTitle: taskSpec.title,
-        branchName: taskSpec.branchName,
-        devPoints: taskSpec.devPoints,
-      },
+    komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
+      phase: 'coding',
+      taskId: taskSpec.taskId,
+      taskTitle: taskSpec.title,
+      branchName: taskSpec.branchName,
+      devPoints: taskSpec.devPoints,
     });
+
     eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
 
     let coderResult = await withWatchdog(
@@ -723,20 +807,30 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     logger.logStep(5, 6, 'Review loop...', 'KOMODO');
 
-    komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
-    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING });
-
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'REVIEWER',
-      previousState: AGENT_STATES.IDLE,
-      newState: AGENT_STATES.WORKING,
-      metadata: {
-        phase: 'reviewing',
-        taskId: taskSpec.taskId,
-        taskTitle: taskSpec.title,
+    // Check for merge conflicts before starting review
+    const conflictCheck = checkMergeConflicts(repo, prNumber);
+    if (conflictCheck.conflicting) {
+      logger.error(`PR #${prNumber} has merge conflicts. Cannot proceed with review.`, 'KOMODO');
+      closePR(repo, prNumber, 'Merge conflicts detected. PR needs rebase before review.');
+      await rollbackTask(taskSpec.taskId);
+      return makeResult({
+        success: false,
+        taskSpec,
         prNumber,
-      },
+        startTime,
+        error: 'Merge conflicts detected. PR closed.',
+        reviewResult: null,
+      });
+    }
+
+    komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
+    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING }, {
+      phase: 'reviewing',
+      taskId: taskSpec.taskId,
+      taskTitle: taskSpec.title,
+      prNumber,
     });
+
     eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
 
     const pluginIssues = beforeReviewPluginResults.flatMap(r => r.issues || []);
@@ -747,14 +841,8 @@ export async function runTask(projectId, cwd) {
     );
 
     eventBus.emitAgentEvent('REVIEWER', 'done');
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'REVIEWER',
-      previousState: AGENT_STATES.WAITING,
-      newState: AGENT_STATES.IDLE,
-      metadata: { phase: 'idle' },
-    });
+    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('REVIEWER', 'idle');
-    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
     if (reviewResult.cost) {
       taskCost += reviewResult.cost;
@@ -834,8 +922,8 @@ export async function runTask(projectId, cwd) {
     // Use the latest sonarReport from the review loop (may have been refreshed after fixes)
     const finalSonarReport = reviewResult.sonarReport || sonarReport;
 
-    // Block merge if SonarQube quality gate failed
-    if (finalSonarReport?.success && finalSonarReport.qualityGate === 'ERROR') {
+    // Block merge if SonarQube quality gate failed (any non-OK status)
+    if (finalSonarReport?.success && finalSonarReport.qualityGate && finalSonarReport.qualityGate !== 'OK') {
       const blockerCount = finalSonarReport.issues?.BLOCKER || 0;
       const criticalCount = finalSonarReport.issues?.CRITICAL || 0;
       logger.error(
@@ -858,6 +946,22 @@ export async function runTask(projectId, cwd) {
     }
 
     let merged = false;
+
+    // Check for merge conflicts before attempting merge
+    const preMergeConflictCheck = checkMergeConflicts(repo, prNumber);
+    if (preMergeConflictCheck.conflicting) {
+      logger.error(`PR #${prNumber} has merge conflicts. Cannot merge.`, 'KOMODO');
+      closePR(repo, prNumber, 'Merge conflicts detected at merge time. PR needs rebase.');
+      await rollbackTask(taskSpec.taskId);
+      return makeResult({
+        success: false,
+        taskSpec,
+        prNumber,
+        startTime,
+        error: 'Merge conflicts detected at merge time. PR closed.',
+        reviewResult,
+      });
+    }
 
     if (config.autoMerge) {
       try {

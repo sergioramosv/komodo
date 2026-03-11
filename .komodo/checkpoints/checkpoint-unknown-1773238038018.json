@@ -1,0 +1,13 @@
+{
+  "taskId": null,
+  "taskTitle": null,
+  "flowStep": "plan",
+  "branchName": "feature/task-dIaQxQ-token-usage-estimator-rate-limit-awaren",
+  "prNumber": null,
+  "repoUrl": "https://github.com/sergioramosv/komodo",
+  "agentRole": "PLANNER",
+  "cliType": "claude",
+  "timestamp": "2026-03-11T14:07:18.018Z",
+  "reviewRound": null,
+  "reviewIssues": null
+}
