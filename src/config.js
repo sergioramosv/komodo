@@ -47,6 +47,7 @@ export const config = {
   // Cada agente usa un CLI real: claude, codex, gemini, etc.
   // Dashboard overrides (komodo.config.json) > .env > defaults
   cliPlanner: _dashboardConfig?.agents?.planner?.cli || process.env.CLI_PLANNER || 'claude',
+  cliArchitect: _dashboardConfig?.agents?.architect?.cli || process.env.CLI_ARCHITECT || 'claude',
   cliCoder: _dashboardConfig?.agents?.coder?.cli || process.env.CLI_CODER || 'claude',
   cliReviewer: _dashboardConfig?.agents?.reviewer?.cli || process.env.CLI_REVIEWER || 'claude',
 
@@ -95,14 +96,17 @@ export const config = {
 
   // Model selection: per-CLI per-role mappings (format: "trivialModel,standardModel,complexModel")
   modelMap_claude_PLANNER: process.env.MODEL_MAP_CLAUDE_PLANNER || '',
+  modelMap_claude_ARCHITECT: process.env.MODEL_MAP_CLAUDE_ARCHITECT || '',
   modelMap_claude_CODER: process.env.MODEL_MAP_CLAUDE_CODER || '',
   modelMap_claude_REVIEWER: process.env.MODEL_MAP_CLAUDE_REVIEWER || '',
   modelMap_claude_QA: process.env.MODEL_MAP_CLAUDE_QA || '',
   modelMap_codex_PLANNER: process.env.MODEL_MAP_CODEX_PLANNER || '',
+  modelMap_codex_ARCHITECT: process.env.MODEL_MAP_CODEX_ARCHITECT || '',
   modelMap_codex_CODER: process.env.MODEL_MAP_CODEX_CODER || '',
   modelMap_codex_REVIEWER: process.env.MODEL_MAP_CODEX_REVIEWER || '',
   modelMap_codex_QA: process.env.MODEL_MAP_CODEX_QA || '',
   modelMap_gemini_PLANNER: process.env.MODEL_MAP_GEMINI_PLANNER || '',
+  modelMap_gemini_ARCHITECT: process.env.MODEL_MAP_GEMINI_ARCHITECT || '',
   modelMap_gemini_CODER: process.env.MODEL_MAP_GEMINI_CODER || '',
   modelMap_gemini_REVIEWER: process.env.MODEL_MAP_GEMINI_REVIEWER || '',
   modelMap_gemini_QA: process.env.MODEL_MAP_GEMINI_QA || '',
@@ -110,6 +114,7 @@ export const config = {
   // Force model override per role (overrides complexity-based selection)
   // Dashboard model selection takes priority over .env FORCE_MODEL_*
   forceModel_PLANNER: _dashboardConfig?.agents?.planner?.model || process.env.FORCE_MODEL_PLANNER || '',
+  forceModel_ARCHITECT: _dashboardConfig?.agents?.architect?.model || process.env.FORCE_MODEL_ARCHITECT || '',
   forceModel_CODER: _dashboardConfig?.agents?.coder?.model || process.env.FORCE_MODEL_CODER || '',
   forceModel_REVIEWER: _dashboardConfig?.agents?.reviewer?.model || process.env.FORCE_MODEL_REVIEWER || '',
   forceModel_QA: process.env.FORCE_MODEL_QA || '',

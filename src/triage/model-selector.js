@@ -10,19 +10,22 @@ import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
  */
 const DEFAULT_MODEL_MAP = {
   claude: {
-    PLANNER:  { trivial: 'sonnet', standard: 'sonnet', complex: 'opus' },
-    CODER:    { trivial: 'sonnet', standard: 'sonnet', complex: 'opus' },
-    REVIEWER: { trivial: 'haiku', standard: 'sonnet', complex: 'sonnet' },
+    PLANNER:   { trivial: 'sonnet', standard: 'sonnet', complex: 'opus' },
+    ARCHITECT: { trivial: 'sonnet', standard: 'sonnet', complex: 'sonnet' },
+    CODER:     { trivial: 'sonnet', standard: 'sonnet', complex: 'opus' },
+    REVIEWER:  { trivial: 'haiku', standard: 'sonnet', complex: 'sonnet' },
   },
   codex: {
-    PLANNER:  { trivial: 'codex-mini', standard: 'o4-mini', complex: 'o3' },
-    CODER:    { trivial: 'codex-mini', standard: 'o4-mini', complex: 'o3' },
-    REVIEWER: { trivial: 'codex-mini', standard: 'o4-mini', complex: 'o3' },
+    PLANNER:   { trivial: 'codex-mini', standard: 'o4-mini', complex: 'o3' },
+    ARCHITECT: { trivial: 'codex-mini', standard: 'o4-mini', complex: 'o4-mini' },
+    CODER:     { trivial: 'codex-mini', standard: 'o4-mini', complex: 'o3' },
+    REVIEWER:  { trivial: 'codex-mini', standard: 'o4-mini', complex: 'o3' },
   },
   gemini: {
-    PLANNER:  { trivial: 'gemini-2.5-flash', standard: 'gemini-2.5-flash', complex: 'gemini-2.5-pro' },
-    CODER:    { trivial: 'gemini-2.5-flash', standard: 'gemini-2.5-flash', complex: 'gemini-2.5-pro' },
-    REVIEWER: { trivial: 'gemini-2.5-flash', standard: 'gemini-2.5-flash', complex: 'gemini-2.5-pro' },
+    PLANNER:   { trivial: 'gemini-2.5-flash', standard: 'gemini-2.5-flash', complex: 'gemini-2.5-pro' },
+    ARCHITECT: { trivial: 'gemini-2.5-flash', standard: 'gemini-2.5-flash', complex: 'gemini-2.5-flash' },
+    CODER:     { trivial: 'gemini-2.5-flash', standard: 'gemini-2.5-flash', complex: 'gemini-2.5-pro' },
+    REVIEWER:  { trivial: 'gemini-2.5-flash', standard: 'gemini-2.5-flash', complex: 'gemini-2.5-pro' },
   },
 };
 

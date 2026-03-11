@@ -16,6 +16,7 @@ export const DASHBOARD_AGENT_STATES = {
 export const PHASES = {
   IDLE: 'idle',
   PLANNING: 'planning',
+  ARCHITECTING: 'architecting',
   CODING: 'coding',
   TESTING: 'testing',
   ANALYZING: 'analyzing',
@@ -69,6 +70,7 @@ export class KomodoState {
     /** @type {Object<string, Object>} */
     this.agents = {
       PLANNER: createAgentState('PLANNER'),
+      ARCHITECT: createAgentState('ARCHITECT'),
       CODER: createAgentState('CODER'),
       QA: createAgentState('QA'),
       REVIEWER: createAgentState('REVIEWER'),
@@ -147,6 +149,7 @@ export class KomodoState {
     return {
       agents: {
         PLANNER: { ...this.agents.PLANNER },
+        ARCHITECT: { ...this.agents.ARCHITECT },
         CODER: { ...this.agents.CODER },
         QA: { ...this.agents.QA },
         REVIEWER: { ...this.agents.REVIEWER },

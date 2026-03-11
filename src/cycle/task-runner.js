@@ -1,4 +1,5 @@
 import { pickNextTask } from '../agents/planner.js';
+import { analyzeTask } from '../agents/architect.js';
 import { implementTask, fixReviewIssues } from '../agents/coder.js';
 import { runQAAgent } from '../agents/qa.js';
 import { reviewLoop } from './review-loop.js';
@@ -321,9 +322,11 @@ export async function runTask(projectId, cwd) {
     const complexityLevel = classification.level;
     const taskModelOverride = taskSpec.modelOverride || undefined;
 
+    const architectCli = config.cliArchitect;
     const coderCli = config.cliCoder;
     const reviewerCli = config.cliReviewer;
 
+    const architectModel = selectModel(architectCli, 'ARCHITECT', complexityLevel, taskModelOverride);
     const coderModel = selectModel(coderCli, 'CODER', complexityLevel, taskModelOverride);
     const reviewerModel = selectModel(reviewerCli, 'REVIEWER', complexityLevel, taskModelOverride);
 
@@ -362,9 +365,48 @@ export async function runTask(projectId, cwd) {
     });
 
     // ═══════════════════════════════════════════
-    // PASO 2: CODER — Implementar
+    // PASO 2: ARCHITECT — Analizar codebase y generar plan
     // ═══════════════════════════════════════════
-    logger.logStep(2, 6, 'Coder implementando...', 'KOMODO');
+    logger.logStep(2, 7, 'Architect analizando codebase...', 'KOMODO');
+
+    komodoState.updatePhase(PHASES.ARCHITECTING, { currentTask: taskSpec.taskId });
+    komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId });
+    eventBus.emitAgentEvent('ARCHITECT', 'working', { taskId: taskSpec.taskId });
+
+    let architectPlan = null;
+    const architectResult = await withWatchdog(
+      () => analyzeTask(taskSpec, cwd, { model: architectModel }),
+      {
+        agentName: 'ARCHITECT',
+        taskId: taskSpec.taskId,
+        onCheckpoint: () => {
+          komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
+        },
+      },
+    );
+
+    if (architectResult.cost) {
+      taskCost += architectResult.cost;
+      eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+        agentName: 'ARCHITECT',
+        metadata: { cost: architectResult.cost },
+      });
+    }
+
+    if (architectResult.success && architectResult.plan) {
+      architectPlan = architectResult.plan;
+      logger.info(`Plan: ${architectPlan.filesToCreate.length} to create, ${architectPlan.filesToModify.length} to modify`, 'ARCHITECT');
+    } else {
+      logger.warn(`Architect failed (${architectResult.error}), proceeding without plan`, 'KOMODO');
+    }
+
+    eventBus.emitAgentEvent('ARCHITECT', 'done', { plan: architectPlan });
+    komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
+
+    // ═══════════════════════════════════════════
+    // PASO 3: CODER — Implementar
+    // ═══════════════════════════════════════════
+    logger.logStep(3, 7, 'Coder implementando...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.CODING, { currentTask: taskSpec.taskId });
     komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId });
@@ -384,7 +426,7 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
 
     let coderResult = await withWatchdog(
-      () => implementTask(taskSpec, cwd, { model: coderModel, codingGuidelines }),
+      () => implementTask(taskSpec, cwd, { model: coderModel, codingGuidelines, architectPlan }),
       {
         agentName: 'CODER',
         taskId: taskSpec.taskId,
@@ -405,7 +447,7 @@ export async function runTask(projectId, cwd) {
           // AGENT_FALLBACK event is emitted by resolveEffectiveCli in base-agent.js
           // when runAgent detects the rate-limited CLI and resolves to fallback.
           const fallbackModel = selectModel(fallbackCli, 'CODER', complexityLevel, taskModelOverride);
-          coderResult = await implementTask(taskSpec, cwd, { model: fallbackModel, codingGuidelines });
+          coderResult = await implementTask(taskSpec, cwd, { model: fallbackModel, codingGuidelines, architectPlan });
 
           // If fallback also fails, mark it as rate-limited too
           if (!coderResult.success && fallbackManager.isRateLimited(fallbackCli)) {
