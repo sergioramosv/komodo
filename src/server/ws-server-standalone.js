@@ -83,7 +83,7 @@ function applyEvent(state, event) {
 
     case 'task:started':
       if (event.metadata) {
-        state.currentTask = event.metadata.taskTitle || event.metadata.taskId || null;
+        state.currentTask = event.metadata.taskTitle || event.metadata.title || event.metadata.taskId || null;
         state.taskDetails = event.metadata.taskDetails || null;
         state.totalTasks = (state.totalTasks || 0) + 1;
         state.executionState = 'running';
@@ -372,7 +372,7 @@ if (isMainModule) {
   const PORT = parseInt(process.env.WS_PORT || '3001', 10);
   const { httpServer, shutdown } = createStandaloneServer();
 
-  httpServer.listen(PORT, () => {
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`[WS] Servidor standalone escuchando en puerto ${PORT}`);
     console.log(`[WS] GET  http://localhost:${PORT}/api/state  → snapshot del estado`);
     console.log(`[WS] POST http://localhost:${PORT}/api/event  → enviar evento`);
