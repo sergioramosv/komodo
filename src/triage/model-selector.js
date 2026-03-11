@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
+import { selectModelSmart } from './smart-model-router.js';
 
 /**
  * Default model mappings: CLI → Role → Complexity Level → model name.
@@ -139,4 +140,55 @@ export function selectModel(cliType, agentRole, complexityLevel, taskOverride) {
   });
 
   return selectedModel;
+}
+
+/**
+ * Selects a model with smart learning layer on top of static selection.
+ *
+ * Priority order:
+ *  1. Task-level override — highest priority (same as selectModel)
+ *  2. Global role force override
+ *  3. Smart routing (learned from historical data, if enabled and enough data)
+ *  4. Static complexity map (fallback when < MIN_TASKS or disabled)
+ *  5. null
+ *
+ * This is an async wrapper that adds the smart routing layer.
+ * Falls back gracefully to selectModel when smart routing is unavailable.
+ *
+ * @param {string} cliType
+ * @param {string} agentRole
+ * @param {string} complexityLevel
+ * @param {string} [taskOverride]
+ * @param {Object} [smartOptions]
+ * @param {string} [smartOptions.projectId]
+ * @param {string} [smartOptions.taskType]
+ * @returns {Promise<string | null>}
+ */
+export async function selectModelWithLearning(cliType, agentRole, complexityLevel, taskOverride, smartOptions = {}) {
+  const role = agentRole.toUpperCase();
+  const cli = cliType.toLowerCase();
+  const level = complexityLevel.toLowerCase();
+
+  // Priority 1: task override
+  if (taskOverride) return taskOverride;
+
+  // Priority 2: force override
+  const forceKey = `forceModel_${role}`;
+  const forceValue = config[forceKey];
+  if (forceValue) return forceValue;
+
+  // Priority 3: smart routing (async, may fall back)
+  if (config.smartModelRouting && smartOptions.projectId) {
+    const { model: smartModel } = await selectModelSmart({
+      projectId: smartOptions.projectId,
+      cliType: cli,
+      agentRole: role,
+      complexityLevel: level,
+      taskType: smartOptions.taskType,
+    });
+    if (smartModel) return smartModel;
+  }
+
+  // Priority 4: static complexity map
+  return selectModel(cli, role, level);
 }

@@ -108,6 +108,11 @@ export const EVENT_TYPES = {
   // Model performance tracker events
   MODEL_PERFORMANCE_RECORDED: 'metrics:model-performance:recorded',
 
+  // Smart model routing events
+  MODEL_ROUTING_SELECTED: 'triage:model-routing:selected',
+  MODEL_ROUTING_RECORDED: 'metrics:model-routing:recorded',
+  MODEL_ESCALATED: 'triage:model-escalated',
+
   // Smart ordering / context affinity events
   CONTEXT_AFFINITY_APPLIED: 'smart-ordering:affinity-applied',
 
