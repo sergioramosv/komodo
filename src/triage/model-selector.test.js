@@ -15,7 +15,12 @@ vi.mock('../config.js', () => ({
     forceModel_PLANNER: '',
     forceModel_CODER: '',
     forceModel_REVIEWER: '',
+    smartModelRouting: false,
   },
+}));
+
+vi.mock('./smart-model-router.js', () => ({
+  selectModelSmart: vi.fn().mockResolvedValue({ model: null }),
 }));
 
 vi.mock('../utils/logger.js', () => ({
@@ -36,10 +41,11 @@ vi.mock('../events/event-bus.js', () => ({
   },
 }));
 
-import { selectModel } from './model-selector.js';
+import { selectModel, selectModelWithLearning } from './model-selector.js';
 import { config } from '../config.js';
 import { eventBus } from '../events/event-bus.js';
 import { logger } from '../utils/logger.js';
+import { selectModelSmart } from './smart-model-router.js';
 
 describe('model-selector', () => {
   beforeEach(() => {
@@ -57,6 +63,8 @@ describe('model-selector', () => {
     config.forceModel_PLANNER = '';
     config.forceModel_CODER = '';
     config.forceModel_REVIEWER = '';
+    config.smartModelRouting = false;
+    selectModelSmart.mockResolvedValue({ model: null });
   });
 
   // ── Default model map (no overrides) ──────────────────
@@ -116,9 +124,9 @@ describe('model-selector', () => {
   });
 
   describe('gemini default map', () => {
-    it('selects gemini-2.0-flash for gemini PLANNER on trivial', () => {
+    it('selects gemini-2.5-flash for gemini PLANNER on trivial', () => {
       const model = selectModel('gemini', 'PLANNER', 'trivial');
-      expect(model).toBe('gemini-2.0-flash');
+      expect(model).toBe('gemini-2.5-flash');
     });
 
     it('selects gemini-2.5-pro for gemini CODER on complex', () => {
@@ -327,5 +335,101 @@ describe('model-selector', () => {
 
       expect(logger.info).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ── selectModelWithLearning ────────────────────────────
+
+describe('selectModelWithLearning', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    config.modelMap_claude_CODER = '';
+    config.forceModel_CODER = '';
+    config.forceModel_PLANNER = '';
+    config.forceModel_REVIEWER = '';
+    config.smartModelRouting = false;
+    selectModelSmart.mockResolvedValue({ model: null });
+  });
+
+  it('returns task override immediately (highest priority)', async () => {
+    config.forceModel_CODER = 'opus';
+    config.smartModelRouting = true;
+
+    const model = await selectModelWithLearning('claude', 'CODER', 'trivial', 'task-override-model', { projectId: 'proj-1' });
+
+    expect(model).toBe('task-override-model');
+    expect(selectModelSmart).not.toHaveBeenCalled();
+  });
+
+  it('returns force override when no task override', async () => {
+    config.forceModel_CODER = 'opus';
+    config.smartModelRouting = true;
+
+    const model = await selectModelWithLearning('claude', 'CODER', 'trivial', undefined, { projectId: 'proj-1' });
+
+    expect(model).toBe('opus');
+    expect(selectModelSmart).not.toHaveBeenCalled();
+  });
+
+  it('uses smart routing when enabled with projectId', async () => {
+    config.smartModelRouting = true;
+    selectModelSmart.mockResolvedValue({ model: 'smart-model' });
+
+    const model = await selectModelWithLearning('claude', 'CODER', 'standard', undefined, { projectId: 'proj-1' });
+
+    expect(model).toBe('smart-model');
+    expect(selectModelSmart).toHaveBeenCalledWith({
+      projectId: 'proj-1',
+      cliType: 'claude',
+      agentRole: 'CODER',
+      complexityLevel: 'standard',
+      taskType: undefined,
+    });
+  });
+
+  it('falls back to static map when smart routing returns null', async () => {
+    config.smartModelRouting = true;
+    selectModelSmart.mockResolvedValue({ model: null });
+
+    const model = await selectModelWithLearning('claude', 'CODER', 'complex', undefined, { projectId: 'proj-1' });
+
+    expect(model).toBe('opus'); // static map: claude CODER complex → opus
+    expect(selectModelSmart).toHaveBeenCalled();
+  });
+
+  it('skips smart routing when smartModelRouting is disabled', async () => {
+    config.smartModelRouting = false;
+
+    const model = await selectModelWithLearning('claude', 'CODER', 'standard', undefined, { projectId: 'proj-1' });
+
+    expect(selectModelSmart).not.toHaveBeenCalled();
+    expect(model).toBe('sonnet'); // static map: claude CODER standard → sonnet
+  });
+
+  it('skips smart routing when projectId is not provided', async () => {
+    config.smartModelRouting = true;
+
+    const model = await selectModelWithLearning('claude', 'CODER', 'complex', undefined, {});
+
+    expect(selectModelSmart).not.toHaveBeenCalled();
+    expect(model).toBe('opus'); // static map fallback
+  });
+
+  it('forwards taskType to selectModelSmart', async () => {
+    config.smartModelRouting = true;
+    selectModelSmart.mockResolvedValue({ model: null });
+
+    await selectModelWithLearning('claude', 'CODER', 'standard', undefined, { projectId: 'proj-1', taskType: 'bugfix' });
+
+    expect(selectModelSmart).toHaveBeenCalledWith(expect.objectContaining({ taskType: 'bugfix' }));
+  });
+
+  it('normalises CLI and role to lowercase/uppercase', async () => {
+    config.smartModelRouting = true;
+    selectModelSmart.mockResolvedValue({ model: null });
+
+    const model = await selectModelWithLearning('CLAUDE', 'coder', 'Complex', undefined, {});
+
+    expect(model).toBe('opus'); // static map: claude CODER complex → opus
   });
 });
