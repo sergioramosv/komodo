@@ -1075,7 +1075,7 @@ export async function runTask(projectId, cwd) {
           projectId: routingProjectId,
           cliType: coderCli,
           agentRole: 'CODER',
-          model: coderModel,
+          model: reviewResult.finalCoderModel || coderModel,
           complexityLevel,
           taskType: taskSpec.taskType || undefined,
           approvedFirstCycle,

@@ -99,6 +99,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
         approved: false,
         cycles,
         finalReview: null,
+        finalCoderModel: activeCoderModel,
         cost: totalCost,
         sonarReport,
         error: `Reviewer error: ${reviewResult.error}`,
@@ -132,6 +133,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
         approved: true,
         cycles,
         finalReview: lastReview,
+        finalCoderModel: activeCoderModel,
         cost: totalCost,
         sonarReport,
       };
@@ -165,7 +167,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
     // Check for rate limit pause before Coder fix
     if (komodoState.isPauseRequested()) {
       logger.warn('Execution paused by rate limit during review loop.', 'KOMODO');
-      return { approved: false, cycles, finalReview: lastReview, cost: totalCost, sonarReport, error: 'Paused: rate limit detected' };
+      return { approved: false, cycles, finalReview: lastReview, finalCoderModel: activeCoderModel, cost: totalCost, sonarReport, error: 'Paused: rate limit detected' };
     }
 
     // Record each review issue as a pattern in memory (for future feedback)
@@ -239,6 +241,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
         approved: false,
         cycles,
         finalReview: lastReview,
+        finalCoderModel: activeCoderModel,
         cost: totalCost,
         sonarReport,
         error: `Coder fix error: ${fixResult.error}`,
@@ -284,6 +287,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
     approved: false,
     cycles,
     finalReview: lastReview,
+    finalCoderModel: activeCoderModel,
     cost: totalCost,
     sonarReport,
     error: `PR no aprobada después de ${maxCycles} ciclos`,
