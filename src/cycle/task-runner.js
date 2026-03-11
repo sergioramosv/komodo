@@ -26,6 +26,7 @@ import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { saveSection, buildCoderContext, buildReviewerContext, loadModuleLessons, extractAndSaveLessons } from '../knowledge/knowledge-graph.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
+import { canaryMerge } from '../ci-monitor/canary-merge.js';
 import { analyzeCoverage, updateBaselineAfterMerge, recordCoverageHistory } from '../coverage/coverage-analyzer.js';
 import { autoVersionBump } from '../versioning/version-bumper.js';
 import { autoRelease } from '../versioning/release-manager.js';
@@ -1029,14 +1030,51 @@ export async function runTask(projectId, cwd) {
     }
 
     if (config.autoMerge) {
-      try {
-        mergePR(repo, prNumber);
-        merged = true;
-        eventBus.emitEvent(EVENT_TYPES.PR_MERGED, {
-          metadata: { prNumber, repo, taskId: taskSpec.taskId },
-        });
-      } catch (err) {
-        logger.error(`Error al mergear PR #${prNumber}: ${err.message}`, 'KOMODO');
+      // Canary merge: pre-validate via staging before promoting to main
+      if (config.canaryEnabled) {
+        try {
+          const canaryResult = await canaryMerge({
+            prNumber,
+            repo,
+            taskSpec,
+            cwd,
+            projectId: projectId || config.defaultProjectId,
+            taskId: taskSpec.taskId,
+            filesChanged: coderResult.pr?.filesChanged || [],
+            coderModel,
+            codingGuidelines,
+          });
+
+          if (canaryResult.promoted) {
+            merged = true;
+            eventBus.emitEvent(EVENT_TYPES.PR_MERGED, {
+              metadata: { prNumber, repo, taskId: taskSpec.taskId, canary: true, stagingPrNumber: canaryResult.stagingPrNumber },
+            });
+          } else if (canaryResult.reverted) {
+            // Task already rolled back inside canaryMerge — propagate failure
+            return makeResult({
+              success: false,
+              taskSpec,
+              prNumber,
+              startTime,
+              error: canaryResult.error || 'Canary merge failed and staging was reverted',
+              reviewResult,
+            });
+          }
+          // If not promoted and not reverted (e.g., CANARY_AUTO_PROMOTE=false), treat as pending
+        } catch (err) {
+          logger.error(`Canary merge error for PR #${prNumber}: ${err.message}`, 'KOMODO');
+        }
+      } else {
+        try {
+          mergePR(repo, prNumber);
+          merged = true;
+          eventBus.emitEvent(EVENT_TYPES.PR_MERGED, {
+            metadata: { prNumber, repo, taskId: taskSpec.taskId },
+          });
+        } catch (err) {
+          logger.error(`Error al mergear PR #${prNumber}: ${err.message}`, 'KOMODO');
+        }
       }
 
       try {
@@ -1061,26 +1099,29 @@ export async function runTask(projectId, cwd) {
         }
       }
 
-      // CI Monitor: watch GitHub Actions after merge (non-blocking for task result)
       if (merged) {
-        try {
-          const ciResult = await monitorCi({
-            prNumber,
-            repo,
-            projectId: projectId || config.defaultProjectId,
-            taskId: taskSpec.taskId,
-          });
-          if (!ciResult.skipped) {
-            if (ciResult.passed) {
-              logger.success(`CI passed for PR #${prNumber} merge`, 'KOMODO');
-            } else if (ciResult.reverted) {
-              logger.warn(`CI failed for PR #${prNumber} — auto-reverted (revert PR #${ciResult.revertPrNumber})`, 'KOMODO');
-            } else {
-              logger.warn(`CI failed or timed out for PR #${prNumber} merge`, 'KOMODO');
+        // CI Monitor: watch GitHub Actions after merge (non-blocking for task result)
+        // Skip if canary merge already handled CI polling on staging
+        if (!config.canaryEnabled) {
+          try {
+            const ciResult = await monitorCi({
+              prNumber,
+              repo,
+              projectId: projectId || config.defaultProjectId,
+              taskId: taskSpec.taskId,
+            });
+            if (!ciResult.skipped) {
+              if (ciResult.passed) {
+                logger.success(`CI passed for PR #${prNumber} merge`, 'KOMODO');
+              } else if (ciResult.reverted) {
+                logger.warn(`CI failed for PR #${prNumber} — auto-reverted (revert PR #${ciResult.revertPrNumber})`, 'KOMODO');
+              } else {
+                logger.warn(`CI failed or timed out for PR #${prNumber} merge`, 'KOMODO');
+              }
             }
+          } catch (err) {
+            logger.warn(`CI monitor error (non-blocking): ${err.message}`, 'KOMODO');
           }
-        } catch (err) {
-          logger.warn(`CI monitor error (non-blocking): ${err.message}`, 'KOMODO');
         }
 
         // Update coverage baseline after successful merge

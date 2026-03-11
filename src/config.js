@@ -199,6 +199,12 @@ export const config = {
   ciMonitorTimeoutMinutes: parseInt(process.env.CI_MONITOR_TIMEOUT_MINUTES || '15', 10),
   autoRevert: process.env.AUTO_REVERT === 'true', // default: false, requires opt-in
 
+  // Canary Merge (pre-validate via staging branch before promoting to main)
+  canaryEnabled: process.env.CANARY_ENABLED === 'true', // default: false
+  canaryBranch: process.env.CANARY_BRANCH || 'staging',
+  canaryWaitMinutes: parseInt(process.env.CANARY_WAIT_MINUTES || '10', 10),
+  canaryAutoPromote: process.env.CANARY_AUTO_PROMOTE !== 'false', // default: true
+
   // QA Agent (generate and execute tests between Coder and Reviewer)
   qaAgent: process.env.QA_AGENT === 'true', // default: false
   cliQA: process.env.CLI_QA || 'claude',

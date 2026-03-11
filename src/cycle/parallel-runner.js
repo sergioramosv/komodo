@@ -52,8 +52,17 @@ export function selectParallelTasks(tasks, maxParallel) {
     if (selected.length >= maxParallel) break;
 
     // Check that this task doesn't share files with already-selected tasks
-    const sharesFiles = selected.some(s => tasksShareFiles(s, task));
-    if (!sharesFiles) {
+    const conflictingTask = selected.find(s => tasksShareFiles(s, task));
+    if (conflictingTask) {
+      eventBus.emitEvent(EVENT_TYPES.CANARY_CONFLICT_DETECTED, {
+        metadata: {
+          taskA: conflictingTask.taskId,
+          taskB: task.taskId,
+          taskATitle: conflictingTask.title,
+          taskBTitle: task.title,
+        },
+      });
+    } else {
       selected.push(task);
     }
   }
