@@ -895,9 +895,11 @@
       "imports": [
         "path",
         "url",
+        "fs",
         "dotenv"
       ],
       "functions": [
+        "logForward(msg)",
         "main()"
       ]
     },
@@ -982,6 +984,21 @@
       ],
       "functions": []
     },
+    "src/agents/architect.js": {
+      "exports": [
+        "analyzeTask"
+      ],
+      "imports": [
+        "./base-agent.js",
+        "../prompts/architect-system.js",
+        "../config.js",
+        "../utils/logger.js",
+        "../utils/parser.js"
+      ],
+      "functions": [
+        "analyzeTask(taskSpec, cwd, { model } = {})"
+      ]
+    },
     "src/agents/base-agent.js": {
       "exports": [
         "buildMcpServers"
@@ -1021,9 +1038,10 @@
       ],
       "functions": [
         "getCoderMcpServers()",
-        "implementTask(taskSpec, cwd, { model, codingGuidelines } = {})",
+        "implementTask(taskSpec, cwd, { model, codingGuidelines, architectPlan } = {})",
         "fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, { model, codingGuidelines } = {})",
-        "extractOwnerRepo(repoUrl)"
+        "extractOwnerRepo(repoUrl)",
+        "extractFilesFromIssues(issues)"
       ]
     },
     "src/agents/fallback-manager.js": {
@@ -1426,6 +1444,7 @@
       ],
       "imports": [
         "../agents/planner.js",
+        "../agents/architect.js",
         "../agents/coder.js",
         "../agents/qa.js",
         "./review-loop.js",
@@ -1445,6 +1464,7 @@
         "../watchdog/watchdog.js",
         "../tech-debt/tech-debt-tracker.js",
         "../estimation/estimation-tracker.js",
+        "../estimation/token-estimator.js",
         "../metrics/model-performance-tracker.js",
         "../smart-ordering/context-affinity.js",
         "../../skills/planning-task-mcp/src/firebase.js",
@@ -1561,13 +1581,29 @@
         "../config.js",
         "../utils/logger.js",
         "../events/event-bus.js",
-        "../../skills/planning-task-mcp/src/firebase.js"
+        "../../skills/planning-task-mcp/src/firebase.js",
+        "./token-estimator.js"
       ],
       "functions": [
         "getTaskMetrics(projectId)",
         "calculateEstimationRatios(metrics)",
         "detectUnderestimatedCategories(ratios)",
         "getEstimationCalibrationContext(projectId)"
+      ]
+    },
+    "src/estimation/rate-limit-tracker.js": {
+      "exports": [
+        "rateLimitTracker",
+        "recordTokenConsumption",
+        "getRateLimitHeadroom"
+      ],
+      "imports": [
+        "../config.js",
+        "../utils/logger.js"
+      ],
+      "functions": [
+        "recordTokenConsumption(tokens)",
+        "getRateLimitHeadroom()"
       ]
     },
     "src/events/event-bus.js": {
@@ -1766,7 +1802,8 @@
         "calculateDecayWeight",
         "calculatePatternScore",
         "getTopPatterns",
-        "formatFeedbackSection",
+        "extractTaskKeywords",
+        "scorePatternRelevance",
         "getReviewFeedbackContext",
         "findAvoidedPatterns"
       ],
@@ -1781,8 +1818,9 @@
         "calculateDecayWeight(lastSeen)",
         "calculatePatternScore(pattern)",
         "getTopPatterns({ limit = 5 } = {})",
-        "formatFeedbackSection({ limit = 5 } = {})",
-        "getReviewFeedbackContext()",
+        "extractTaskKeywords(taskSpec)",
+        "scorePatternRelevance(pattern, taskKeywords)",
+        "getReviewFeedbackContext({ taskSpec } = {})",
         "findAvoidedPatterns(reviewIssues)"
       ]
     },
@@ -1951,7 +1989,8 @@
         "./shutdown/shutdown-manager.js",
         "./plugins/plugin-loader.js",
         "./heartbeat/heartbeat-monitor.js",
-        "./server/api-server.js"
+        "./server/api-server.js",
+        "./resilience/resilience-manager.js"
       ],
       "functions": [
         "run(projectId, options = {})",
@@ -1986,6 +2025,15 @@
         "./plugin-interface.js"
       ],
       "functions": []
+    },
+    "src/prompts/architect-system.js": {
+      "exports": [
+        "getArchitectSystemPrompt"
+      ],
+      "imports": [],
+      "functions": [
+        "getArchitectSystemPrompt()"
+      ]
     },
     "src/prompts/coder-system.js": {
       "exports": [
@@ -2024,6 +2072,58 @@
       "functions": [
         "getReviewerSystemPrompt({ enableBrowserMcp = false } = {})"
       ]
+    },
+    "src/resilience/circuit-breaker.js": {
+      "exports": [
+        "CB_STATES",
+        "CircuitBreaker",
+        "circuits"
+      ],
+      "imports": [
+        "../events/event-bus.js",
+        "../utils/logger.js",
+        "../config.js"
+      ],
+      "functions": []
+    },
+    "src/resilience/dead-letter-queue.js": {
+      "exports": [
+        "DeadLetterQueue",
+        "deadLetterQueue"
+      ],
+      "imports": [
+        "../events/event-bus.js",
+        "../utils/logger.js",
+        "../config.js"
+      ],
+      "functions": []
+    },
+    "src/resilience/error-budget.js": {
+      "exports": [
+        "ErrorBudget",
+        "errorBudget"
+      ],
+      "imports": [
+        "../events/event-bus.js",
+        "../utils/logger.js",
+        "../config.js"
+      ],
+      "functions": []
+    },
+    "src/resilience/resilience-manager.js": {
+      "exports": [
+        "resilienceManager"
+      ],
+      "imports": [
+        "./circuit-breaker.js",
+        "./error-budget.js",
+        "./dead-letter-queue.js",
+        "../events/event-bus.js",
+        "../state/komodo-state.js",
+        "../utils/logger.js",
+        "../config.js"
+      ],
+      "functions": []
     },
     "src/scheduler/scheduler.js": {
       "exports": [
@@ -2488,6 +2588,7 @@
     },
     "src/triage/complexity-classifier.js": {
       "exports": [
+        "calculateRealComplexity",
         "classifyComplexity",
         "classifyAndEmit"
       ],
@@ -2504,6 +2605,13 @@
         "getUserStoryLength(userStory)",
         "getAcceptanceCriteriaCount(acceptanceCriteria)",
         "hasImplementationPlan(task)",
+        "scoreFilesAffected(count)",
+        "scoreDependencies(count)",
+        "scoreDataModelChanges(changes)",
+        "scoreApiChanges(changes)",
+        "scoreRisks(count)",
+        "extractPlanData(task)",
+        "calculateRealComplexity(task)",
         "classifyComplexity(task)",
         "classifyAndEmit(task)"
       ]
@@ -2533,12 +2641,13 @@
         "../utils/logger.js",
         "../events/event-bus.js",
         "../agents/base-agent.js",
-        "../utils/parser.js"
+        "../utils/parser.js",
+        "./complexity-classifier.js"
       ],
       "functions": [
         "shouldDecompose(task)",
-        "decomposeTask(task, projectId)",
-        "buildDecompositionPrompt(task, projectId, parentDevPoints, parentBizPoints)",
+        "decomposeTask(task, projectId, { architectPlan } = {})",
+        "buildDecompositionPrompt(task, projectId, parentDevPoints, parentBizPoints, plan)",
         "getACCount(acceptanceCriteria)",
         "getStoryLength(userStory)"
       ]
@@ -2863,6 +2972,7 @@
     },
     "src": {
       "agents": {
+        "architect.js": null,
         "base-agent.js": null,
         "coder.js": null,
         "fallback-manager.js": null,
@@ -2903,7 +3013,8 @@
         "doctor.js": null
       },
       "estimation": {
-        "estimation-tracker.js": null
+        "estimation-tracker.js": null,
+        "rate-limit-tracker.js": null
       },
       "events": {
         "event-bus.js": null,
@@ -2938,10 +3049,17 @@
         "plugin-loader.js": null
       },
       "prompts": {
+        "architect-system.js": null,
         "coder-system.js": null,
         "planner-system.js": null,
         "qa-system.js": null,
         "reviewer-system.js": null
+      },
+      "resilience": {
+        "circuit-breaker.js": null,
+        "dead-letter-queue.js": null,
+        "error-budget.js": null,
+        "resilience-manager.js": null
       },
       "scheduler": {
         "scheduler.js": null
@@ -3004,6 +3122,6 @@
     },
     "vitest.config.js": null
   },
-  "checksum": "de556fe003a2bd851b05ceec0faed200e9b092ef66f5043c7dff4f154dc52c5e",
-  "generatedAt": "2026-03-10T20:53:24.717Z"
+  "checksum": "e38308106c5e661afdcf6c6bdcc7573420ad5ee896b153bf0853b1f11dfa7a51",
+  "generatedAt": "2026-03-11T14:18:44.298Z"
 }

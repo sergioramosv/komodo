@@ -132,6 +132,29 @@ export interface WsCommandAckMessage {
 
 export type WsMessage = WsSnapshotMessage | WsEventMessage | WsCommandAckMessage;
 
+/* ── History ── */
+
+export type HistoryAction =
+  | 'task:started'
+  | 'task:completed'
+  | 'pr:created'
+  | 'pr:merged'
+  | 'review:cycle:end'
+  | 'fix:applied'
+  | 'sonar:analysis:complete';
+
+export interface HistoryEntry {
+  id: string;
+  action: HistoryAction;
+  timestamp: string;
+  agent: string | null;
+  taskId: string | null;
+  taskTitle: string | null;
+  prNumber: number | null;
+  repo: string | null;
+  metadata: Record<string, unknown>;
+}
+
 /* ── Notifications ── */
 
 export type NotificationType = 'success' | 'warning' | 'error' | 'info';

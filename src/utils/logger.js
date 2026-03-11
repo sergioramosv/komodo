@@ -143,4 +143,15 @@ export function sonarSummary(report) {
   console.log(`${timestamp()} ${agentTag(agent)} ${line}`);
 }
 
-export const logger = { info, success, warn, error, logStep, taskHeader, startSpinner, stopSpinner, sonarSummary };
+/**
+ * Log de depuración (solo se muestra si DEBUG=true).
+ * @param {string} message
+ * @param {string} [agent='SYSTEM']
+ */
+export function debug(message, agent = 'SYSTEM') {
+  if (process.env.DEBUG === 'true') {
+    console.log(`${timestamp()} ${agentTag(agent)} ${chalk.magenta(message)}`);
+  }
+}
+
+export const logger = { info, success, warn, error, logStep, taskHeader, startSpinner, stopSpinner, sonarSummary, debug };

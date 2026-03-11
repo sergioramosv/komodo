@@ -1,0 +1,12 @@
+{
+  "prNumber": 126,
+  "prUrl": "https://github.com/sergioramosv/komodo/pull/126",
+  "branchName": "feature/task-dIaQxQ-token-usage-estimator-rate-limit-awaren",
+  "filesChanged": [
+    "src/estimation/token-estimator.js",
+    "src/events/event-bus.js",
+    "src/cycle/task-runner.js",
+    "src/agents/planner.js"
+  ],
+  "summary": "Implementado estimador de tokens, conciencia de límite de tasa y priorización por eficiencia."
+}

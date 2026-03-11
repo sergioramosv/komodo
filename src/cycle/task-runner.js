@@ -260,14 +260,7 @@ export async function runTask(projectId, cwd) {
     logger.logStep(1, 6, 'Planner eligiendo tarea...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.PLANNING);
-    komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.WORKING });
-
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'PLANNER',
-      previousState: AGENT_STATES.IDLE,
-      newState: AGENT_STATES.WORKING,
-      metadata: { phase: 'planning' },
-    });
+    komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.WORKING }, { phase: 'planning' });
     eventBus.emitAgentEvent('PLANNER', 'working');
 
     const plannerCli = config.cliPlanner;
@@ -490,7 +483,9 @@ export async function runTask(projectId, cwd) {
 
     if (architectResult.success && architectResult.plan) {
       architectPlan = architectResult.plan;
-      logger.info(`Plan: ${architectPlan.filesToCreate.length} to create, ${architectPlan.filesToModify.length} to modify`, 'ARCHITECT');
+      const createCount = architectPlan.filesToCreate?.length ?? 0;
+      const modifyCount = architectPlan.filesToModify?.length ?? 0;
+      logger.info(`Plan: ${createCount} to create, ${modifyCount} to modify`, 'ARCHITECT');
     } else {
       logger.warn(`Architect failed (${architectResult.error}), proceeding without plan`, 'KOMODO');
     }
@@ -504,20 +499,14 @@ export async function runTask(projectId, cwd) {
     logger.logStep(3, 7, 'Coder implementando...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.CODING, { currentTask: taskSpec.taskId });
-    komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId });
-
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'CODER',
-      previousState: AGENT_STATES.IDLE,
-      newState: AGENT_STATES.WORKING,
-      metadata: {
-        phase: 'coding',
-        taskId: taskSpec.taskId,
-        taskTitle: taskSpec.title,
-        branchName: taskSpec.branchName,
-        devPoints: taskSpec.devPoints,
-      },
+    komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
+      phase: 'coding',
+      taskId: taskSpec.taskId,
+      taskTitle: taskSpec.title,
+      branchName: taskSpec.branchName,
+      devPoints: taskSpec.devPoints,
     });
+
     eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
 
     let coderResult = await withWatchdog(
@@ -835,19 +824,13 @@ export async function runTask(projectId, cwd) {
     }
 
     komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
-    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING });
-
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'REVIEWER',
-      previousState: AGENT_STATES.IDLE,
-      newState: AGENT_STATES.WORKING,
-      metadata: {
-        phase: 'reviewing',
-        taskId: taskSpec.taskId,
-        taskTitle: taskSpec.title,
-        prNumber,
-      },
+    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING }, {
+      phase: 'reviewing',
+      taskId: taskSpec.taskId,
+      taskTitle: taskSpec.title,
+      prNumber,
     });
+
     eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
 
     const pluginIssues = beforeReviewPluginResults.flatMap(r => r.issues || []);
@@ -858,14 +841,8 @@ export async function runTask(projectId, cwd) {
     );
 
     eventBus.emitAgentEvent('REVIEWER', 'done');
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'REVIEWER',
-      previousState: AGENT_STATES.WAITING,
-      newState: AGENT_STATES.IDLE,
-      metadata: { phase: 'idle' },
-    });
+    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('REVIEWER', 'idle');
-    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
     if (reviewResult.cost) {
       taskCost += reviewResult.cost;

@@ -177,7 +177,7 @@ describe('review-loop events', () => {
 
     await reviewLoop(baseOptions);
 
-    expect(komodoState.updateAgent).toHaveBeenCalledWith('REVIEWER', { status: 'working' });
+    expect(komodoState.updateAgent).toHaveBeenCalledWith('REVIEWER', { status: 'working' }, expect.any(Object));
   });
 
   it('does not crash when no listeners exist (fire and forget)', async () => {

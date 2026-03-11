@@ -1,0 +1,13 @@
+{
+  "taskId": "-OnO65K2V6meSUdIaQxQ",
+  "taskTitle": null,
+  "flowStep": "plan",
+  "branchName": "feature/task-dIaQxQ-token-usage-estimator-rate-limit-awareness",
+  "prNumber": 123,
+  "repoUrl": "https://github.com/sergioramosv/komodo",
+  "agentRole": "PLANNER",
+  "cliType": "claude",
+  "timestamp": "2026-03-11T12:10:47.215Z",
+  "reviewRound": 2,
+  "reviewIssues": null
+}

@@ -1,0 +1,13 @@
+{
+  "taskId": "Smart Decomposition v2: Complejidad real basada en plan del Architect",
+  "taskTitle": "Smart Decomposition v2: Complejidad real basada en plan del Architect",
+  "flowStep": "code",
+  "branchName": "feature/task-dIaQxQ-token-usage-estimator-rate-limit-awaren",
+  "prNumber": null,
+  "repoUrl": "https://github.com/sergioramosv/komodo",
+  "agentRole": "ARCHITECT",
+  "cliType": "claude",
+  "timestamp": "2026-03-11T14:10:07.867Z",
+  "reviewRound": null,
+  "reviewIssues": null
+}
