@@ -37,6 +37,7 @@ const { heartbeatMonitor } = await import('../../../src/heartbeat/heartbeat-moni
 const { analyzeSonar } = await import('../../../src/sonar/analyzer.js');
 const { recordTaskMetrics } = await import('../../../src/estimation/estimation-tracker.js');
 const { recordModelPerformance } = await import('../../../src/metrics/model-performance-tracker.js');
+const { selectModel } = await import('../../../src/triage/model-selector.js');
 const { startEventPersistence } = await import('../../../src/events/event-persistence.js');
 
 // Start event persistence so MCP events get saved to Firebase
@@ -488,12 +489,16 @@ export const tools = {
         metadata: { phase: 'reviewing', prNumber: params.prNumber, taskTitle: params.taskTitle },
       });
 
+      // Select appropriate model (avoid using expensive Opus for reviews)
+      const reviewerModel = selectModel(config.cliReviewer, 'REVIEWER', 'standard');
+
       const result = await reviewPR({
         prNumber: params.prNumber,
         repo: params.repo,
         taskSpec,
         cwd: params.cwd,
         sonarReport,
+        model: reviewerModel,
       });
 
       komodoState.updateAgent('REVIEWER', { status: 'idle', currentTask: null });

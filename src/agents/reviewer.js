@@ -259,7 +259,7 @@ ${diffInstruction}
 3. Revisa cada criterio (correctitud, error handling, edge cases, naming, tests, seguridad)
 4. Si necesitas más contexto, lee archivos del repo con Read/Glob/Grep${browserCheckInstruction}`;
 
-  const maxTurns = 15;
+  const maxTurns = 25;
 
   const result = await runAgent({
     name: 'REVIEWER',
