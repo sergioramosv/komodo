@@ -4,6 +4,7 @@ import { logger } from '../utils/logger.js';
 
 const AGENT = 'CANARY-AUTO-FIX';
 const MAX_TOKENS = 5000;
+const MAX_TURNS = 5;
 
 /**
  * Runs a mini auto-fix agent for canary CI failures.
@@ -64,7 +65,7 @@ export async function runCanaryAutoFix({
       null,
       { issues: [fixContext] },
       cwd,
-      { model: coderModel || config.forceModel_CODER || undefined, codingGuidelines },
+      { model: coderModel || config.forceModel_CODER || undefined, codingGuidelines, maxTurns: MAX_TURNS },
     );
 
     if (result && result.success !== false) {

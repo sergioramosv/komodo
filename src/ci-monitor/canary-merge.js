@@ -258,6 +258,25 @@ async function rollbackTaskStatus(taskId, note) {
  * @returns {number|null} staging PR number or null
  */
 function createStagingPr(stagingBranch, repo, originalPrNumber) {
+  // Check for an existing open PR from stagingBranch → main to handle retries
+  try {
+    const existing = runGhCommand([
+      'pr', 'list',
+      '--base', 'main',
+      '--head', stagingBranch,
+      '--state', 'open',
+      '--json', 'number',
+      '--jq', '.[0].number',
+    ], { repo });
+    const existingNumber = existing ? parseInt(String(existing).trim(), 10) : NaN;
+    if (!isNaN(existingNumber) && existingNumber > 0) {
+      logger.info(`Staging PR #${existingNumber} already exists for "${stagingBranch}" → main — reusing`, AGENT);
+      return existingNumber;
+    }
+  } catch {
+    // gh pr list failure is non-fatal; proceed to create
+  }
+
   try {
     const result = runGhCommand([
       'pr', 'create',

@@ -195,8 +195,9 @@ Devuelve el resultado como JSON con: prNumber, prUrl, branchName, filesChanged, 
  * @param {string} [options.model] - Model to use (from model-selector)
  * @returns {Promise<{success: boolean, fix: Object|null, cost: number|null, duration: number, error?: string}>}
  */
-export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, { model, codingGuidelines } = {}) {
-  logger.taskHeader(`CODER - Arreglando issues de PR #${prNumber}`);
+export async function fixReviewIssues(taskSpec, prNumber, reviewFeedback, cwd, { model, codingGuidelines, maxTurns } = {}) {
+  const prLabel = prNumber != null ? `PR #${prNumber}` : taskSpec.branchName;
+  logger.taskHeader(`CODER - Arreglando issues de ${prLabel}`);
 
   const systemPrompt = getCoderFixSystemPrompt({ enableBrowserMcp: config.enableBrowserMcp });
 
@@ -260,7 +261,7 @@ Devuelve el resultado como JSON con: fixed, issuesResolved, filesChanged, summar
     userPrompt,
     mcpServerNames: getCoderMcpServers(),
     cwd,
-    maxTurns: 40,
+    maxTurns: maxTurns ?? 40,
     totalTimeout: 900_000, // 15 min — total limit (no idle timer, Windows buffers stdout)
     model,
   });

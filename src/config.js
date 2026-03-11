@@ -203,7 +203,7 @@ export const config = {
   canaryEnabled: process.env.CANARY_ENABLED === 'true', // default: false
   canaryBranch: process.env.CANARY_BRANCH || 'staging',
   canaryWaitMinutes: parseInt(process.env.CANARY_WAIT_MINUTES || '10', 10),
-  canaryAutoPromote: process.env.CANARY_AUTO_PROMOTE !== 'false', // default: true
+  canaryAutoPromote: process.env.CANARY_AUTO_PROMOTE === 'true', // default: false (opt-in)
 
   // QA Agent (generate and execute tests between Coder and Reviewer)
   qaAgent: process.env.QA_AGENT === 'true', // default: false
