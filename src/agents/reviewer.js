@@ -137,7 +137,7 @@ ${issues.map(issue => `- ${issue}`).join('\n')}
  *   error?: string
  * }>}
  */
-export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines, reviewCycle, previousReview, lastReviewSHA, pluginIssues }) {
+export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines, reviewCycle, previousReview, lastReviewSHA, pluginIssues, knowledgeContext }) {
   const isIncremental = shouldUseIncrementalReview(reviewCycle || 1);
   const modeLabel = isIncremental ? 'INCREMENTAL' : 'FULL';
   logger.taskHeader(`REVIEWER - Revisando PR #${prNumber} (${modeLabel})`);
@@ -244,6 +244,11 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
     ? `2. Lee SOLO el diff del último fix commit (ya incluido abajo). Si necesitas contexto adicional, usa get_pr_diff({ repo: "${repo}", prNumber: ${prNumber} })`
     : `2. Lee el diff completo con get_pr_diff({ repo: "${repo}", prNumber: ${prNumber} })`;
 
+  // Build prior-agent context section from Knowledge Graph (if available)
+  const priorAgentSection = knowledgeContext?.reviewerBrief
+    ? `\n${knowledgeContext.reviewerBrief}\n`
+    : '';
+
   const userPrompt = `Revisa la Pull Request #${prNumber} del repositorio "${repo}".
 
 ## Contexto de la tarea
@@ -252,7 +257,7 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
 
 ## Criterios de aceptación
 ${criteriaList || 'No especificados'}
-${guidelinesSection}${pluginIssuesSection}${sonarSection}${coverageSection}${qaSection}${incrementalSection}
+${guidelinesSection}${priorAgentSection}${pluginIssuesSection}${sonarSection}${coverageSection}${qaSection}${incrementalSection}
 ## Instrucciones
 1. Llama a get_review_brief() para ver errores frecuentes del coder
 ${diffInstruction}

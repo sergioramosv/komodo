@@ -30,7 +30,7 @@ import { escalateModel } from '../triage/smart-model-router.js';
  *   error?: string
  * }>}
  */
-export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: initialSonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold, coderCli }) {
+export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: initialSonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold, coderCli, knowledgeContext }) {
   let sonarReport = initialSonarReport;
   const maxCycles = config.maxReviewCycles;
   let cycles = 0;
@@ -68,6 +68,8 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
       previousReview: lastReview,
       lastReviewSHA,
       pluginIssues,
+      // KG context only injected on first cycle — subsequent cycles already have full diff context
+      knowledgeContext: i === 1 ? knowledgeContext : undefined,
     });
 
     if (reviewResult.cost) {
