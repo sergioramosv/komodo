@@ -220,7 +220,7 @@ function applyEvent(
       }
       const phase = (event.metadata as { phase?: string } | undefined)?.phase;
       if (phase) {
-        next.phase = phase;
+        next.phase = phase as KomodoSnapshot['phase'];
       }
       break;
     }

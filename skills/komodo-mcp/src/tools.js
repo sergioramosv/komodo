@@ -205,25 +205,11 @@ export const tools = {
 
       komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
       komodoState.updatePhase('planning');
-      komodoState.updateAgent('PLANNER', { status: 'working' });
-
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'PLANNER',
-        previousState: 'idle',
-        newState: 'working',
-        metadata: { phase: 'planning' },
-      });
+      komodoState.updateAgent('PLANNER', { status: 'working' }, { phase: 'planning' });
 
       const result = await pickNextTask(pid);
 
-      komodoState.updateAgent('PLANNER', { status: 'idle', currentTask: null });
-
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'PLANNER',
-        previousState: 'working',
-        newState: 'idle',
-        metadata: { phase: 'idle' },
-      });
+      komodoState.updateAgent('PLANNER', { status: 'idle', currentTask: null }, { phase: 'idle' });
 
       if (!result.success) {
         // Check for rate limit in planner
@@ -304,7 +290,13 @@ export const tools = {
 
       komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
       komodoState.updatePhase('coding');
-      komodoState.updateAgent('CODER', { status: 'working', currentTask: params.title });
+      komodoState.updateAgent('CODER', { status: 'working', currentTask: params.title }, {
+        phase: 'coding',
+        taskId: params.taskId,
+        taskTitle: params.title,
+        branchName: params.branchName,
+        devPoints: params.devPoints,
+      });
       komodoState.currentTask = params.title;
 
       const userStory = (params.userStoryWho && params.userStoryWhat)
@@ -334,66 +326,28 @@ export const tools = {
         },
       });
 
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'CODER',
-        previousState: 'idle',
-        newState: 'working',
-        metadata: {
-          phase: 'coding',
-          taskId: params.taskId,
-          taskTitle: params.title,
-          branchName: params.branchName,
-          devPoints: params.devPoints,
-        },
-      });
-
       // ARCHITECT: analyze codebase and generate implementation plan
       let architectPlan = null;
       try {
-        komodoState.updateAgent('ARCHITECT', { status: 'working', currentTask: params.title });
-        eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-          agentName: 'ARCHITECT',
-          previousState: 'idle',
-          newState: 'working',
-          metadata: { phase: 'architecting', taskId: params.taskId, taskTitle: params.title },
-        });
+        komodoState.updateAgent('ARCHITECT', { status: 'working', currentTask: params.title }, { phase: 'architecting', taskId: params.taskId, taskTitle: params.title });
 
         const architectResult = await analyzeTask(taskSpec, params.cwd, {
           model: selectModel(config.cliArchitect, 'ARCHITECT', 'standard'),
         });
 
-        komodoState.updateAgent('ARCHITECT', { status: 'idle', currentTask: null });
-        eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-          agentName: 'ARCHITECT',
-          previousState: 'working',
-          newState: 'idle',
-          metadata: { phase: 'idle' },
-        });
+        komodoState.updateAgent('ARCHITECT', { status: 'idle', currentTask: null }, { phase: 'idle' });
 
         if (architectResult.success && architectResult.plan) {
           architectPlan = architectResult.plan;
         }
       } catch {
         // Non-blocking: if ARCHITECT fails, proceed without plan
-        komodoState.updateAgent('ARCHITECT', { status: 'idle', currentTask: null });
-        eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-          agentName: 'ARCHITECT',
-          previousState: 'working',
-          newState: 'idle',
-          metadata: { phase: 'idle' },
-        });
+        komodoState.updateAgent('ARCHITECT', { status: 'idle', currentTask: null }, { phase: 'idle' });
       }
 
       const result = await implementTask({ ...taskSpec, architectPlan }, params.cwd);
 
-      komodoState.updateAgent('CODER', { status: 'idle', currentTask: null });
-
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'CODER',
-        previousState: 'working',
-        newState: 'idle',
-        metadata: { phase: 'idle' },
-      });
+      komodoState.updateAgent('CODER', { status: 'idle', currentTask: null }, { phase: 'idle' });
 
       if (!result.success) {
         // Check for rate limit and save checkpoint if detected
@@ -519,15 +473,8 @@ export const tools = {
       }
 
       komodoState.updatePhase('reviewing');
-      komodoState.updateAgent('REVIEWER', { status: 'working', currentTask: params.taskTitle });
+      komodoState.updateAgent('REVIEWER', { status: 'working', currentTask: params.taskTitle }, { phase: 'reviewing', prNumber: params.prNumber, taskTitle: params.taskTitle });
       komodoState.currentPR = { number: params.prNumber, repo: params.repo };
-
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'REVIEWER',
-        previousState: 'idle',
-        newState: 'working',
-        metadata: { phase: 'reviewing', prNumber: params.prNumber, taskTitle: params.taskTitle },
-      });
 
       // Select appropriate model (avoid using expensive Opus for reviews)
       const reviewerModel = selectModel(config.cliReviewer, 'REVIEWER', 'standard');
@@ -541,14 +488,7 @@ export const tools = {
         model: reviewerModel,
       });
 
-      komodoState.updateAgent('REVIEWER', { status: 'idle', currentTask: null });
-
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'REVIEWER',
-        previousState: 'working',
-        newState: 'idle',
-        metadata: { phase: 'idle' },
-      });
+      komodoState.updateAgent('REVIEWER', { status: 'idle', currentTask: null }, { phase: 'idle' });
 
       if (!result.success) {
         // Check for rate limit and save checkpoint if detected
@@ -618,25 +558,11 @@ export const tools = {
       };
 
       komodoState.updatePhase('coding');
-      komodoState.updateAgent('CODER', { status: 'working', currentTask: `Fix: ${params.title}` });
-
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'CODER',
-        previousState: 'idle',
-        newState: 'working',
-        metadata: { phase: 'coding', prNumber: params.prNumber, fixing: true, taskTitle: `Fix: ${params.title}` },
-      });
+      komodoState.updateAgent('CODER', { status: 'working', currentTask: `Fix: ${params.title}` }, { phase: 'coding', prNumber: params.prNumber, fixing: true, taskTitle: `Fix: ${params.title}` });
 
       const result = await fixReviewIssues(taskSpec, params.prNumber, reviewFeedback, params.cwd);
 
-      komodoState.updateAgent('CODER', { status: 'idle', currentTask: null });
-
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'CODER',
-        previousState: 'working',
-        newState: 'idle',
-        metadata: { phase: 'idle' },
-      });
+      komodoState.updateAgent('CODER', { status: 'idle', currentTask: null }, { phase: 'idle' });
 
       if (!result.success) {
         // Check for rate limit and save checkpoint if detected

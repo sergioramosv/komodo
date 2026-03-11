@@ -282,14 +282,8 @@ export async function runTask(projectId, cwd) {
     }
 
     eventBus.emitAgentEvent('PLANNER', 'done');
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'PLANNER',
-      previousState: AGENT_STATES.WORKING,
-      newState: AGENT_STATES.IDLE,
-      metadata: { phase: 'idle' },
-    });
+    komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('PLANNER', 'idle');
-    komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
     if (!plannerResult.success) {
       return makeResult({ success: false, startTime, error: plannerResult.error });
@@ -471,14 +465,8 @@ export async function runTask(projectId, cwd) {
     logger.logStep(2, 7, 'Architect analizando codebase...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.ARCHITECTING, { currentTask: taskSpec.taskId });
-    komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId });
+    komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, { phase: 'architecting', taskId: taskSpec.taskId, taskTitle: taskSpec.title });
     eventBus.emitAgentEvent('ARCHITECT', 'working', { taskId: taskSpec.taskId });
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'ARCHITECT',
-      previousState: AGENT_STATES.IDLE,
-      newState: AGENT_STATES.WORKING,
-      metadata: { phase: 'architecting', taskId: taskSpec.taskId, taskTitle: taskSpec.title },
-    });
 
     let architectPlan = null;
     const architectResult = await withWatchdog(
@@ -493,14 +481,8 @@ export async function runTask(projectId, cwd) {
     );
 
     eventBus.emitAgentEvent('ARCHITECT', 'done');
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'ARCHITECT',
-      previousState: AGENT_STATES.WORKING,
-      newState: AGENT_STATES.IDLE,
-      metadata: { phase: 'idle' },
-    });
+    komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('ARCHITECT', 'idle');
-    komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
     if (architectResult.cost) {
       taskCost += architectResult.cost;
@@ -604,14 +586,8 @@ export async function runTask(projectId, cwd) {
     }
 
     eventBus.emitAgentEvent('CODER', 'done');
-    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'CODER',
-      previousState: AGENT_STATES.WORKING,
-      newState: AGENT_STATES.IDLE,
-      metadata: { phase: 'idle' },
-    });
+    komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('CODER', 'idle');
-    komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
     if (!coderResult.success) {
       // Recovery: devolver tarea a to-do
@@ -666,17 +642,10 @@ export async function runTask(projectId, cwd) {
       logger.logStep(3, 7, 'QA generando tests...', 'KOMODO');
 
       komodoState.updatePhase(PHASES.TESTING, { currentPR: prNumber });
-      komodoState.updateAgent('QA', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId });
-
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'QA',
-        previousState: AGENT_STATES.IDLE,
-        newState: AGENT_STATES.WORKING,
-        metadata: {
-          phase: 'testing',
-          taskId: taskSpec.taskId,
-          taskTitle: taskSpec.title,
-        },
+      komodoState.updateAgent('QA', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
+        phase: 'testing',
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
       });
       eventBus.emitAgentEvent('QA', 'working', { prNumber });
 
@@ -703,14 +672,8 @@ export async function runTask(projectId, cwd) {
       }
 
       eventBus.emitAgentEvent('QA', 'done');
-      eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: 'QA',
-        previousState: AGENT_STATES.WORKING,
-        newState: AGENT_STATES.IDLE,
-        metadata: { phase: 'idle' },
-      });
+      komodoState.updateAgent('QA', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
       eventBus.emitAgentEvent('QA', 'idle');
-      komodoState.updateAgent('QA', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null });
 
       if (qaResult.success) {
         qaReport = qaResult.qa;
