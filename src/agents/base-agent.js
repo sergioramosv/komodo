@@ -529,6 +529,7 @@ export async function runAgent({
     if (!result) {
       logger.warn('Could not extract JSON from response', name);
       logger.warn(`Raw (first 500 chars): ${(rawResult || '').slice(0, 500)}`, name);
+      logger.warn(`Full stdout (first 1000 chars): ${(stdout || '').slice(0, 1000)}`, name);
     }
 
     logger.success(`Done in ${duration.toFixed(1)}s`, name);

@@ -280,7 +280,7 @@ ${diffInstruction}
       cost: result.cost,
       duration: result.duration,
       reviewSHA: currentSHA,
-      error: result.error || 'El Reviewer no devolvió un resultado válido',
+      error: result.error || `El Reviewer no devolvió un resultado válido. Raw: ${(result.rawResult || '').slice(0, 300)}`,
     };
   }
 
