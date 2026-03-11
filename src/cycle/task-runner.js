@@ -305,18 +305,16 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
-    // KG: save planner section for downstream agents
-    try {
-      saveSection(projectId, taskSpec.taskId, 'planner', {
-        title: taskSpec.title,
-        userStory: taskSpec.userStory,
-        acceptanceCriteria: taskSpec.acceptanceCriteria,
-        tags: taskSpec.tags,
-        branchName: taskSpec.branchName,
-      });
-    } catch (err) {
-      logger.warn(`KG saveSection planner failed (non-blocking): ${err.message}`, 'KOMODO');
-    }
+    // KG: save planner section for downstream agents.
+    // Not currently read by buildCoderContext/buildReviewerContext — stored for future
+    // agents (e.g. a Planning Auditor) or post-mortem debugging of task intent.
+    saveSection(projectId, taskSpec.taskId, 'planner', {
+      title: taskSpec.title,
+      userStory: taskSpec.userStory,
+      acceptanceCriteria: taskSpec.acceptanceCriteria,
+      tags: taskSpec.tags,
+      branchName: taskSpec.branchName,
+    });
 
     // --- Rate Limit Awareness Check ---
     const estimatedTokens = estimateTaskTokens(taskSpec).total;
@@ -506,14 +504,10 @@ export async function runTask(projectId, cwd) {
       logger.info(`Plan: ${createCount} to create, ${modifyCount} to modify`, 'ARCHITECT');
 
       // KG: save architect section for downstream agents
-      try {
-        saveSection(projectId, taskSpec.taskId, 'architect', architectPlan);
-        eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_GRAPH_SAVED, {
-          metadata: { agent: 'architect', taskId: taskSpec.taskId },
-        });
-      } catch (err) {
-        logger.warn(`KG save architect section failed (non-blocking): ${err.message}`, 'KOMODO');
-      }
+      saveSection(projectId, taskSpec.taskId, 'architect', architectPlan);
+      eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_GRAPH_SAVED, {
+        metadata: { agent: 'architect', taskId: taskSpec.taskId },
+      });
     } else {
       logger.warn(`Architect failed (${architectResult.error}), proceeding without plan`, 'KOMODO');
     }
@@ -623,18 +617,14 @@ export async function runTask(projectId, cwd) {
     logger.info(`PR #${prNumber} creada`, 'KOMODO');
 
     // KG: save coder section
-    try {
-      saveSection(projectId, taskSpec.taskId, 'coder', {
-        prNumber,
-        filesChanged: coderResult.pr.filesChanged || [],
-        summary: coderResult.pr.summary || '',
-      });
-      eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_GRAPH_SAVED, {
-        metadata: { agent: 'coder', taskId: taskSpec.taskId },
-      });
-    } catch (err) {
-      logger.warn(`KG save coder section failed (non-blocking): ${err.message}`, 'KOMODO');
-    }
+    saveSection(projectId, taskSpec.taskId, 'coder', {
+      prNumber,
+      filesChanged: coderResult.pr.filesChanged || [],
+      summary: coderResult.pr.summary || '',
+    });
+    eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_GRAPH_SAVED, {
+      metadata: { agent: 'coder', taskId: taskSpec.taskId },
+    });
 
     eventBus.emitEvent(EVENT_TYPES.PR_CREATED, {
       agentName: 'CODER',
@@ -809,18 +799,14 @@ export async function runTask(projectId, cwd) {
       logger.sonarSummary(sonarReport);
 
       // KG: save security section
-      try {
-        saveSection(projectId, taskSpec.taskId, 'security', {
-          qualityGate: sonarReport.qualityGate,
-          metrics: sonarReport.metrics || null,
-          issueCount: sonarReport.issues || null,
-        });
-        eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_GRAPH_SAVED, {
-          metadata: { agent: 'security', taskId: taskSpec.taskId },
-        });
-      } catch (err) {
-        logger.warn(`KG save security section failed (non-blocking): ${err.message}`, 'KOMODO');
-      }
+      saveSection(projectId, taskSpec.taskId, 'security', {
+        qualityGate: sonarReport.qualityGate,
+        metrics: sonarReport.metrics || null,
+        issueCount: sonarReport.issues || null,
+      });
+      eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_GRAPH_SAVED, {
+        metadata: { agent: 'security', taskId: taskSpec.taskId },
+      });
     } else if (sonarReport.skipped) {
       komodoState.sonarAnalysis = { status: 'skipped', qualityGate: null, issues: null };
       logger.info('SonarQube omitido, continuando con review...', 'KOMODO');
@@ -959,23 +945,19 @@ export async function runTask(projectId, cwd) {
     }
 
     // KG: save reviewer section and extract cross-task lessons
-    try {
-      if (reviewResult.finalReview) {
-        saveSection(projectId, taskSpec.taskId, 'reviewer', {
-          verdict: reviewResult.finalReview.verdict,
-          score: reviewResult.finalReview.score,
-          issues: reviewResult.finalReview.issues || [],
-          positives: reviewResult.finalReview.positives || [],
-          summary: reviewResult.finalReview.summary || '',
-        });
-      }
-      extractAndSaveLessons(projectId, taskSpec.taskId, taskModule);
-      eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_LESSONS_EXTRACTED, {
-        metadata: { taskId: taskSpec.taskId, module: taskModule },
+    if (reviewResult.finalReview) {
+      saveSection(projectId, taskSpec.taskId, 'reviewer', {
+        verdict: reviewResult.finalReview.verdict,
+        score: reviewResult.finalReview.score,
+        issues: reviewResult.finalReview.issues || [],
+        positives: reviewResult.finalReview.positives || [],
+        summary: reviewResult.finalReview.summary || '',
       });
-    } catch (err) {
-      logger.warn(`KG lessons extraction failed (non-blocking): ${err.message}`, 'KOMODO');
     }
+    extractAndSaveLessons(projectId, taskSpec.taskId, taskModule);
+    eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_LESSONS_EXTRACTED, {
+      metadata: { taskId: taskSpec.taskId, module: taskModule },
+    });
 
     // Tech debt: create tasks from minor/suggestion issues left after approved review
     try {
