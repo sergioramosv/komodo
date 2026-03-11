@@ -40,7 +40,9 @@ const MODEL_BADGE: Record<string, { label: string; color: string; bg: string }> 
 const PHASE_TO_AGENT: Record<Phase, AgentName | null> = {
   idle: null,
   planning: 'PLANNER',
+  architecting: null,
   coding: 'CODER',
+  testing: null,
   analyzing: null,
   reviewing: 'REVIEWER',
   merging: null,

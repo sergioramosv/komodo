@@ -228,6 +228,7 @@ export class KomodoState {
    * @param {number} [metadata.totalTasks] - Total de tareas del sprint
    */
   updatePhase(newPhase, metadata = {}) {
+    const previousPhase = this.phase;
     this.phase = newPhase;
 
     if (metadata.currentTask !== undefined) this.currentTask = metadata.currentTask;
@@ -237,6 +238,12 @@ export class KomodoState {
     if (metadata.totalCost !== undefined) this.totalCost = metadata.totalCost;
     if (metadata.tasksCompleted !== undefined) this.tasksCompleted = metadata.tasksCompleted;
     if (metadata.totalTasks !== undefined) this.totalTasks = metadata.totalTasks;
+
+    if (newPhase !== previousPhase) {
+      eventBus.emitEvent(EVENT_TYPES.PHASE_CHANGE, {
+        metadata: { previous: previousPhase, current: newPhase },
+      });
+    }
   }
 
   /**

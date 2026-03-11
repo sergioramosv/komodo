@@ -22,13 +22,15 @@ import type { Phase, AgentStatus, DashboardEvent, SonarAnalysisState } from '@/l
 const PHASE_CONFIG: Record<Phase, { icon: string; label: string; color: string }> = {
   idle: { icon: '○', label: 'Idle', color: 'text-neutral-500' },
   planning: { icon: '✎', label: 'Planning', color: 'text-violet-400' },
+  architecting: { icon: '◈', label: 'Architecting', color: 'text-cyan-400' },
   coding: { icon: '⌨', label: 'Coding', color: 'text-blue-400' },
+  testing: { icon: '⚙', label: 'Testing', color: 'text-teal-400' },
   analyzing: { icon: '◉', label: 'SonarQube', color: 'text-cyan-400' },
   reviewing: { icon: '⊘', label: 'Reviewing', color: 'text-amber-400' },
   merging: { icon: '⇢', label: 'Merging', color: 'text-green-400' },
 };
 
-const PHASE_ORDER: Phase[] = ['planning', 'coding', 'analyzing', 'reviewing', 'merging'];
+const PHASE_ORDER: Phase[] = ['planning', 'architecting', 'coding', 'testing', 'analyzing', 'reviewing', 'merging'];
 
 /* ── Agent status colors ── */
 
