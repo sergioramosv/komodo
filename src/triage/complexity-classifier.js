@@ -165,7 +165,18 @@ function scoreDependencies(count) {
 }
 
 /**
+ * Keywords that indicate high-impact data model changes regardless of text length.
+ */
+const HIGH_IMPACT_DATA_KEYWORDS = /\b(migration|drop|breaking|rename.?table|rename.?column|delete.?table|alter.?type|cascade)\b/i;
+
+/**
+ * Keywords that indicate high-impact API changes regardless of text length.
+ */
+const HIGH_IMPACT_API_KEYWORDS = /\b(breaking|deprecated|removed|v[0-9]+.*migration|incompatible|drop.?endpoint)\b/i;
+
+/**
  * Scores the presence/complexity of data model changes on a 1-10 scale.
+ * Applies a keyword-based floor: short but dangerous changes still score high.
  * @param {string|undefined} changes
  * @returns {number}
  */
@@ -173,13 +184,17 @@ function scoreDataModelChanges(changes) {
   if (!changes) return 1;
   const text = typeof changes === 'string' ? changes.trim() : String(changes).trim();
   if (!text || text.toLowerCase() === 'none') return 1;
-  if (text.length < 50) return 4;
-  if (text.length < 150) return 6;
-  return 8;
+  const keywordFloor = HIGH_IMPACT_DATA_KEYWORDS.test(text) ? 7 : 0;
+  let score;
+  if (text.length < 50) score = 4;
+  else if (text.length < 150) score = 6;
+  else score = 8;
+  return Math.max(score, keywordFloor);
 }
 
 /**
  * Scores the presence/complexity of API changes on a 1-10 scale.
+ * Applies a keyword-based floor: short but breaking changes still score high.
  * @param {string|undefined} changes
  * @returns {number}
  */
@@ -187,9 +202,12 @@ function scoreApiChanges(changes) {
   if (!changes) return 1;
   const text = typeof changes === 'string' ? changes.trim() : String(changes).trim();
   if (!text || text.toLowerCase() === 'none') return 1;
-  if (text.length < 50) return 4;
-  if (text.length < 150) return 6;
-  return 8;
+  const keywordFloor = HIGH_IMPACT_API_KEYWORDS.test(text) ? 7 : 0;
+  let score;
+  if (text.length < 50) score = 4;
+  else if (text.length < 150) score = 6;
+  else score = 8;
+  return Math.max(score, keywordFloor);
 }
 
 /**
@@ -241,8 +259,11 @@ function extractPlanData(task) {
  */
 export function calculateRealComplexity(task) {
   const planData = extractPlanData(task);
+  const hasDataModel = !!planData.dataModelChanges && planData.dataModelChanges.toLowerCase() !== 'none';
+  const hasApi = !!planData.apiChanges && planData.apiChanges.toLowerCase() !== 'none';
   const hasPlan = planData.filesToCreate.length > 0 || planData.filesToModify.length > 0 ||
-    planData.dependencies.length > 0 || planData.risks.length > 0;
+    planData.dependencies.length > 0 || planData.risks.length > 0 ||
+    hasDataModel || hasApi;
 
   // If no plan data, fall back to basic devPoints-based scoring
   if (!hasPlan) {

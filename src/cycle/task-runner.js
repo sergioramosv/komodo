@@ -53,6 +53,26 @@ function extractOwnerRepo(repoUrl) {
 }
 
 /**
+ * Checks if a PR has merge conflicts using the GitHub API.
+ * Returns { mergeable, conflicting } where conflicting is true if there are conflicts.
+ */
+function checkMergeConflicts(repo, prNumber) {
+  try {
+    const pr = runGh(
+      ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'mergeable,mergeStateStatus'],
+      { json: true },
+    );
+    if (!pr || typeof pr !== 'object') return { mergeable: true, conflicting: false };
+
+    const conflicting = pr.mergeable === 'CONFLICTING' || pr.mergeStateStatus === 'DIRTY';
+    return { mergeable: !conflicting, conflicting };
+  } catch (err) {
+    logger.warn(`Could not check merge conflicts for PR #${prNumber}: ${err.message}`, 'KOMODO');
+    return { mergeable: true, conflicting: false };
+  }
+}
+
+/**
  * Mergea una PR usando gh CLI directamente (no necesita agente IA).
  */
 function mergePR(repo, prNumber) {
@@ -336,8 +356,6 @@ export async function runTask(projectId, cwd) {
       `Rate limit check passed. Estimated tokens: ${estimatedTokens}. Available headroom: ${headroom.availableTokens}.`,
       'KOMODO',
     );
-    // Record estimated token consumption in the sliding window
-    recordTokenConsumption(estimatedTokens);
     // --- End Rate Limit Awareness Check ---
 
     // ── Decomposition triage: break large tasks into subtasks ──
@@ -380,6 +398,10 @@ export async function runTask(projectId, cwd) {
         logger.warn(`Decomposition failed (${decompResult.error}), proceeding with original task`, 'KOMODO');
       }
     }
+
+    // Record estimated token consumption only after decomposition check,
+    // so decomposed parent tasks don't pollute the sliding window
+    recordTokenConsumption(estimateTaskTokens(taskSpec).total);
 
     // ── Triage: classify complexity + select models ──
     const classification = classifyAndEmit(taskSpec);
@@ -790,6 +812,22 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     logger.logStep(5, 6, 'Review loop...', 'KOMODO');
 
+    // Check for merge conflicts before starting review
+    const conflictCheck = checkMergeConflicts(repo, prNumber);
+    if (conflictCheck.conflicting) {
+      logger.error(`PR #${prNumber} has merge conflicts. Cannot proceed with review.`, 'KOMODO');
+      closePR(repo, prNumber, 'Merge conflicts detected. PR needs rebase before review.');
+      await rollbackTask(taskSpec.taskId);
+      return makeResult({
+        success: false,
+        taskSpec,
+        prNumber,
+        startTime,
+        error: 'Merge conflicts detected. PR closed.',
+        reviewResult: null,
+      });
+    }
+
     komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
     komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING });
 
@@ -901,8 +939,8 @@ export async function runTask(projectId, cwd) {
     // Use the latest sonarReport from the review loop (may have been refreshed after fixes)
     const finalSonarReport = reviewResult.sonarReport || sonarReport;
 
-    // Block merge if SonarQube quality gate failed
-    if (finalSonarReport?.success && finalSonarReport.qualityGate === 'ERROR') {
+    // Block merge if SonarQube quality gate failed (any non-OK status)
+    if (finalSonarReport?.success && finalSonarReport.qualityGate && finalSonarReport.qualityGate !== 'OK') {
       const blockerCount = finalSonarReport.issues?.BLOCKER || 0;
       const criticalCount = finalSonarReport.issues?.CRITICAL || 0;
       logger.error(
@@ -925,6 +963,22 @@ export async function runTask(projectId, cwd) {
     }
 
     let merged = false;
+
+    // Check for merge conflicts before attempting merge
+    const preMergeConflictCheck = checkMergeConflicts(repo, prNumber);
+    if (preMergeConflictCheck.conflicting) {
+      logger.error(`PR #${prNumber} has merge conflicts. Cannot merge.`, 'KOMODO');
+      closePR(repo, prNumber, 'Merge conflicts detected at merge time. PR needs rebase.');
+      await rollbackTask(taskSpec.taskId);
+      return makeResult({
+        success: false,
+        taskSpec,
+        prNumber,
+        startTime,
+        error: 'Merge conflicts detected at merge time. PR closed.',
+        reviewResult,
+      });
+    }
 
     if (config.autoMerge) {
       try {
