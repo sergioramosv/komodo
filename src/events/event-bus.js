@@ -169,6 +169,9 @@ export const EVENT_TYPES = {
   AGENT_QA_WORKING: 'agent:qa:working',
   AGENT_QA_DONE: 'agent:qa:done',
   AGENT_QA_IDLE: 'agent:qa:idle',
+  AGENT_ARCHITECT_WORKING: 'agent:architect:working',
+  AGENT_ARCHITECT_DONE: 'agent:architect:done',
+  AGENT_ARCHITECT_IDLE: 'agent:architect:idle',
 };
 
 /**

@@ -404,6 +404,7 @@ export async function runAgent({
   // Resolve which CLI to use
   const cliMap = {
     PLANNER: config.cliPlanner,
+    ARCHITECT: config.cliArchitect,
     CODER: config.cliCoder,
     REVIEWER: config.cliReviewer,
     QA: config.cliQA,
