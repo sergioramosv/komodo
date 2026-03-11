@@ -7,18 +7,22 @@ import type { AgentName, AgentStatus, AgentLog, Phase } from '@/lib/types';
 
 /* ── Agent config ── */
 
-const AGENT_NAMES: AgentName[] = ['PLANNER', 'CODER', 'REVIEWER'];
+const AGENT_NAMES: AgentName[] = ['PLANNER', 'CODER', 'REVIEWER', 'ARCHITECT', 'SECURITY'];
 
 const AGENT_ACCENT: Record<AgentName, { color: string; bg: string; border: string; ring: string }> = {
   PLANNER: { color: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/30', ring: 'ring-violet-500/20' },
   CODER: { color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30', ring: 'ring-blue-500/20' },
   REVIEWER: { color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', ring: 'ring-amber-500/20' },
+  ARCHITECT: { color: 'text-teal-400', bg: 'bg-teal-500/10', border: 'border-teal-500/30', ring: 'ring-teal-500/20' },
+  SECURITY: { color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/30', ring: 'ring-green-500/20' },
 };
 
 const AGENT_ICON: Record<AgentName, string> = {
   PLANNER: '✎',
   CODER: '⌨',
   REVIEWER: '⊘',
+  ARCHITECT: '◈',
+  SECURITY: '⛨',
 };
 
 const STATUS_COLORS: Record<AgentStatus, { dot: string; label: string; bg: string }> = {

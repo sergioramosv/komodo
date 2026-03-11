@@ -1,4 +1,4 @@
-export type AgentName = 'PLANNER' | 'CODER' | 'REVIEWER';
+export type AgentName = 'PLANNER' | 'CODER' | 'REVIEWER' | 'ARCHITECT' | 'SECURITY';
 
 export type AgentStatus = 'idle' | 'walking' | 'working' | 'done';
 
