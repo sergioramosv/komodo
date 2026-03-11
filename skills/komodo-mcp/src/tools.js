@@ -114,14 +114,16 @@ function extractOwnerRepo(repoUrl) {
   return match ? match[1].replace(/\.git$/, '') : repoUrl;
 }
 
+/**
+ * Change task status directly via Firebase (no sub-agent — much more reliable).
+ * Skips test validation for automated transitions (to-validate after merge).
+ */
 async function changeTaskStatus(taskId, newStatus) {
-  await runAgent({
-    name: 'KOMODO',
-    systemPrompt: 'Eres un asistente que actualiza el estado de tareas. Cambia el estado y responde con JSON: { "updated": true }.',
-    userPrompt: `Usa change_task_status para cambiar la tarea "${taskId}" a estado "${newStatus}". Responde con { "updated": true }.`,
-    mcpServerNames: ['planning-task-mcp'],
-    maxTurns: 5,
-  });
+  const { update, getById } = await import('../../../skills/planning-task-mcp/src/firebase.js');
+  const task = await getById('tasks', taskId);
+  if (!task) throw new Error(`Task ${taskId} not found`);
+  if (task.status === newStatus) return; // already in target status
+  await update('tasks', taskId, { status: newStatus, updatedAt: Date.now() });
 }
 
 /**

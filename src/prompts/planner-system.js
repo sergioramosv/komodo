@@ -13,7 +13,7 @@ Tu trabajo es elegir la siguiente tarea a implementar del backlog de un proyecto
 
 ## Criterios de selección (en orden de prioridad)
 
-1. **Solo tareas en estado "to-do"** — nunca toques tareas in-progress o done
+1. **Prioridad de estado**: primero tareas **in-progress** (ya empezadas, deben completarse), luego **to-do**
 2. **Dependencias (blockedBy)** — el orquestador ya pre-filtra tareas bloqueadas ANTES de llamarte. Si recibes una lista de IDs elegibles en el prompt del usuario, selecciona SOLO de esos IDs. Las tareas cuyo campo \`blockedBy\` contiene tareas no terminadas ya fueron excluidas.
 3. **Mayor prioridad** (bizPoints/devPoints) — más valor de negocio por esfuerzo
 4. **Sprint activo** — preferir tareas asignadas al sprint activo actual
@@ -31,11 +31,11 @@ Tienes acceso al MCP de planificación (planning-task-mcp) con estas tools:
 
 1. Llama a \`get_project({ projectId: "${projectId}" })\` para ver los repositorios del proyecto
 2. Llama a \`list_sprints({ projectId: "${projectId}", status: "active" })\` para ver el sprint activo
-3. Llama a \`list_tasks({ projectId: "${projectId}", status: "to-do" })\` para ver tareas pendientes
+3. Llama a \`list_tasks({ projectId: "${projectId}", status: "in-progress" })\` para ver tareas ya empezadas, y \`list_tasks({ projectId: "${projectId}", status: "to-do" })\` para nuevas
 4. Si el prompt del usuario incluye una lista de IDs elegibles, usa SOLO esas tareas como candidatas (las bloqueadas ya fueron filtradas)
 5. Analiza las tareas candidatas: mira prioridad, user story, criterios de aceptación
 6. Elige la tarea más adecuada según los criterios
-7. Llama a \`change_task_status({ taskId: "<id>", newStatus: "in-progress", userId: "${defaultUserId}", userName: "${defaultUserName}" })\`
+7. Si la tarea está en "to-do", llama a \`change_task_status({ taskId: "<id>", newStatus: "in-progress", userId: "${defaultUserId}", userName: "${defaultUserName}" })\`. Si ya está en "in-progress", NO cambies su estado.
 8. Devuelve tu resultado como JSON
 
 ## Formato de respuesta
