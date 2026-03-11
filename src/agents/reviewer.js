@@ -12,6 +12,8 @@ import {
   getHeadSHA,
   getFullDiffTokenEstimate,
 } from '../cycle/incremental-review.js';
+import { selectReviewDepth, REVIEW_DEPTHS } from '../review/review-depth.js';
+import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 
 /**
  * Build the MCP server list for the Reviewer agent.
@@ -137,10 +139,40 @@ ${issues.map(issue => `- ${issue}`).join('\n')}
  *   error?: string
  * }>}
  */
-export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines, reviewCycle, previousReview, lastReviewSHA, pluginIssues, knowledgeContext }) {
+export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines, reviewCycle, previousReview, lastReviewSHA, pluginIssues, knowledgeContext, filesChanged }) {
   const isIncremental = shouldUseIncrementalReview(reviewCycle || 1);
+
+  // Select review depth based on task complexity and security findings
+  const depthResult = selectReviewDepth({
+    devPoints: taskSpec?.devPoints,
+    filesChanged: filesChanged || [],
+    sonarReport,
+  });
+
+  const selectedDepth = depthResult.depth;
+  const depthModel = model || depthResult.model;
+  const depthMaxTurns = depthResult.maxTurns;
+
+  eventBus.emitEvent(EVENT_TYPES.REVIEW_DEPTH_SELECTED, {
+    agentName: 'REVIEWER',
+    metadata: {
+      depth: selectedDepth,
+      model: depthModel,
+      maxTurns: depthMaxTurns,
+      maxTokens: depthResult.maxTokens,
+      criteria: depthResult.criteria,
+      devPoints: taskSpec?.devPoints,
+      filesChangedCount: (filesChanged || []).length,
+    },
+  });
+
+  logger.info(
+    `Review depth: ${selectedDepth.toUpperCase()} (model: ${depthModel}, maxTurns: ${depthMaxTurns}, criteria: ${depthResult.criteria.length})`,
+    'REVIEWER',
+  );
+
   const modeLabel = isIncremental ? 'INCREMENTAL' : 'FULL';
-  logger.taskHeader(`REVIEWER - Revisando PR #${prNumber} (${modeLabel})`);
+  logger.taskHeader(`REVIEWER - Revisando PR #${prNumber} (${modeLabel} / ${selectedDepth.toUpperCase()})`);
 
   // Capture HEAD SHA before review so next cycle can diff against it
   let currentSHA = null;
@@ -154,6 +186,7 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
 
   const systemPrompt = getReviewerSystemPrompt({
     enableBrowserMcp: config.enableBrowserMcp,
+    depth: selectedDepth,
   });
 
   const criteriaList = (taskSpec.acceptanceCriteria || [])
@@ -264,20 +297,26 @@ ${diffInstruction}
 3. Revisa cada criterio (correctitud, error handling, edge cases, naming, tests, seguridad)
 4. Si necesitas más contexto, lee archivos del repo con Read/Glob/Grep${browserCheckInstruction}`;
 
-  const maxTurns = 12;
-
   const result = await runAgent({
     name: 'REVIEWER',
     systemPrompt,
     userPrompt,
     mcpServerNames: getReviewerMcpServers(),
     cwd,
-    maxTurns,
-    model,
+    maxTurns: depthMaxTurns,
+    model: depthModel,
     totalTimeout: 600_000, // 10 min — reviewer is read-only, should not take longer
     // El Reviewer NO puede modificar código
     disallowedTools: ['Write', 'Edit', 'NotebookEdit'],
   });
+
+  // Log token usage metrics by depth
+  if (result.usage) {
+    logger.info(
+      `[depth:${selectedDepth}] tokens used — input: ${result.usage.input_tokens ?? '?'}, output: ${result.usage.output_tokens ?? '?'}`,
+      'REVIEWER',
+    );
+  }
 
   if (!result.success || !result.result) {
     return {
@@ -333,6 +372,7 @@ ${diffInstruction}
     incremental: isIncremental,
     incrementalMetrics: incrementalMetrics || null,
     reviewSHA: currentSHA,
+    reviewDepth: selectedDepth,
   };
 }
 
