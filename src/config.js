@@ -167,6 +167,11 @@ export const config = {
   // Model Performance Tracker (record per-model metrics in Firebase)
   modelPerformanceTracking: process.env.MODEL_PERFORMANCE_TRACKING !== 'false', // default: true
 
+  // Smart Model Routing with Learning (epsilon-greedy selection based on Firebase metrics)
+  smartModelRouting: process.env.SMART_MODEL_ROUTING !== 'false', // default: true
+  smartModelRoutingThreshold: parseFloat(process.env.SMART_MODEL_ROUTING_THRESHOLD || '6.0'),
+  smartModelRoutingMinTasks: parseInt(process.env.SMART_MODEL_ROUTING_MIN_TASKS || '5', 10),
+
   // Tech Debt Tracker (auto-create tasks from minor review issues)
   techDebtTracking: process.env.TECH_DEBT_TRACKING !== 'false', // default: true
 
