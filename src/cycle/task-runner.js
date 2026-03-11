@@ -26,6 +26,8 @@ import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { saveSection, buildCoderContext, buildReviewerContext, loadModuleLessons, extractAndSaveLessons } from '../knowledge/knowledge-graph.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
+import { runCanaryMerge } from '../canary/canary-merge.js';
+import { registerActiveTaskFiles, unregisterActiveTaskFiles, detectParallelConflicts } from '../canary/conflict-detector.js';
 import { analyzeCoverage, updateBaselineAfterMerge, recordCoverageHistory } from '../coverage/coverage-analyzer.js';
 import { autoVersionBump } from '../versioning/version-bumper.js';
 import { autoRelease } from '../versioning/release-manager.js';
@@ -651,6 +653,9 @@ export async function runTask(projectId, cwd) {
       },
     });
 
+    // Canary: register files for parallel conflict detection
+    registerActiveTaskFiles(taskSpec.taskId, coderResult.pr.filesChanged || []);
+
     // Check for rate limit pause before next step
     if (komodoState.isPauseRequested()) {
       logger.warn('Execution paused by rate limit after Coder step.', 'KOMODO');
@@ -1052,15 +1057,60 @@ export async function runTask(projectId, cwd) {
       });
     }
 
+    // Canary: check parallel conflicts before merging
+    detectParallelConflicts(taskSpec.taskId, coderResult.pr.filesChanged || []);
+
     if (config.autoMerge) {
-      try {
-        mergePR(repo, prNumber);
-        merged = true;
-        eventBus.emitEvent(EVENT_TYPES.PR_MERGED, {
-          metadata: { prNumber, repo, taskId: taskSpec.taskId },
-        });
-      } catch (err) {
-        logger.error(`Error al mergear PR #${prNumber}: ${err.message}`, 'KOMODO');
+      if (config.canaryEnabled) {
+        // ── Canary merge: feature → staging → (CI) → main ──────────────
+        try {
+          const canaryResult = await runCanaryMerge({
+            taskSpec,
+            prNumber,
+            repo,
+            cwd,
+            coderModel,
+            codingGuidelines,
+          });
+
+          if (canaryResult.promoted) {
+            merged = true;
+            eventBus.emitEvent(EVENT_TYPES.PR_MERGED, {
+              metadata: { prNumber, repo, taskId: taskSpec.taskId, canary: true },
+            });
+          } else if (canaryResult.rolledBack) {
+            logger.error(
+              `Canary rollback for PR #${prNumber}: ${canaryResult.reason}. Task returned to to-do.`,
+              'KOMODO',
+            );
+            unregisterActiveTaskFiles(taskSpec.taskId);
+            closePR(repo, prNumber, `Canary rollback: ${canaryResult.reason}`);
+            await rollbackTask(taskSpec.taskId);
+            return makeResult({
+              success: false,
+              taskSpec,
+              prNumber,
+              startTime,
+              error: `Canary rollback: ${canaryResult.reason}`,
+              reviewResult,
+            });
+          } else {
+            // canaryAutoPromote=false — PR approved and CI passed on staging, awaiting manual merge
+            logger.info(`Canary staging ready for PR #${prNumber}, awaiting manual promotion.`, 'KOMODO');
+          }
+        } catch (err) {
+          logger.error(`Canary merge error for PR #${prNumber}: ${err.message}`, 'KOMODO');
+        }
+      } else {
+        try {
+          mergePR(repo, prNumber);
+          merged = true;
+          eventBus.emitEvent(EVENT_TYPES.PR_MERGED, {
+            metadata: { prNumber, repo, taskId: taskSpec.taskId },
+          });
+        } catch (err) {
+          logger.error(`Error al mergear PR #${prNumber}: ${err.message}`, 'KOMODO');
+        }
       }
 
       try {
@@ -1142,6 +1192,9 @@ export async function runTask(projectId, cwd) {
         logger.warn(`No se pudo actualizar tarea a to-validate: ${err.message}`, 'KOMODO');
       }
     }
+
+    // Canary: release the file ownership for this task
+    unregisterActiveTaskFiles(taskSpec.taskId);
 
     const totalDuration = (Date.now() - startTime) / 1000;
 
