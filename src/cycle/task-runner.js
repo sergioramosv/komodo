@@ -107,6 +107,28 @@ function closePR(repo, prNumber, reason) {
 }
 
 /**
+ * Find and close any open PR on a given branch (orphan cleanup).
+ * Used when the Coder times out after creating a PR but before returning the PR number.
+ */
+function closeOrphanPRByBranch(repo, branchName, reason) {
+  if (!repo || !branchName) return;
+  try {
+    const prs = runGh(
+      ['pr', 'list', '--repo', repo, '--head', branchName, '--state', 'open', '--json', 'number'],
+      { json: true },
+    );
+    if (Array.isArray(prs) && prs.length > 0) {
+      for (const pr of prs) {
+        logger.warn(`Cerrando PR huérfana #${pr.number} en branch ${branchName}`, 'KOMODO');
+        closePR(repo, pr.number, reason);
+      }
+    }
+  } catch (err) {
+    logger.warn(`Orphan PR cleanup failed for branch ${branchName}: ${err.message}`, 'KOMODO');
+  }
+}
+
+/**
  * Cambia el estado de una tarea usando un agente mini.
  */
 async function changeTaskStatus(taskId, newStatus) {
@@ -590,6 +612,8 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('CODER', 'idle');
 
     if (!coderResult.success) {
+      // Cleanup: close any orphan PR the Coder may have created before timing out
+      closeOrphanPRByBranch(repo, taskSpec.branchName, `Coder falló: ${coderResult.error}`);
       // Recovery: devolver tarea a to-do
       await rollbackTask(taskSpec.taskId);
       const result = makeResult({
@@ -1240,6 +1264,9 @@ export async function runTask(projectId, cwd) {
 
     if (prNumber && repo) {
       closePR(repo, prNumber, `Error inesperado: ${err.message}`);
+    } else if (repo && taskSpec?.branchName) {
+      // No prNumber known — search for orphan PRs by branch name
+      closeOrphanPRByBranch(repo, taskSpec.branchName, `Error inesperado: ${err.message}`);
     }
     if (taskSpec?.taskId) {
       await rollbackTask(taskSpec.taskId);

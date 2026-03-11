@@ -264,7 +264,7 @@ ${diffInstruction}
 3. Revisa cada criterio (correctitud, error handling, edge cases, naming, tests, seguridad)
 4. Si necesitas más contexto, lee archivos del repo con Read/Glob/Grep${browserCheckInstruction}`;
 
-  const maxTurns = 25;
+  const maxTurns = 12;
 
   const result = await runAgent({
     name: 'REVIEWER',
@@ -274,6 +274,7 @@ ${diffInstruction}
     cwd,
     maxTurns,
     model,
+    totalTimeout: 600_000, // 10 min — reviewer is read-only, should not take longer
     // El Reviewer NO puede modificar código
     disallowedTools: ['Write', 'Edit', 'NotebookEdit'],
   });
