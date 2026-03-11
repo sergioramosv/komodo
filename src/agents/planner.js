@@ -73,7 +73,7 @@ export function filterBlockedTasks(todoTasks, allTasks) {
  *   error?: string
  * }>}
  */
-export async function pickNextTask(projectId, { model } = {}) {
+export async function pickNextTask(projectId, { model, preferredTaskId } = {}) {
   logger.taskHeader('PLANNER - Seleccionando siguiente tarea');
 
   // ── Step 1: Pre-filter blocked tasks BEFORE agent ranking ──
@@ -134,6 +134,10 @@ export async function pickNextTask(projectId, { model } = {}) {
 
   if (affinityHint) {
     userPrompt += `\n\n${affinityHint}`;
+  }
+
+  if (preferredTaskId) {
+    userPrompt += `\n\nSUGERENCIA DE EFICIENCIA (token-estimator): La tarea "${preferredTaskId}" tiene la mayor eficiencia de tokens (bizPoints/estimatedTokens). Si está en la lista elegible y no hay razón técnica para elegir otra, priorízala.`;
   }
 
   const result = await runAgent({

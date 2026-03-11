@@ -28,6 +28,7 @@ import { analyzeCoverage, updateBaselineAfterMerge, recordCoverageHistory } from
 import { autoVersionBump } from '../versioning/version-bumper.js';
 import { autoRelease } from '../versioning/release-manager.js';
 import { pluginLoader } from '../plugins/plugin-loader.js';
+import { estimateTokens, waitForRateLimitHeadroom, trackTokensUsed } from '../cost/token-estimator.js';
 
 /**
  * Fetches the codingGuidelines field from a project.
@@ -246,12 +247,13 @@ Si no hay tareas: { "taskId": null, "message": "No hay tareas pendientes" }`;
  *   error?: string
  * }>}
  */
-export async function runTask(projectId, cwd) {
+export async function runTask(projectId, cwd, { preferredTaskId } = {}) {
   const startTime = Date.now();
   let taskSpec = null;
   let prNumber = null;
   let repo = '';
   let taskCost = 0;
+  let estimatedTokens = 0;
 
   try {
     // ═══════════════════════════════════════════
@@ -274,7 +276,7 @@ export async function runTask(projectId, cwd) {
     const plannerModel = selectModel(plannerCli, 'PLANNER', 'standard');
 
     const plannerResult = await withWatchdog(
-      () => pickNextTask(projectId, { model: plannerModel }),
+      () => pickNextTask(projectId, { model: plannerModel, preferredTaskId }),
       { agentName: 'PLANNER', onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
     );
 
@@ -342,6 +344,18 @@ export async function runTask(projectId, cwd) {
     const classification = classifyAndEmit(taskSpec);
     const complexityLevel = classification.level;
     const taskModelOverride = taskSpec.modelOverride || undefined;
+
+    // ── Token estimation + rate limit headroom check ──────────────────────
+    try {
+      const tokenEst = await estimateTokens(
+        { ...taskSpec, complexityLevel },
+        { projectId: projectId || config.defaultProjectId },
+      );
+      estimatedTokens = tokenEst.estimatedTokens;
+      await waitForRateLimitHeadroom(estimatedTokens, { taskId: taskSpec.taskId });
+    } catch (err) {
+      logger.warn(`Token estimation failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
 
     const architectCli = config.cliArchitect;
     const coderCli = config.cliCoder;
@@ -1112,6 +1126,15 @@ export async function runTask(projectId, cwd) {
     });
 
     checkpointManager.clearFlowContext();
+
+    // Track estimated token usage in the rate limit window
+    if (estimatedTokens > 0) {
+      try {
+        trackTokensUsed(estimatedTokens);
+      } catch (err) {
+        logger.warn(`Token tracking failed (non-blocking): ${err.message}`, 'KOMODO');
+      }
+    }
 
     return {
       success: true,

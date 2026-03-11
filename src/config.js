@@ -241,6 +241,14 @@ export const config = {
     .filter(Boolean),
   multiProjectStrategy: process.env.MULTI_PROJECT_STRATEGY || 'round-robin',
 
+  // Token Usage Estimator + Rate Limit Awareness
+  // Tracks estimated tokens consumed per sliding window.
+  // Emits a preemptive wait if available headroom < threshold * estimatedTokens.
+  tokenLimitEnabled: process.env.TOKEN_LIMIT_ENABLED === 'true', // default: false (opt-in)
+  tokenWindowSizeK: parseInt(process.env.TOKEN_WINDOW_SIZE_K || '100', 10), // window size in K tokens
+  tokenWindowMs: parseInt(process.env.TOKEN_WINDOW_MS || '60000', 10), // window duration in ms (default: 1 min)
+  tokenHeadroomThreshold: parseFloat(process.env.TOKEN_HEADROOM_THRESHOLD || '0.8'), // 0.8 = 80%
+
   // Budget Manager
   dailyBudgetUsd: parseFloat(process.env.DAILY_BUDGET_USD || '10'),
   weeklyBudgetUsd: parseFloat(process.env.WEEKLY_BUDGET_USD || '50'),

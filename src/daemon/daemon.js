@@ -1,5 +1,7 @@
 import { runTask } from '../cycle/task-runner.js';
 import { fetchProjectTasks, filterBlockedTasks } from '../agents/planner.js';
+import { classifyComplexity } from '../triage/complexity-classifier.js';
+import { getEfficiencyScore } from '../cost/token-estimator.js';
 import { validateConfig, config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
@@ -156,8 +158,8 @@ export async function watch(projectId, options = {}) {
       break;
     }
 
-    // Check if there are to-do tasks available
-    const hasTasks = await _hasEligibleTasks(projectId);
+    // Check if there are to-do tasks available (sorted by efficiency)
+    const { hasTasks, preferredTaskId } = await _getEligibleTaskInfo(projectId);
 
     if (!hasTasks) {
       // Run periodic dependency check during idle
@@ -180,6 +182,7 @@ export async function watch(projectId, options = {}) {
 
       // Poll loop: wait and check again
       const shouldContinue = await _pollUntilTaskOrStop(projectId, pollInterval);
+      // preferredTaskId will be computed fresh after the poll resolves
       if (!shouldContinue) {
         break;
       }
@@ -195,7 +198,7 @@ export async function watch(projectId, options = {}) {
     // Execute a task
     try {
       komodoState.setExecutionState(EXECUTION_STATES.DAEMON_RUNNING);
-      const result = await runTask(projectId, cwd);
+      const result = await runTask(projectId, cwd, { preferredTaskId });
       results.push(result);
 
       if (!result.taskId) {
@@ -243,23 +246,45 @@ export async function watch(projectId, options = {}) {
 }
 
 /**
- * Checks if there are eligible to-do tasks in the backlog.
+ * Checks if there are eligible to-do tasks and returns the most efficient one.
+ * Sorts eligible tasks by bizPoints/estimatedTokens (efficiency) so the daemon
+ * can suggest the highest-value task to the Planner.
  *
  * @param {string} projectId
- * @returns {Promise<boolean>}
+ * @returns {Promise<{ hasTasks: boolean, preferredTaskId: string|null }>}
  */
-async function _hasEligibleTasks(projectId) {
+async function _getEligibleTaskInfo(projectId) {
   try {
     const allTasks = await fetchProjectTasks(projectId);
     const todoTasks = allTasks.filter(t => t.status === 'to-do');
 
-    if (todoTasks.length === 0) return false;
+    if (todoTasks.length === 0) return { hasTasks: false, preferredTaskId: null };
 
     const { eligible } = filterBlockedTasks(todoTasks, allTasks);
-    return eligible.length > 0;
+    if (eligible.length === 0) return { hasTasks: false, preferredTaskId: null };
+
+    // Sort by efficiency: bizPoints / estimatedTokens (highest first)
+    const ranked = eligible
+      .map(task => {
+        const classification = classifyComplexity(task);
+        const score = getEfficiencyScore({ ...task, complexityLevel: classification.level });
+        return { task, score };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    const preferredTaskId = ranked[0]?.task?.id || null;
+
+    if (preferredTaskId) {
+      logger.info(
+        `Efficiency ranking: top task=${preferredTaskId} (score=${ranked[0].score.toFixed(6)})`,
+        AGENT,
+      );
+    }
+
+    return { hasTasks: true, preferredTaskId };
   } catch (err) {
     logger.warn(`Error checking backlog: ${err.message}`, AGENT);
-    return false;
+    return { hasTasks: false, preferredTaskId: null };
   }
 }
 
@@ -282,7 +307,7 @@ async function _pollUntilTaskOrStop(projectId, intervalSeconds) {
     }
 
     // Check for tasks
-    const hasTasks = await _hasEligibleTasks(projectId);
+    const { hasTasks } = await _getEligibleTaskInfo(projectId);
     if (hasTasks) {
       return true;
     }
