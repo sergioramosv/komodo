@@ -3,7 +3,8 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 
 const AGENT = 'CANARY-AUTO-FIX';
-const MAX_TOKENS = 5000;
+/** Maximum characters of CI error log to pass to the fix agent (not LLM tokens). */
+const MAX_LOG_CHARS = 5000;
 const MAX_TURNS = 5;
 
 /**
@@ -42,7 +43,7 @@ export async function runCanaryAutoFix({
       'Fix the CI failure so the pipeline passes on the staging branch',
     ],
     implementationPlan: null, // let the agent reason from error log
-    ciErrorLog: errorLog.slice(0, MAX_TOKENS),
+    ciErrorLog: errorLog.slice(0, MAX_LOG_CHARS),
   };
 
   const fixContext = [
@@ -50,12 +51,12 @@ export async function runCanaryAutoFix({
     `The CI pipeline failed on the staging branch "${branchName}".`,
     `Fix the root cause so CI passes. Error log:`,
     '```',
-    errorLog.slice(0, MAX_TOKENS),
+    errorLog.slice(0, MAX_LOG_CHARS),
     '```',
     '',
     'Constraints:',
     `- Work directly on branch "${branchName}" (already checked out)`,
-    `- Maximum ~${MAX_TOKENS} tokens`,
+    `- Maximum ~${MAX_LOG_CHARS} tokens`,
     '- Only fix what is broken — do not add unrelated changes',
   ].join('\n');
 

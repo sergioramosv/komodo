@@ -406,9 +406,17 @@ export async function canaryMerge({
 
   const stagingHeadSha = getHeadSha(cwd);
 
-  // If canaryWaitMinutes is 0 and canaryAutoPromote, skip CI and promote directly
+  // If canaryWaitMinutes is 0 and canaryAutoPromote, skip CI and promote directly.
+  // WARNING: this bypasses CI validation entirely — only use in local/dev environments.
   if (config.canaryWaitMinutes === 0 && config.canaryAutoPromote) {
-    logger.info('CANARY_WAIT_MINUTES=0 and CANARY_AUTO_PROMOTE=true — promoting to main without CI wait', AGENT);
+    logger.warn(
+      'WARNING: CANARY_WAIT_MINUTES=0 + CANARY_AUTO_PROMOTE=true — CI validation is being bypassed. ' +
+      'Set CANARY_WAIT_MINUTES > 0 in production to ensure CI runs before promotion.',
+      AGENT,
+    );
+    eventBus.emitEvent(EVENT_TYPES.CANARY_CI_BYPASSED ?? 'canary:ci-bypassed', {
+      metadata: { prNumber, repo, stagingBranch, reason: 'CANARY_WAIT_MINUTES=0' },
+    });
     return await _promoteStagingToMain({ stagingBranch, repo, cwd, prNumber, taskId, projectId });
   }
 
@@ -527,13 +535,22 @@ async function _promoteStagingToMain({ stagingBranch, repo, cwd, prNumber, taskI
     });
     logger.success(`Canary merge succeeded: staging promoted to main (staging PR #${stagingPrNumber})`, AGENT);
   } else {
-    logger.error(`Failed to promote staging to main. Staging PR: ${stagingPrNumber}`, AGENT);
+    logger.error(`Failed to promote staging to main. Staging PR: ${stagingPrNumber} — reverting staging and rolling back task`, AGENT);
+    // Cleanup: staging has feature merged in but never reached main — revert it
+    revertStaging(stagingBranch, repo, cwd);
+    eventBus.emitEvent(EVENT_TYPES.CANARY_REVERTED, {
+      metadata: { prNumber, repo, stagingBranch },
+    });
+    await rollbackTaskStatus(
+      taskId,
+      `Canary promotion failed: could not merge staging "${stagingBranch}" to main via PR #${stagingPrNumber ?? 'unknown'} for feature PR #${prNumber}. Task returned to to-do.`,
+    );
   }
 
   return {
     success: promoted,
     promoted,
-    reverted: false,
+    reverted: !promoted,
     autoFixed,
     stagingPrNumber: stagingPrNumber || undefined,
   };
