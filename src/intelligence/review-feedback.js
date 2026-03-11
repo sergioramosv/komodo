@@ -111,39 +111,78 @@ export function getTopPatterns({ limit = 5 } = {}) {
  * @param {number} [options.limit=5] - Max patterns to include
  * @returns {string} Formatted section or empty string if no patterns
  */
-export function formatFeedbackSection({ limit = 5 } = {}) {
-  const topPatterns = getTopPatterns({ limit });
+/**
+ * Extracts lowercase keywords from a task spec for relevance matching.
+ *
+ * @param {Object} taskSpec - Task specification object
+ * @returns {string[]} Array of meaningful keywords (length > 3)
+ */
+export function extractTaskKeywords(taskSpec) {
+  if (!taskSpec) return [];
+  const text = [
+    taskSpec.title || '',
+    taskSpec.userStory?.what || '',
+    taskSpec.userStory?.why || '',
+    ...(taskSpec.acceptanceCriteria || []),
+  ].join(' ').toLowerCase();
+  return [...new Set(text.split(/\W+/).filter(w => w.length > 3))];
+}
 
-  if (topPatterns.length === 0) return '';
-
-  const lines = topPatterns.map(({ pattern, percentage }, i) => {
-    const resolution = pattern.resolution ? ` — ${pattern.resolution}` : '';
-    return `${i + 1}. ${pattern.description} (found in ${percentage}% of reviews)${resolution}`;
-  });
-
-  return `COMMON MISTAKES TO AVOID:\n${lines.join('\n')}`;
+/**
+ * Scores a pattern by how many task keywords appear in its description/tags.
+ *
+ * @param {Object} pattern - Pattern object
+ * @param {string[]} taskKeywords - Keywords extracted from task spec
+ * @returns {number} Relevance score (0 = unrelated, higher = more relevant)
+ */
+export function scorePatternRelevance(pattern, taskKeywords) {
+  if (taskKeywords.length === 0) return 1;
+  const patternText = [pattern.description || '', ...(pattern.tags || [])].join(' ').toLowerCase();
+  return taskKeywords.reduce((count, kw) => count + (patternText.includes(kw) ? 1 : 0), 0);
 }
 
 /**
  * Returns a prompt-ready feedback context for the Coder.
- * Reads patterns from memory store and formats them for injection.
+ * When taskSpec is provided, filters top 5 patterns by relevance to the task.
  *
+ * @param {Object} [options]
+ * @param {Object} [options.taskSpec] - Task spec for relevance-based filtering
  * @returns {{ summary: string, patternCount: number }}
  */
-export function getReviewFeedbackContext() {
+export function getReviewFeedbackContext({ taskSpec } = {}) {
   try {
-    const section = formatFeedbackSection({ limit: 5 });
+    // Fetch more candidates when we have a task to filter by
+    const candidateLimit = taskSpec ? 10 : 5;
+    const candidates = getTopPatterns({ limit: candidateLimit });
 
-    if (!section) {
-      return { summary: '', patternCount: 0 };
+    if (candidates.length === 0) return { summary: '', patternCount: 0 };
+
+    let selected;
+    if (taskSpec) {
+      const keywords = extractTaskKeywords(taskSpec);
+      selected = candidates
+        .map(p => ({ ...p, relevance: scorePatternRelevance(p.pattern, keywords) }))
+        // Sort by combined relevance × weighted score, then fall back to score alone
+        .sort((a, b) => {
+          const aRank = a.relevance > 0 ? a.relevance * a.score : a.score * 0.5;
+          const bRank = b.relevance > 0 ? b.relevance * b.score : b.score * 0.5;
+          return bRank - aRank;
+        })
+        .slice(0, 5);
+      logger.info(`Injecting ${selected.length} task-relevant patterns (keywords: ${keywords.slice(0, 5).join(', ')})`, AGENT_TAG);
+    } else {
+      selected = candidates.slice(0, 5);
+      logger.info(`Injecting ${selected.length} review feedback patterns into Coder prompt`, AGENT_TAG);
     }
 
-    const topPatterns = getTopPatterns({ limit: 5 });
-    logger.info(`Injecting ${topPatterns.length} review feedback patterns into Coder prompt`, AGENT_TAG);
+    const lines = selected.map(({ pattern, percentage }, i) => {
+      const resolution = pattern.resolution ? ` — ${pattern.resolution}` : '';
+      return `${i + 1}. ${pattern.description} (found in ${percentage}% of reviews)${resolution}`;
+    });
 
     return {
-      summary: section,
-      patternCount: topPatterns.length,
+      summary: `COMMON MISTAKES TO AVOID:\n${lines.join('\n')}`,
+      patternCount: selected.length,
     };
   } catch (err) {
     logger.warn(`Could not generate review feedback: ${err.message}`, AGENT_TAG);

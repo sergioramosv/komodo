@@ -32,7 +32,8 @@ import {
   calculateDecayWeight,
   calculatePatternScore,
   getTopPatterns,
-  formatFeedbackSection,
+  extractTaskKeywords,
+  scorePatternRelevance,
   getReviewFeedbackContext,
   findAvoidedPatterns,
 } from './review-feedback.js';
@@ -221,51 +222,97 @@ describe('getTopPatterns', () => {
   });
 });
 
-// --- formatFeedbackSection ---
+// --- extractTaskKeywords ---
 
-describe('formatFeedbackSection', () => {
-  it('formats patterns as COMMON MISTAKES TO AVOID', () => {
-    const today = new Date().toISOString().split('T')[0];
-    mockStore([
-      makePattern({
-        id: '1',
-        description: 'Missing error handling',
-        resolution: 'Always use try/catch',
-        frequency: 6,
-        lastSeen: today,
-      }),
-      makePattern({
-        id: '2',
-        description: 'No unit tests',
-        resolution: 'Add tests for every function',
-        frequency: 4,
-        lastSeen: today,
-      }),
-    ]);
-
-    const result = formatFeedbackSection({ limit: 5 });
-
-    expect(result).toContain('COMMON MISTAKES TO AVOID:');
-    expect(result).toContain('1. Missing error handling (found in 60% of reviews)');
-    expect(result).toContain('Always use try/catch');
-    expect(result).toContain('2. No unit tests (found in 40% of reviews)');
-    expect(result).toContain('Add tests for every function');
+describe('extractTaskKeywords', () => {
+  it('returns empty array for null taskSpec', () => {
+    expect(extractTaskKeywords(null)).toEqual([]);
   });
 
-  it('returns empty string when no patterns exist', () => {
-    mockStore([]);
-    expect(formatFeedbackSection()).toBe('');
+  it('returns empty array for undefined taskSpec', () => {
+    expect(extractTaskKeywords(undefined)).toEqual([]);
   });
 
-  it('handles patterns without resolution', () => {
-    const today = new Date().toISOString().split('T')[0];
-    mockStore([
-      makePattern({ id: '1', description: 'Some error', resolution: '', frequency: 5, lastSeen: today }),
-    ]);
+  it('extracts keywords from title and userStory', () => {
+    const taskSpec = {
+      title: 'Add authentication middleware',
+      userStory: { what: 'secure endpoints', why: 'prevent unauthorized access' },
+      acceptanceCriteria: ['validate tokens'],
+    };
 
-    const result = formatFeedbackSection();
-    expect(result).toContain('Some error');
-    expect(result).not.toContain(' — ');
+    const keywords = extractTaskKeywords(taskSpec);
+    expect(keywords).toContain('authentication');
+    expect(keywords).toContain('middleware');
+    expect(keywords).toContain('secure');
+    expect(keywords).toContain('endpoints');
+    expect(keywords).toContain('validate');
+    expect(keywords).toContain('tokens');
+  });
+
+  it('filters out short words (length <= 3)', () => {
+    const taskSpec = { title: 'Add a new API endpoint' };
+
+    const keywords = extractTaskKeywords(taskSpec);
+    expect(keywords).not.toContain('add');
+    expect(keywords).not.toContain('new');
+    expect(keywords).not.toContain('api');
+    expect(keywords).toContain('endpoint');
+  });
+
+  it('deduplicates keywords', () => {
+    const taskSpec = {
+      title: 'authentication authentication',
+      userStory: { what: 'authentication' },
+    };
+
+    const keywords = extractTaskKeywords(taskSpec);
+    const authCount = keywords.filter(k => k === 'authentication').length;
+    expect(authCount).toBe(1);
+  });
+
+  it('handles taskSpec with missing optional fields', () => {
+    const taskSpec = { title: 'Some feature' };
+
+    const keywords = extractTaskKeywords(taskSpec);
+    expect(keywords).toContain('some');
+    expect(keywords).toContain('feature');
+  });
+});
+
+// --- scorePatternRelevance ---
+
+describe('scorePatternRelevance', () => {
+  it('returns 1 when no task keywords provided (empty array)', () => {
+    const pattern = makePattern({ description: 'Some error', tags: ['testing'] });
+    expect(scorePatternRelevance(pattern, [])).toBe(1);
+  });
+
+  it('scores based on keyword matches in description', () => {
+    const pattern = makePattern({ description: 'Missing error handling in async function', tags: [] });
+    const score = scorePatternRelevance(pattern, ['error', 'handling', 'unrelated']);
+
+    expect(score).toBe(2); // 'error' and 'handling' match
+  });
+
+  it('scores based on keyword matches in tags', () => {
+    const pattern = makePattern({ description: 'Some issue', tags: ['authentication', 'middleware'] });
+    const score = scorePatternRelevance(pattern, ['authentication', 'database']);
+
+    expect(score).toBe(1); // 'authentication' matches in tags
+  });
+
+  it('returns 0 when no keywords match', () => {
+    const pattern = makePattern({ description: 'Missing error handling', tags: ['async'] });
+    const score = scorePatternRelevance(pattern, ['database', 'migration']);
+
+    expect(score).toBe(0);
+  });
+
+  it('handles pattern without tags', () => {
+    const pattern = { description: 'Some error', tags: undefined };
+    const score = scorePatternRelevance(pattern, ['error']);
+
+    expect(score).toBe(1);
   });
 });
 
@@ -289,6 +336,51 @@ describe('getReviewFeedbackContext', () => {
     const { summary, patternCount } = getReviewFeedbackContext();
     expect(summary).toBe('');
     expect(patternCount).toBe(0);
+  });
+
+  it('handles null taskSpec gracefully', () => {
+    const today = new Date().toISOString().split('T')[0];
+    mockStore([
+      makePattern({ id: '1', description: 'Error A', frequency: 5, lastSeen: today }),
+    ]);
+
+    const { summary, patternCount } = getReviewFeedbackContext({ taskSpec: null });
+    expect(summary).toContain('COMMON MISTAKES TO AVOID:');
+    expect(patternCount).toBe(1);
+  });
+
+  it('filters patterns by task relevance when taskSpec is provided', () => {
+    const today = new Date().toISOString().split('T')[0];
+    mockStore([
+      makePattern({ id: '1', description: 'Missing error handling in async', tags: ['async'], frequency: 3, lastSeen: today }),
+      makePattern({ id: '2', description: 'No unit tests for database queries', tags: ['testing', 'database'], frequency: 3, lastSeen: today }),
+      makePattern({ id: '3', description: 'SQL injection vulnerability', tags: ['security', 'database'], frequency: 3, lastSeen: today }),
+    ]);
+
+    const { summary, patternCount } = getReviewFeedbackContext({
+      taskSpec: { title: 'Fix database connection pooling' },
+    });
+
+    expect(patternCount).toBeGreaterThan(0);
+    expect(summary).toContain('COMMON MISTAKES TO AVOID:');
+  });
+
+  it('handles mixed issue types (only errors and anti-patterns)', () => {
+    const today = new Date().toISOString().split('T')[0];
+    mockStore([
+      makePattern({ id: '1', type: 'error', description: 'Real error', frequency: 5, lastSeen: today }),
+      makePattern({ id: '2', type: 'positive', description: 'Good practice', frequency: 10, lastSeen: today }),
+      makePattern({ id: '3', type: 'anti-pattern', description: 'Bad practice', frequency: 3, lastSeen: today }),
+      makePattern({ id: '4', type: 'style', description: 'Style issue', frequency: 8, lastSeen: today }),
+    ]);
+
+    const { summary, patternCount } = getReviewFeedbackContext();
+    // Only error and anti-pattern should be included
+    expect(patternCount).toBe(2);
+    expect(summary).toContain('Real error');
+    expect(summary).toContain('Bad practice');
+    expect(summary).not.toContain('Good practice');
+    expect(summary).not.toContain('Style issue');
   });
 });
 

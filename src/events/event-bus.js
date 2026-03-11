@@ -76,6 +76,8 @@ export const EVENT_TYPES = {
 
   // Codebase knowledge index events
   CODEBASE_INDEX_GENERATED: 'codebase-index:generated',
+  CACHE_HIT: 'cache:hit',
+  CACHE_MISS: 'cache:miss',
 
   // Style guide detector events
   STYLE_GUIDE_GENERATED: 'style-guide:generated',

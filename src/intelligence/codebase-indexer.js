@@ -8,6 +8,9 @@ import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 
 const AGENT_TAG = 'CODEBASE-INDEX';
 
+/** Cache TTL: regenerate index after configurable duration (default 5 minutes) */
+const CACHE_TTL_MS = config.cacheIndexTtlMs || 5 * 60 * 1000;
+
 /**
  * Language-specific parsers for extracting exports, imports, and functions.
  * Each parser receives file content and returns structured data.
@@ -412,15 +415,28 @@ export function loadCachedIndex(cwd, currentChecksum) {
   const cachePath = resolve(cwd, '.komodo', 'codebase-index.json');
 
   try {
-    if (!existsSync(cachePath)) return null;
+    if (!existsSync(cachePath)) {
+      logger.info('Cache MISS: no codebase index found', AGENT_TAG);
+      return null;
+    }
 
     const cached = JSON.parse(readFileSync(cachePath, 'utf-8'));
+
+    // TTL check: expire after CACHE_TTL_MS regardless of checksum
+    if (cached.generatedAt) {
+      const ageMs = Date.now() - new Date(cached.generatedAt).getTime();
+      if (ageMs > CACHE_TTL_MS) {
+        logger.info(`Cache MISS: index expired (age ${Math.round(ageMs / 1000)}s > TTL ${CACHE_TTL_MS / 1000}s) — regenerating`, AGENT_TAG);
+        return null;
+      }
+    }
+
     if (cached.checksum === currentChecksum) {
-      logger.info('Using cached codebase index', AGENT_TAG);
+      logger.info('Cache HIT: using cached codebase index', AGENT_TAG);
       return cached;
     }
 
-    logger.info('Codebase changed — regenerating index', AGENT_TAG);
+    logger.info('Cache MISS: codebase changed — regenerating index', AGENT_TAG);
     return null;
   } catch {
     return null;
@@ -557,8 +573,10 @@ export function getCodebaseContext(cwd, options = {}) {
 
   // Try cache first
   let index = null;
+  let cacheHit = false;
   if (!options.forceRegenerate) {
     index = loadCachedIndex(cwd, checksum);
+    cacheHit = index !== null;
   }
 
   // Generate fresh index if needed
@@ -570,14 +588,20 @@ export function getCodebaseContext(cwd, options = {}) {
   const summary = summarizeForPrompt(index, options.maxTokens);
 
   const fileCount = Object.keys(index.files).length;
-  logger.info(`Index ready: ${fileCount} files analyzed, ~${estimateTokens(summary)} tokens`, AGENT_TAG);
+  const estimatedTokens = estimateTokens(summary);
+  logger.info(`Index ready: ${fileCount} files analyzed, ~${estimatedTokens} tokens (cache ${cacheHit ? 'HIT' : 'MISS'})`, AGENT_TAG);
 
   eventBus.emitEvent(EVENT_TYPES.CODEBASE_INDEX_GENERATED, {
     metadata: {
       fileCount,
       checksum: index.checksum,
-      estimatedTokens: estimateTokens(summary),
+      estimatedTokens,
+      cacheHit,
     },
+  });
+
+  eventBus.emitEvent(cacheHit ? EVENT_TYPES.CACHE_HIT : EVENT_TYPES.CACHE_MISS, {
+    metadata: { source: 'codebase-index', fileCount, estimatedTokens },
   });
 
   return { index, summary };

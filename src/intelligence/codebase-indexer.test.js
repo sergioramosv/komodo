@@ -6,6 +6,7 @@ const { mockConfig, mockExecFileSync, mockReadFileSync, mockWriteFileSync, mockE
   mockConfig: {
     codebaseIndexEnabled: true,
     codebaseContextMaxTokens: 2000,
+    cacheIndexTtlMs: 5 * 60 * 1000,
   },
   mockExecFileSync: vi.fn(),
   mockReadFileSync: vi.fn(),
@@ -27,7 +28,7 @@ vi.mock('../utils/logger.js', () => ({
 
 vi.mock('../events/event-bus.js', () => ({
   eventBus: { emitEvent: vi.fn() },
-  EVENT_TYPES: { CODEBASE_INDEX_GENERATED: 'codebase-index:generated' },
+  EVENT_TYPES: { CODEBASE_INDEX_GENERATED: 'codebase-index:generated', CACHE_HIT: 'cache:hit', CACHE_MISS: 'cache:miss' },
 }));
 
 vi.mock('child_process', () => ({
@@ -59,6 +60,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mockConfig.codebaseIndexEnabled = true;
   mockConfig.codebaseContextMaxTokens = 2000;
+  mockConfig.cacheIndexTtlMs = 5 * 60 * 1000;
 });
 
 // --- listSourceFiles ---
@@ -275,6 +277,26 @@ describe('loadCachedIndex', () => {
 
     const result = loadCachedIndex('/repo', 'any-hash');
     expect(result).toBeNull();
+  });
+
+  it('returns null when TTL has expired even if checksum matches', () => {
+    const expiredDate = new Date(Date.now() - 10 * 60 * 1000).toISOString(); // 10 minutes ago
+    const cached = { checksum: 'abc123', files: {}, directoryTree: {}, generatedAt: expiredDate };
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue(JSON.stringify(cached));
+
+    const result = loadCachedIndex('/repo', 'abc123');
+    expect(result).toBeNull();
+  });
+
+  it('returns cached index when within TTL and checksum matches', () => {
+    const recentDate = new Date(Date.now() - 60 * 1000).toISOString(); // 1 minute ago
+    const cached = { checksum: 'abc123', files: {}, directoryTree: {}, generatedAt: recentDate };
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue(JSON.stringify(cached));
+
+    const result = loadCachedIndex('/repo', 'abc123');
+    expect(result).toEqual(cached);
   });
 });
 
