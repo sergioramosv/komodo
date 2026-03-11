@@ -301,6 +301,7 @@ export const config = {
   // Paths
   rootDir: ROOT_DIR,
   memoryDir: resolve(ROOT_DIR, 'memory'),
+  knowledgeDir: resolve(ROOT_DIR, 'knowledge'),
   skillsDir: resolve(ROOT_DIR, 'skills'),
   planningMcpDir: resolve(ROOT_DIR, 'skills', 'planning-task-mcp'),
   githubMcpDir: resolve(ROOT_DIR, 'skills', 'github-mcp'),

@@ -38,6 +38,7 @@ export const EVENT_TYPES = {
   SESSION_CHECKPOINTED: 'session:checkpointed',
 
   // Heartbeat monitor
+  CLI_HEARTBEAT: 'cli:heartbeat',
   CLI_RECOVERED: 'cli:recovered',
   ALL_CLIS_RATE_LIMITED: 'cli:all-rate-limited',
   SESSION_AUTO_RESUMED: 'session:auto-resumed',
@@ -114,6 +115,10 @@ export const EVENT_TYPES = {
 
   // Smart ordering / context affinity events
   CONTEXT_AFFINITY_APPLIED: 'smart-ordering:affinity-applied',
+
+  // Knowledge Graph events
+  KNOWLEDGE_GRAPH_SAVED: 'knowledge:graph:saved',
+  KNOWLEDGE_LESSONS_EXTRACTED: 'knowledge:lessons:extracted',
 
   // Parallel execution events
   PARALLEL_RUN_START: 'parallel:run:start',

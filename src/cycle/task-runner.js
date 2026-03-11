@@ -23,6 +23,7 @@ import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
 import { estimateTaskTokens, getRateLimitHeadroom, recordTokenConsumption } from '../estimation/token-estimator.js';
 import { recordModelPerformance } from '../metrics/model-performance-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
+import { saveSection, buildCoderContext, buildReviewerContext, loadModuleLessons, extractAndSaveLessons } from '../knowledge/knowledge-graph.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
 import { analyzeCoverage, updateBaselineAfterMerge, recordCoverageHistory } from '../coverage/coverage-analyzer.js';
@@ -490,6 +491,16 @@ export async function runTask(projectId, cwd) {
       const createCount = architectPlan.filesToCreate?.length ?? 0;
       const modifyCount = architectPlan.filesToModify?.length ?? 0;
       logger.info(`Plan: ${createCount} to create, ${modifyCount} to modify`, 'ARCHITECT');
+
+      // KG: save architect section for downstream agents
+      try {
+        saveSection(projectId, taskSpec.taskId, 'architect', architectPlan);
+        eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_GRAPH_SAVED, {
+          metadata: { agent: 'architect', taskId: taskSpec.taskId },
+        });
+      } catch (err) {
+        logger.warn(`KG save architect section failed (non-blocking): ${err.message}`, 'KOMODO');
+      }
     } else {
       logger.warn(`Architect failed (${architectResult.error}), proceeding without plan`, 'KOMODO');
     }
@@ -510,8 +521,26 @@ export async function runTask(projectId, cwd) {
 
     eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
 
+    // KG: derive module from task tags or first path segment of most-modified file
+    const taskModule = taskSpec.tags?.[0]
+      || (architectPlan?.filesToModify?.[0]?.path?.split('/')?.[1])
+      || (architectPlan?.filesToCreate?.[0]?.path?.split('/')?.[1])
+      || 'general';
+
+    // KG: build compact context for Coder and load cross-task lessons
+    let coderKnowledgeContext = null;
+    try {
+      const coderContext = buildCoderContext(projectId, taskSpec.taskId);
+      const moduleLessons = loadModuleLessons(projectId, taskModule);
+      if (coderContext || moduleLessons) {
+        coderKnowledgeContext = { ...coderContext, moduleLessons };
+      }
+    } catch (err) {
+      logger.warn(`KG buildCoderContext failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
     let coderResult = await withWatchdog(
-      () => implementTask(taskSpec, cwd, { model: coderModel, codingGuidelines, architectPlan }),
+      () => implementTask(taskSpec, cwd, { model: coderModel, codingGuidelines, architectPlan, knowledgeContext: coderKnowledgeContext }),
       {
         agentName: 'CODER',
         taskId: taskSpec.taskId,
@@ -532,7 +561,7 @@ export async function runTask(projectId, cwd) {
           // AGENT_FALLBACK event is emitted by resolveEffectiveCli in base-agent.js
           // when runAgent detects the rate-limited CLI and resolves to fallback.
           const fallbackModel = selectModel(fallbackCli, 'CODER', complexityLevel, taskModelOverride);
-          coderResult = await implementTask(taskSpec, cwd, { model: fallbackModel, codingGuidelines, architectPlan });
+          coderResult = await implementTask(taskSpec, cwd, { model: fallbackModel, codingGuidelines, architectPlan, knowledgeContext: coderKnowledgeContext });
 
           // If fallback also fails, mark it as rate-limited too
           if (!coderResult.success && fallbackManager.isRateLimited(fallbackCli)) {
@@ -575,6 +604,20 @@ export async function runTask(projectId, cwd) {
 
     prNumber = coderResult.pr.prNumber;
     logger.info(`PR #${prNumber} creada`, 'KOMODO');
+
+    // KG: save coder section
+    try {
+      saveSection(projectId, taskSpec.taskId, 'coder', {
+        prNumber,
+        filesChanged: coderResult.pr.filesChanged || [],
+        summary: coderResult.pr.summary || '',
+      });
+      eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_GRAPH_SAVED, {
+        metadata: { agent: 'coder', taskId: taskSpec.taskId },
+      });
+    } catch (err) {
+      logger.warn(`KG save coder section failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
 
     eventBus.emitEvent(EVENT_TYPES.PR_CREATED, {
       agentName: 'CODER',
@@ -747,6 +790,20 @@ export async function runTask(projectId, cwd) {
       };
       logger.success(`SonarQube: Quality Gate ${sonarReport.qualityGate}`, 'KOMODO');
       logger.sonarSummary(sonarReport);
+
+      // KG: save security section
+      try {
+        saveSection(projectId, taskSpec.taskId, 'security', {
+          qualityGate: sonarReport.qualityGate,
+          metrics: sonarReport.metrics || null,
+          issueCount: sonarReport.issues || null,
+        });
+        eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_GRAPH_SAVED, {
+          metadata: { agent: 'security', taskId: taskSpec.taskId },
+        });
+      } catch (err) {
+        logger.warn(`KG save security section failed (non-blocking): ${err.message}`, 'KOMODO');
+      }
     } else if (sonarReport.skipped) {
       komodoState.sonarAnalysis = { status: 'skipped', qualityGate: null, issues: null };
       logger.info('SonarQube omitido, continuando con review...', 'KOMODO');
@@ -836,8 +893,16 @@ export async function runTask(projectId, cwd) {
 
     const pluginIssues = beforeReviewPluginResults.flatMap(r => r.issues || []);
 
+    // KG: build reviewer context from saved architect/coder/security sections
+    let reviewerKnowledgeContext = null;
+    try {
+      reviewerKnowledgeContext = buildReviewerContext(projectId, taskSpec.taskId);
+    } catch (err) {
+      logger.warn(`KG buildReviewerContext failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
     const reviewResult = await withWatchdog(
-      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold: config.smartModelRoutingThreshold, coderCli }),
+      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold: config.smartModelRoutingThreshold, coderCli, knowledgeContext: reviewerKnowledgeContext }),
       { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
     );
 
@@ -874,6 +939,25 @@ export async function runTask(projectId, cwd) {
         metadata: { ...result, title: taskSpec.title },
       });
       return result;
+    }
+
+    // KG: save reviewer section and extract cross-task lessons
+    try {
+      if (reviewResult.finalReview) {
+        saveSection(projectId, taskSpec.taskId, 'reviewer', {
+          verdict: reviewResult.finalReview.verdict,
+          score: reviewResult.finalReview.score,
+          issues: reviewResult.finalReview.issues || [],
+          positives: reviewResult.finalReview.positives || [],
+          summary: reviewResult.finalReview.summary || '',
+        });
+      }
+      extractAndSaveLessons(projectId, taskSpec.taskId, taskModule);
+      eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_LESSONS_EXTRACTED, {
+        metadata: { taskId: taskSpec.taskId, module: taskModule },
+      });
+    } catch (err) {
+      logger.warn(`KG lessons extraction failed (non-blocking): ${err.message}`, 'KOMODO');
     }
 
     // Tech debt: create tasks from minor/suggestion issues left after approved review
