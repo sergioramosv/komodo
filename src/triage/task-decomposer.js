@@ -3,7 +3,7 @@ import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { runAgent } from '../agents/base-agent.js';
 import { extractJSON } from '../utils/parser.js';
-import { calculateRealComplexity } from './complexity-classifier.js';
+import { calculateRealComplexity, getAcceptanceCriteriaCount, getUserStoryLength } from './complexity-classifier.js';
 
 const DECOMPOSITION_AC_THRESHOLD = 6;
 const DECOMPOSITION_STORY_CHAR_THRESHOLD = 500;
@@ -58,12 +58,12 @@ export function shouldDecompose(task) {
   }
 
   // Additional heuristic checks (apply regardless of plan data)
-  const acCount = getACCount(task.acceptanceCriteria);
+  const acCount = getAcceptanceCriteriaCount(task.acceptanceCriteria);
   if (acCount > DECOMPOSITION_AC_THRESHOLD) {
     reasons.push(`acceptanceCriteria=${acCount} > ${DECOMPOSITION_AC_THRESHOLD}`);
   }
 
-  const storyLen = getStoryLength(task.userStory);
+  const storyLen = getUserStoryLength(task.userStory);
   if (storyLen > DECOMPOSITION_STORY_CHAR_THRESHOLD) {
     reasons.push(`userStoryLength=${storyLen} > ${DECOMPOSITION_STORY_CHAR_THRESHOLD}`);
   }
@@ -98,7 +98,7 @@ export async function decomposeTask(task, projectId, { architectPlan } = {}) {
 
   const userPrompt = `Descompone la tarea "${task.title}" (ID: ${task.taskId}) en subtareas más pequeñas.
 
-La tarea tiene ${parentDevPoints} devPoints y ${getACCount(task.acceptanceCriteria)} criterios de aceptación.
+La tarea tiene ${parentDevPoints} devPoints y ${getAcceptanceCriteriaCount(task.acceptanceCriteria)} criterios de aceptación.
 
 Genera entre ${MIN_SUBTASKS} y ${MAX_SUBTASKS} subtareas. Los devPoints de las subtareas deben sumar aproximadamente ${parentDevPoints}.
 
@@ -272,26 +272,4 @@ Responde con JSON:
   "subtaskIds": ["id1", "id2", ...],
   "decomposed": true
 }`;
-}
-
-/**
- * @private
- */
-function getACCount(acceptanceCriteria) {
-  if (!acceptanceCriteria) return 0;
-  if (Array.isArray(acceptanceCriteria)) return acceptanceCriteria.length;
-  if (typeof acceptanceCriteria === 'string') {
-    return acceptanceCriteria.split('\n').filter(l => l.trim().length > 0).length;
-  }
-  return 0;
-}
-
-/**
- * @private
- */
-function getStoryLength(userStory) {
-  if (!userStory) return 0;
-  if (typeof userStory === 'string') return userStory.length;
-  const parts = [userStory.who, userStory.what, userStory.why].filter(Boolean);
-  return parts.join(' ').length;
 }

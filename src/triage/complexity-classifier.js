@@ -41,7 +41,7 @@ function scoreDevPoints(devPoints) {
   if (!devPoints || devPoints <= 0) return 1;
   if (devPoints <= 2) return Math.round(1 + (devPoints - 1) * 2); // 1→1, 2→3
   if (devPoints <= 5) return Math.round(3 + (devPoints - 2) * 1); // 3→4, 4→5, 5→6
-  if (devPoints <= 8) return Math.round(6 + (devPoints - 5) * (1 / 3)); // 6→7, 7→7, 8→7
+  if (devPoints <= 8) return Math.round(6 + (devPoints - 5) * (1 / 3)); // 6→6, 7→7, 8→7
   return Math.min(10, Math.round(7 + (devPoints - 8) * 0.6)); // 9→8, 10→8, 11→9, 13→10
 }
 
@@ -100,7 +100,7 @@ function scoreUserStoryLength(charCount) {
  * @param {Object|string|undefined} userStory
  * @returns {number} Total character count
  */
-function getUserStoryLength(userStory) {
+export function getUserStoryLength(userStory) {
   if (!userStory) return 0;
   if (typeof userStory === 'string') return userStory.length;
 
@@ -114,7 +114,7 @@ function getUserStoryLength(userStory) {
  * @param {Array|string|undefined} acceptanceCriteria
  * @returns {number}
  */
-function getAcceptanceCriteriaCount(acceptanceCriteria) {
+export function getAcceptanceCriteriaCount(acceptanceCriteria) {
   if (!acceptanceCriteria) return 0;
   if (Array.isArray(acceptanceCriteria)) return acceptanceCriteria.length;
   if (typeof acceptanceCriteria === 'string') {

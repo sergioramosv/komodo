@@ -359,22 +359,28 @@ export async function runTask(projectId, cwd) {
     // --- End Rate Limit Awareness Check ---
 
     // ── Decomposition triage: break large tasks into subtasks ──
+    
+    // Run lightweight architect analysis to inform decomposition (Early Architect)
+    let earlyArchitectPlan = null;
+    try {
+      const earlyArchitectModel = selectModel(config.cliArchitect, 'ARCHITECT', 'standard');
+      const earlyArchitectResult = await analyzeTask(taskSpec, cwd, { model: earlyArchitectModel });
+      if (earlyArchitectResult.success && earlyArchitectResult.plan) {
+        earlyArchitectPlan = earlyArchitectResult.plan;
+        // Inject plan into taskSpec so shouldDecompose/calculateRealComplexity can see it
+        taskSpec.architectPlan = earlyArchitectPlan;
+        
+        const createCount = earlyArchitectPlan.filesToCreate?.length ?? 0;
+        const modifyCount = earlyArchitectPlan.filesToModify?.length ?? 0;
+        logger.info(`Early architect plan generated: ${createCount} create, ${modifyCount} modify`, 'KOMODO');
+      }
+    } catch (err) {
+      logger.warn(`Early architect analysis failed (${err.message}), evaluating decomposition without plan`, 'KOMODO');
+    }
+
     const decompositionCheck = shouldDecompose(taskSpec);
     if (decompositionCheck.shouldDecompose) {
       logger.info(`Task needs decomposition: ${decompositionCheck.reasons.join(', ')}`, 'KOMODO');
-
-      // Run lightweight architect analysis to inform decomposition
-      let earlyArchitectPlan = null;
-      try {
-        const earlyArchitectModel = selectModel(config.cliArchitect, 'ARCHITECT', 'standard');
-        const earlyArchitectResult = await analyzeTask(taskSpec, cwd, { model: earlyArchitectModel });
-        if (earlyArchitectResult.success && earlyArchitectResult.plan) {
-          earlyArchitectPlan = earlyArchitectResult.plan;
-          logger.info(`Architect plan for decomposition: ${earlyArchitectPlan.filesToCreate.length} create, ${earlyArchitectPlan.filesToModify.length} modify`, 'KOMODO');
-        }
-      } catch (err) {
-        logger.warn(`Early architect analysis failed (${err.message}), decomposing without plan`, 'KOMODO');
-      }
 
       const decompResult = await decomposeTask(taskSpec, projectId, { architectPlan: earlyArchitectPlan });
       if (decompResult.success) {
