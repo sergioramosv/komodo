@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
@@ -102,6 +102,7 @@ function ensureStagingBranch(stagingBranch, repo, cwd) {
  */
 export function detectPreMergeConflicts(featureBranch, cwd) {
   const tempBranch = `canary-precheck-${Date.now()}`;
+  const originalBranch = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
 
   try {
     runGit(['fetch', 'origin'], cwd);
@@ -118,24 +119,25 @@ export function detectPreMergeConflicts(featureBranch, cwd) {
       return { conflicting: true, message: mergeErr.message };
     }
   } finally {
-    // Always clean up temp branch
-    try { runGit(['checkout', 'main'], cwd); } catch { /* ignore */ }
+    // Always restore original branch and clean up temp branch
+    try { runGit(['checkout', originalBranch], cwd); } catch { /* ignore */ }
     try { runGit(['branch', '-D', tempBranch], cwd); } catch { /* ignore */ }
   }
 }
 
 /**
- * Checks whether two tasks conflict based on the files already known to have changed.
- * This is a reactive check (post-Coder), complementing the preventive check in parallel-runner.
+ * Runs the local test suite in the given working directory.
+ * Throws if tests fail.
  *
- * @param {string[]} filesChangedA
- * @param {string[]} filesChangedB
- * @returns {boolean}
+ * @param {string} cwd
  */
-export function checkParallelTaskConflicts(filesChangedA, filesChangedB) {
-  if (!filesChangedA?.length || !filesChangedB?.length) return false;
-  const setA = new Set(filesChangedA);
-  return filesChangedB.some(f => setA.has(f));
+function runLocalTests(cwd) {
+  execFileSync('npm', ['test'], {
+    cwd,
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+    timeout: 120_000,
+  });
 }
 
 /**
@@ -321,7 +323,7 @@ export async function canaryMerge({
     metadata: { prNumber, repo, featureBranch, stagingBranch },
   });
 
-  // Step 1: Pre-merge conflict detection
+  // Step 1: Pre-merge validation — conflict detection + local test suite
   try {
     const conflictCheck = detectPreMergeConflicts(featureBranch, cwd);
     if (conflictCheck.conflicting) {
@@ -337,6 +339,21 @@ export async function canaryMerge({
     logger.info('Pre-merge conflict check passed', AGENT);
   } catch (err) {
     logger.warn(`Pre-merge conflict check failed (non-blocking): ${err.message}`, AGENT);
+  }
+
+  try {
+    logger.info('Running local test suite before merge...', AGENT);
+    runLocalTests(cwd);
+    logger.info('Local test suite passed', AGENT);
+  } catch (err) {
+    logger.error(`Local tests failed before merge: ${err.message}`, AGENT);
+    return {
+      success: false,
+      promoted: false,
+      reverted: false,
+      autoFixed: false,
+      error: `Pre-merge local tests failed: ${err.message}`,
+    };
   }
 
   // Step 2: Ensure staging branch exists and is reset to main

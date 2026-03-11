@@ -3,7 +3,6 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 
 const AGENT = 'CANARY-AUTO-FIX';
-const MAX_TURNS = 5;
 const MAX_TOKENS = 5000;
 
 /**
@@ -55,20 +54,18 @@ export async function runCanaryAutoFix({
     '',
     'Constraints:',
     `- Work directly on branch "${branchName}" (already checked out)`,
-    `- Maximum ${MAX_TURNS} turns / ~${MAX_TOKENS} tokens`,
+    `- Maximum ~${MAX_TOKENS} tokens`,
     '- Only fix what is broken — do not add unrelated changes',
   ].join('\n');
 
   try {
-    const result = await fixReviewIssues({
-      taskSpec: fixTaskSpec,
-      reviewFeedback: fixContext,
+    const result = await fixReviewIssues(
+      fixTaskSpec,
+      null,
+      { issues: [fixContext] },
       cwd,
-      repo,
-      model: coderModel || config.forceModel_CODER || undefined,
-      codingGuidelines,
-      maxTurns: MAX_TURNS,
-    });
+      { model: coderModel || config.forceModel_CODER || undefined, codingGuidelines },
+    );
 
     if (result && result.success !== false) {
       logger.success(`Canary auto-fix succeeded on branch "${branchName}"`, AGENT);
