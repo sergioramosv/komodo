@@ -27,6 +27,10 @@ interface UseKomodoSocketReturn {
 let eventCounter = 0;
 let logCounter = 0;
 
+const VALID_PHASES = new Set<KomodoSnapshot['phase']>([
+  'idle', 'planning', 'architecting', 'coding', 'testing', 'analyzing', 'reviewing', 'merging',
+]);
+
 function loadStoredEvents(): DashboardEvent[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -217,6 +221,10 @@ function applyEvent(
           ...next.agents[name],
           status: (event.newState as KomodoSnapshot['agents']['PLANNER']['status']) ?? next.agents[name].status,
         };
+      }
+      const phase = (event.metadata as { phase?: string } | undefined)?.phase;
+      if (phase && VALID_PHASES.has(phase as KomodoSnapshot['phase'])) {
+        next.phase = phase as KomodoSnapshot['phase'];
       }
       break;
     }
