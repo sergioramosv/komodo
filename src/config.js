@@ -219,6 +219,11 @@ export const config = {
     .map(s => s.trim())
     .filter(Boolean),
 
+  // Security Agent (OWASP scan before Reviewer)
+  securityAgent: process.env.SECURITY_AGENT === 'true', // default: false
+  cliSecurity: process.env.CLI_SECURITY || 'claude',
+  forceModel_SECURITY: _dashboardConfig?.agents?.security?.model || process.env.FORCE_MODEL_SECURITY || '',
+
   // Coverage Delta Check (compare PR coverage vs baseline)
   coverageCheck: process.env.COVERAGE_CHECK !== 'false', // default: true
   coverageCmd: process.env.COVERAGE_CMD || 'auto',
