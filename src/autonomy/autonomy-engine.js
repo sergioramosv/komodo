@@ -137,7 +137,7 @@ export function createAutonomyEngine(options = {}) {
    */
   async function _waitForApproval(step, taskId) {
     const timeoutMs = config.approvalTimeoutMinutes * 60 * 1000;
-    const pollIntervalMs = 2000;
+    const pollIntervalMs = 500;
     const deadline = Date.now() + timeoutMs;
 
     komodoState.resetApproval();

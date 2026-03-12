@@ -16,7 +16,7 @@ const RATE_LIMIT_PATTERNS = {
     /\b429\b/,
     /usage limit/i,
     /quota exceeded/i,
-    /server is overloaded/i,
+    /overloaded/i,
     /at capacity/i,
     /hit your limit/i,
     /you've hit your limit/i,
