@@ -8,6 +8,7 @@ import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { checkAndEmitRateLimit } from './rate-limit-detector.js';
 import { fallbackManager } from './fallback-manager.js';
+import { StreamingWatchdog } from './streaming-watchdog.js';
 
 const TMP_DIR = resolve(config.rootDir, '.tmp');
 
@@ -269,11 +270,14 @@ export function buildMcpServers(serverNames) {
  * @param {number}   [options.totalTimeout] - Kill after this many ms total (overrides idleTimeout)
  * @param {Function} [options.onOutput]     - Callback for stdout chunks
  * @param {Function} [options.onStderr]     - Callback for stderr chunks
- * @returns {Promise<string>} stdout
+ * @param {Object}   [options.earlyTerminationSignal] - Object with { terminated, reason } set by watchdog
+ * @returns {Promise<{stdout: string, earlyTerminated: boolean, earlyTerminationReason: string|null}>}
  */
 function spawnCli(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let earlyTerminated = false;
+    let earlyTerminationReason = null;
 
     function settle(fn, value) {
       if (settled) return;
@@ -333,11 +337,20 @@ function spawnCli(command, args, options = {}) {
       };
     }
 
+    // Register watchdog kill callback now that we have the child process
+    if (options.earlyTerminationSignal?.registerKill) {
+      options.earlyTerminationSignal.registerKill(() => {
+        earlyTerminated = true;
+        earlyTerminationReason = options.earlyTerminationSignal.reason;
+        child.kill('SIGTERM');
+      });
+    }
+
     child.stdout.on('data', (data) => {
       const text = data.toString();
       stdout += text;
       if (options._resetIdle) options._resetIdle();
-      if (options.onOutput) options.onOutput(text);
+      if (options.onOutput) options.onOutput(text, stdout);
     });
 
     child.stderr.on('data', (data) => {
@@ -350,8 +363,11 @@ function spawnCli(command, args, options = {}) {
     child.on('close', (code) => {
       clearTimeout(idleTimer);
       clearTimeout(totalTimer);
-      if (code === 0) {
-        settle(resolve, stdout);
+      if (earlyTerminated) {
+        // Early termination: resolve with partial stdout rather than rejecting
+        settle(resolve, { stdout, earlyTerminated: true, earlyTerminationReason });
+      } else if (code === 0) {
+        settle(resolve, { stdout, earlyTerminated: false, earlyTerminationReason: null });
       } else {
         settle(reject, new Error(stderr.trim() || stdout.trim() || `exit code ${code}`));
       }
@@ -385,7 +401,9 @@ function spawnCli(command, args, options = {}) {
  * @param {string}   [options.model]
  * @param {number}   [options.idleTimeout]  - Idle timeout ms (default 600000)
  * @param {number}   [options.totalTimeout] - Total timeout ms (overrides idleTimeout, use for Coder on Windows)
- * @returns {Promise<{success, result, rawResult, cost, turns, duration, error?}>}
+ * @param {boolean}  [options.enableWatchdog] - Enable streaming watchdog (default true)
+ * @param {string}   [options.expectedLanguage] - Expected language for wrong-language detector
+ * @returns {Promise<{success, result, rawResult, cost, turns, duration, earlyTerminated?, earlyTerminationReason?, tokensSavedEstimate?, error?}>}
  */
 export async function runAgent({
   name,
@@ -400,6 +418,8 @@ export async function runAgent({
   model,
   idleTimeout,
   totalTimeout,
+  enableWatchdog = true,
+  expectedLanguage,
 }) {
   // Resolve which CLI to use
   const cliMap = {
@@ -462,14 +482,30 @@ export async function runAgent({
 
     logger.info(`Launching ${resolvedCli} CLI (stdin pipe)...`, name);
 
+    // Instantiate streaming watchdog for anomaly detection
+    const watchdog = enableWatchdog ? new StreamingWatchdog(name, {
+      expectedLanguage,
+      reviewerMode: name === 'REVIEWER',
+    }) : null;
+
+    // earlyTerminationSignal object shared between watchdog and spawnCli
+    const earlyTerminationSignal = watchdog ? {
+      get reason() { return watchdog.terminationReason; },
+      registerKill(fn) { watchdog.onKill(fn); },
+    } : null;
+
     // Progress logging: parse JSON lines from Claude's --output-format json
     // to log what the agent is doing in real time.
     // Also emits agent:output events for the dashboard live log.
-    const onOutput = (chunk) => {
+    const onOutput = (chunk, accumulated) => {
       for (const line of chunk.split('\n')) {
         if (!line.trim()) continue;
         try {
           const msg = JSON.parse(line);
+          // Feed the parsed message to the watchdog for anomaly detection
+          if (watchdog && !watchdog.terminated) {
+            watchdog.feed(msg, accumulated || chunk);
+          }
           // Claude JSON lines: log tool uses for progress visibility
           if (msg.type === 'assistant' && msg.message?.content) {
             const toolUses = msg.message.content.filter(c => c.type === 'tool_use');
@@ -506,14 +542,17 @@ export async function runAgent({
     };
 
     // Spawn the process and pipe the prompt via stdin
-    const stdout = await spawnCli(resolvedCli, args, {
+    const spawnResult = await spawnCli(resolvedCli, args, {
       cwd: cwd || config.rootDir,
       idleTimeout,
       totalTimeout,
       stdinData,
       onOutput,
       onStderr,
+      earlyTerminationSignal,
     });
+
+    const { stdout, earlyTerminated, earlyTerminationReason } = spawnResult;
 
     // DEBUG: dump raw output to file for diagnosis
     try {
@@ -549,6 +588,9 @@ export async function runAgent({
       turns,
       duration: Math.round(duration * 10) / 10,
       rateLimited: rateLimitInResult,
+      earlyTerminated: earlyTerminated || false,
+      earlyTerminationReason: earlyTerminationReason || null,
+      tokensSavedEstimate: watchdog?.tokensSavedEstimate || 0,
     };
   } catch (err) {
     // DEBUG: dump error to file

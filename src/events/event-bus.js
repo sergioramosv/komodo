@@ -217,6 +217,12 @@ export const EVENT_TYPES = {
   AUTONOMY_TIMED_OUT: 'autonomy:timed-out',
   AUTONOMY_AUTO_APPROVED: 'autonomy:auto-approved',
   AUTONOMY_LEVEL_LOADED: 'autonomy:level:loaded',
+
+  // Streaming early termination events
+  EARLY_TERMINATION: 'streaming:early-termination',
+  WATCHDOG_ALERT: 'streaming:watchdog-alert',
+  REVIEWER_EARLY_APPROVED: 'streaming:reviewer-early-approved',
+  ANOMALY_DETECTED: 'streaming:anomaly-detected',
 };
 
 /**
