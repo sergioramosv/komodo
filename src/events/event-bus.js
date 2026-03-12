@@ -22,6 +22,9 @@ export const EVENT_TYPES = {
   BUDGET_EXCEEDED: 'budget:exceeded',
   BUDGET_RESET: 'budget:reset',
 
+  // Review depth events
+  REVIEW_DEPTH_SELECTED: 'review:depth:selected',
+
   // SonarQube analysis events
   SONAR_ANALYSIS_START: 'sonar:analysis:start',
   SONAR_ANALYSIS_COMPLETE: 'sonar:analysis:complete',

@@ -30,7 +30,7 @@ import { escalateModel } from '../triage/smart-model-router.js';
  *   error?: string
  * }>}
  */
-export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: initialSonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold, coderCli, knowledgeContext }) {
+export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: initialSonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold, coderCli, knowledgeContext, filesChanged }) {
   let sonarReport = initialSonarReport;
   const maxCycles = config.maxReviewCycles;
   let cycles = 0;
@@ -39,6 +39,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
   let totalCost = 0;
   let activeCoderModel = coderModel;
   let escalatedCoderModel = null;
+  const depthBreakdown = { quick: 0, standard: 0, deep: 0, forensic: 0 };
 
   for (let i = 1; i <= maxCycles; i++) {
     cycles = i;
@@ -68,6 +69,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
       previousReview: lastReview,
       lastReviewSHA,
       pluginIssues,
+      filesChanged: filesChanged || [],
       // KG context only injected on first cycle — subsequent cycles already have full diff context
       knowledgeContext: i === 1 ? knowledgeContext : undefined,
     });
@@ -85,6 +87,12 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
         `Incremental review saved ~${reviewResult.incrementalMetrics.tokensSaved} tokens (~${reviewResult.incrementalMetrics.percentageSaved}%)`,
         'KOMODO',
       );
+    }
+
+    if (reviewResult.reviewDepth) {
+      if (reviewResult.reviewDepth in depthBreakdown) {
+        depthBreakdown[reviewResult.reviewDepth]++;
+      }
     }
 
     eventBus.emitAgentEvent('REVIEWER', 'done');
@@ -137,6 +145,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
         cost: totalCost,
         sonarReport,
         escalatedCoderModel,
+        depthBreakdown,
       };
     }
 
@@ -286,6 +295,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
     cost: totalCost,
     sonarReport,
     escalatedCoderModel,
+    depthBreakdown,
     error: `PR no aprobada después de ${maxCycles} ciclos`,
   };
 }

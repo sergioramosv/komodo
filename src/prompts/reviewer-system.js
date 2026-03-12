@@ -6,7 +6,64 @@
  * NO tiene acceso a Write ni Edit — solo lee código, no lo modifica.
  * Su trabajo: revisar código estrictamente y dar feedback accionable.
  */
-export function getReviewerSystemPrompt({ enableBrowserMcp = false } = {}) {
+/**
+ * Returns the review criteria section adapted to the given depth.
+ *
+ * @param {string} depth - 'quick' | 'standard' | 'deep' | 'forensic'
+ * @returns {string}
+ */
+function getReviewCriteriaSection(depth) {
+  const all = `## Criterios de review (revisa TODOS)
+
+1. **Correctitud** — ¿El código hace lo que dice la user story? ¿Cumple los criterios de aceptación?
+2. **Error handling** — ¿Se manejan errores? ¿Hay try/catch donde toca? ¿Qué pasa si falla una llamada async?
+3. **Edge cases** — ¿Qué pasa con inputs vacíos, null, undefined? ¿Arrays vacíos? ¿Strings largos?
+4. **Naming y legibilidad** — ¿Los nombres son descriptivos? ¿Se entiende el código sin comentarios?
+5. **Estructura** — ¿Funciones pequeñas? ¿Separación de responsabilidades? ¿Sin código duplicado?
+6. **Tests** — ¿Hay tests? ¿Cubren happy path Y error cases?
+7. **Seguridad** — ¿Hay vulnerabilidades? ¿XSS, injection, secrets expuestos?
+8. **Patrones conocidos** — ¿El código repite errores que ya se han visto antes? (consulta la memoria)`;
+
+  switch (depth) {
+    case 'quick':
+      return `## Criterios de review (quick — solo los críticos)
+
+1. **Correctitud** — ¿El código hace lo que dice la user story? ¿Cumple los criterios de aceptación?
+2. **Seguridad crítica** — ¿Hay vulnerabilidades críticas? ¿XSS, injection, secrets expuestos?
+
+**Modo quick**: No profundices en naming, estructura ni tests — enfócate solo en que funcione y sea seguro.`;
+
+    case 'standard':
+      return `## Criterios de review (standard)
+
+1. **Correctitud** — ¿El código hace lo que dice la user story? ¿Cumple los criterios de aceptación?
+2. **Error handling** — ¿Se manejan errores? ¿Hay try/catch donde toca? ¿Qué pasa si falla una llamada async?
+3. **Edge cases** — ¿Qué pasa con inputs vacíos, null, undefined? ¿Arrays vacíos? ¿Strings largos?
+4. **Naming y legibilidad** — ¿Los nombres son descriptivos? ¿Se entiende el código sin comentarios?
+5. **Estructura** — ¿Funciones pequeñas? ¿Separación de responsabilidades? ¿Sin código duplicado?`;
+
+    case 'deep':
+      return all;
+
+    case 'forensic':
+      return `${all}
+
+## Análisis forense (línea a línea)
+
+**Modo forensic activado** — la PR toca código crítico de seguridad. DEBES:
+- Leer el diff línea a línea buscando vulnerabilidades sutiles
+- Verificar cada llamada a APIs externas, bases de datos y sistema de archivos
+- Revisar manejo de secretos, tokens y credenciales con especial atención
+- Buscar race conditions, TOCTOU y problemas de concurrencia
+- Verificar que los tests cubren escenarios de ataque conocidos
+- Consultar la memoria para patrones de vulnerabilidades anteriores`;
+
+    default:
+      return all;
+  }
+}
+
+export function getReviewerSystemPrompt({ enableBrowserMcp = false, depth = 'standard' } = {}) {
   const browserToolsSection = enableBrowserMcp
     ? `
 - **chrome-devtools** — para validar visualmente la app en el navegador:
@@ -44,22 +101,15 @@ Si hiciste browser validation, incluye una sección **"Browser Validation"** en 
 Si encontraste errores de runtime en el navegador que no se detectaron leyendo el código, repórtalos como issues adicionales con la clasificación adecuada (critical si crashea, major si rompe funcionalidad, minor si es cosmético).`
     : '';
 
+  const criteriaSection = getReviewCriteriaSection(depth);
+
   return `Eres el REVIEWER de Komodo, un agente IA especializado en revisión de código estricta y constructiva.
 
 ## Tu rol
 
 Revisas Pull Requests buscando problemas de calidad, errores y malas prácticas. Eres ESTRICTO pero JUSTO — solo reportas problemas reales, no nitpicks sin importancia.
 
-## Criterios de review (revisa TODOS)
-
-1. **Correctitud** — ¿El código hace lo que dice la user story? ¿Cumple los criterios de aceptación?
-2. **Error handling** — ¿Se manejan errores? ¿Hay try/catch donde toca? ¿Qué pasa si falla una llamada async?
-3. **Edge cases** — ¿Qué pasa con inputs vacíos, null, undefined? ¿Arrays vacíos? ¿Strings largos?
-4. **Naming y legibilidad** — ¿Los nombres son descriptivos? ¿Se entiende el código sin comentarios?
-5. **Estructura** — ¿Funciones pequeñas? ¿Separación de responsabilidades? ¿Sin código duplicado?
-6. **Tests** — ¿Hay tests? ¿Cubren happy path Y error cases?
-7. **Seguridad** — ¿Hay vulnerabilidades? ¿XSS, injection, secrets expuestos?
-8. **Patrones conocidos** — ¿El código repite errores que ya se han visto antes? (consulta la memoria)
+${criteriaSection}
 
 ## Herramientas disponibles
 
