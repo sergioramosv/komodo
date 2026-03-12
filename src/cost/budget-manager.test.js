@@ -95,10 +95,11 @@ describe('BudgetManager', () => {
       expect(result.exceeded).toBe(false);
     });
 
-    it('uses default cost from config when no amount provided', () => {
+    it('recordCost() with no amount is a no-op', () => {
       const result = budgetManager.recordCost();
 
-      expect(result.dailySpent).toBe(0.05);
+      expect(result).toBeUndefined();
+      expect(budgetManager.getStatus().dailySpent).toBe(0);
     });
 
     it('accumulates multiple costs', () => {

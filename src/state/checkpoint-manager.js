@@ -42,7 +42,11 @@ class CheckpointManager {
     this._rateLimitHandler = (payload) => {
       return this._onRateLimitDetected(payload);
     };
-    eventBus.on(EVENT_TYPES.RATE_LIMIT_DETECTED, this._rateLimitHandler);
+    const maybeUnsubscribe = eventBus.on(EVENT_TYPES.RATE_LIMIT_DETECTED, this._rateLimitHandler);
+    // Support both EventEmitter (returns this) and unsubscribe-pattern (returns function)
+    this._unsubscribeFn = typeof maybeUnsubscribe === 'function'
+      ? maybeUnsubscribe
+      : () => eventBus.off(EVENT_TYPES.RATE_LIMIT_DETECTED, this._rateLimitHandler);
   }
 
   /**
@@ -50,8 +54,9 @@ class CheckpointManager {
    */
   stop() {
     if (this._rateLimitHandler) {
-      eventBus.off(EVENT_TYPES.RATE_LIMIT_DETECTED, this._rateLimitHandler);
+      this._unsubscribeFn?.();
       this._rateLimitHandler = null;
+      this._unsubscribeFn = null;
     }
     this._flowContext = {};
   }
