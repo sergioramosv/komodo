@@ -32,6 +32,8 @@ import { analyzeCoverage, updateBaselineAfterMerge, recordCoverageHistory } from
 import { autoVersionBump } from '../versioning/version-bumper.js';
 import { autoRelease } from '../versioning/release-manager.js';
 import { pluginLoader } from '../plugins/plugin-loader.js';
+import { shouldPause, GATE_STEPS } from '../autonomy/autonomy-engine.js';
+import { waitForApproval } from '../autonomy/approval-gate.js';
 
 /**
  * Fetches the codingGuidelines field from a project.
@@ -323,6 +325,18 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    // Autonomy gate A: after Planner selects task
+    if (shouldPause(GATE_STEPS.AFTER_PLANNING, { metadata: { taskId: taskSpec.taskId } })) {
+      const gateA = await waitForApproval({
+        step: GATE_STEPS.AFTER_PLANNING,
+        description: `Tarea seleccionada: "${taskSpec.title}"`,
+        metadata: { taskId: taskSpec.taskId, taskTitle: taskSpec.title },
+      });
+      if (!gateA.approved) {
+        return makeResult({ success: false, taskSpec, startTime, error: 'Rejected at AFTER_PLANNING gate' });
+      }
+    }
+
     // KG: save planner section for downstream agents.
     // Not currently read by buildCoderContext/buildReviewerContext — stored for future
     // agents (e.g. a Planning Auditor) or post-mortem debugging of task intent.
@@ -527,6 +541,18 @@ export async function runTask(projectId, cwd) {
       eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_GRAPH_SAVED, {
         metadata: { agent: 'architect', taskId: taskSpec.taskId },
       });
+
+      // Autonomy gate B: after Architect generates plan
+      if (shouldPause(GATE_STEPS.AFTER_ARCHITECT)) {
+        const gateB = await waitForApproval({
+          step: GATE_STEPS.AFTER_ARCHITECT,
+          description: `Plan: ${createCount} archivos a crear, ${modifyCount} a modificar`,
+          metadata: { taskId: taskSpec.taskId, createCount, modifyCount },
+        });
+        if (!gateB.approved) {
+          return makeResult({ success: false, taskSpec, startTime, error: 'Rejected at AFTER_ARCHITECT gate' });
+        }
+      }
     } else {
       logger.warn(`Architect failed (${architectResult.error}), proceeding without plan`, 'KOMODO');
     }
@@ -986,6 +1012,21 @@ export async function runTask(projectId, cwd) {
       return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
     }
 
+    // Autonomy gate C: after review approved
+    const reviewScore = reviewResult.finalReview?.score ?? null;
+    if (shouldPause(GATE_STEPS.AFTER_REVIEW, { reviewScore })) {
+      const gateC = await waitForApproval({
+        step: GATE_STEPS.AFTER_REVIEW,
+        description: `Review aprobada${reviewScore !== null ? ` (score: ${reviewScore})` : ''}`,
+        metadata: { taskId: taskSpec.taskId, prNumber, reviewScore },
+      });
+      if (!gateC.approved) {
+        closePR(repo, prNumber, 'Rejected at AFTER_REVIEW gate');
+        await rollbackTask(taskSpec.taskId);
+        return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Rejected at AFTER_REVIEW gate' });
+      }
+    }
+
     // ═══════════════════════════════════════════
     // PLUGINS: after-review
     // ═══════════════════════════════════════════
@@ -1067,6 +1108,21 @@ export async function runTask(projectId, cwd) {
 
     // Canary: check parallel conflicts before merging
     detectParallelConflicts(taskSpec.taskId, coderResult.pr.filesChanged || []);
+
+    // Autonomy gate D: before merge
+    const diffLinesCount = coderResult.pr.filesChanged?.length ?? null;
+    if (shouldPause(GATE_STEPS.BEFORE_MERGE, { reviewScore, diffLines: diffLinesCount })) {
+      const gateD = await waitForApproval({
+        step: GATE_STEPS.BEFORE_MERGE,
+        description: `Listo para mergear PR #${prNumber}`,
+        metadata: { taskId: taskSpec.taskId, prNumber, reviewScore, diffLines: diffLinesCount },
+      });
+      if (!gateD.approved) {
+        closePR(repo, prNumber, 'Rejected at BEFORE_MERGE gate');
+        await rollbackTask(taskSpec.taskId);
+        return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Rejected at BEFORE_MERGE gate' });
+      }
+    }
 
     if (config.autoMerge) {
       if (config.canaryEnabled) {

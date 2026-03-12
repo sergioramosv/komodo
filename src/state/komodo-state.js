@@ -35,6 +35,7 @@ export const EXECUTION_STATES = {
   DAEMON_RUNNING: 'daemon:running',
   SCHEDULER_WAITING: 'scheduler:waiting',
   BUDGET_PAUSED: 'budget:paused',
+  AWAITING_APPROVAL: 'awaiting-approval',
 };
 
 /**
