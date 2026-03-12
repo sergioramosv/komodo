@@ -212,7 +212,6 @@ export class KomodoState {
         agentName: agentName,
         previousState: previousStatus,
         newState: updates.status,
-        metadata,
       });
     }
 
