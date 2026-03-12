@@ -59,5 +59,46 @@ export function estimateTaskTokens(taskSpec, complexityLevel) {
   };
 }
 
+/**
+ * Estimates task tokens calibrated with historical multipliers.
+ * Applies the multiplier for the given complexity level to the base estimate.
+ * Falls back to the uncalibrated estimate if historicalMultipliers is null/undefined.
+ *
+ * @param {Object} taskSpec
+ * @param {string|null} [complexityLevel] - 'trivial', 'standard', 'complex'
+ * @param {{ trivial: number, standard: number, complex: number }|null} [historicalMultipliers]
+ * @returns {{ total: number, breakdown: { architect: number, coder: number, security: number, reviewer: number, overhead: number }, multiplierApplied: number }}
+ */
+export function estimateTaskTokensCalibrated(taskSpec, complexityLevel, historicalMultipliers) {
+  const base = estimateTaskTokens(taskSpec, complexityLevel);
+
+  const level = complexityLevel && COMPLEXITY_TOKEN_ESTIMATES[complexityLevel] ? complexityLevel : null;
+  let multiplier = 1.0;
+  if (historicalMultipliers) {
+    if (level && historicalMultipliers[level] != null) {
+      multiplier = historicalMultipliers[level];
+    } else if (!level) {
+      // Pre-classification fallback: average all historical multipliers
+      const values = Object.values(historicalMultipliers).filter(v => typeof v === 'number');
+      if (values.length > 0) {
+        multiplier = values.reduce((sum, v) => sum + v, 0) / values.length;
+      }
+    }
+  }
+
+  if (multiplier === 1.0) {
+    return { ...base, multiplierApplied: 1.0 };
+  }
+
+  const total = Math.round(base.total * multiplier);
+  const breakdown = {};
+  for (const phase of Object.keys(base.breakdown)) {
+    breakdown[phase] = Math.round(base.breakdown[phase] * multiplier);
+  }
+
+  return { total, breakdown, multiplierApplied: multiplier };
+}
+
 // Re-export rate limit functions so consumers can import everything from token-estimator
 export { getRateLimitHeadroom, recordTokenConsumption } from './rate-limit-tracker.js';
+

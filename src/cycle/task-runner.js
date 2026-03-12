@@ -20,7 +20,8 @@ import { fallbackManager } from '../agents/fallback-manager.js';
 import { withWatchdog } from '../watchdog/watchdog.js';
 import { createTechDebtTasks } from '../tech-debt/tech-debt-tracker.js';
 import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
-import { estimateTaskTokens, getRateLimitHeadroom, recordTokenConsumption } from '../estimation/token-estimator.js';
+import { estimateTaskTokens, estimateTaskTokensCalibrated, getRateLimitHeadroom, recordTokenConsumption } from '../estimation/token-estimator.js';
+import { getHistoricalMultipliers } from '../estimation/estimation-tracker.js';
 import { recordModelPerformance } from '../metrics/model-performance-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { saveSection, buildCoderContext, buildReviewerContext, loadModuleLessons, extractAndSaveLessons } from '../knowledge/knowledge-graph.js';
@@ -372,7 +373,8 @@ export async function runTask(projectId, cwd) {
     });
 
     // --- Rate Limit Awareness Check ---
-    const estimatedTokens = estimateTaskTokens(taskSpec).total;
+    const historicalMultipliers = await getHistoricalMultipliers(projectId);
+    const estimatedTokens = estimateTaskTokensCalibrated(taskSpec, null, historicalMultipliers).total;
     const headroom = getRateLimitHeadroom();
     const requiredHeadroom = estimatedTokens * 1.2; // Require 20% buffer (headroom must cover 120% of estimated)
 
@@ -468,7 +470,7 @@ export async function runTask(projectId, cwd) {
 
     // Record estimated token consumption only after decomposition check,
     // so decomposed parent tasks don't pollute the sliding window
-    recordTokenConsumption(estimateTaskTokens(taskSpec).total);
+    recordTokenConsumption(estimatedTokens);
 
     // ── Triage: classify complexity + select models ──
     const classification = classifyAndEmit(taskSpec);
@@ -498,7 +500,7 @@ export async function runTask(projectId, cwd) {
 
     komodoState.updatePhase(PHASES.PLANNING, { currentTask: taskSpec.taskId });
 
-    const tokenEstimation = estimateTaskTokens(taskSpec, complexityLevel);
+    const tokenEstimation = estimateTaskTokensCalibrated(taskSpec, complexityLevel, historicalMultipliers);
     eventBus.emitEvent(EVENT_TYPES.TASK_STARTED, {
       metadata: {
         taskId: taskSpec.taskId,
