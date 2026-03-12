@@ -104,6 +104,49 @@ ${coderFaults.map(f => `- **${f.name}** (${f.type}): ${f.error}`).join('\n')}
 }
 
 /**
+ * Construye la sección de Security Agent report para el prompt del Reviewer.
+ *
+ * @param {Object} securityReport - Reporte del Security agent
+ * @returns {string} Sección markdown formateada, o cadena vacía si no hay reporte
+ */
+function buildSecuritySection(securityReport) {
+  if (!securityReport) return '';
+
+  const verdictLabel = {
+    PASS: '✅ PASS',
+    WARN: '⚠️ WARN',
+    BLOCK: '🚫 BLOCK',
+  }[securityReport.verdict] || securityReport.verdict;
+
+  let section = `
+## Security Agent Report
+
+- **Verdict**: ${verdictLabel}
+- **Findings**: ${securityReport.criticalCount} CRITICAL, ${securityReport.highCount} HIGH, ${securityReport.mediumCount} MEDIUM, ${securityReport.lowCount} LOW
+- **Summary**: ${securityReport.summary}`;
+
+  const notable = (securityReport.findings || []).filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH' || f.severity === 'MEDIUM');
+  if (notable.length > 0) {
+    section += `
+
+### Findings
+| Severity | File | Line | Description |
+|----------|------|------|-------------|
+${notable.map(f => `| ${f.severity} | ${f.file || '-'} | ${f.line || '-'} | ${f.description} |`).join('\n')}`;
+  }
+
+  section += `
+
+### Instructions for Reviewer
+- Security findings are pre-analyzed. Focus your review on logic, correctness, and acceptance criteria.
+- If verdict is WARN, include the MEDIUM findings in your review and factor them into your score.
+- Do not duplicate security analysis already covered above.
+`;
+
+  return section;
+}
+
+/**
  * Construye la sección de Plugin Issues para el prompt del Reviewer.
  *
  * @param {string[]} issues - Issues reportados por plugins before-review
@@ -139,7 +182,7 @@ ${issues.map(issue => `- ${issue}`).join('\n')}
  *   error?: string
  * }>}
  */
-export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, model, codingGuidelines, reviewCycle, previousReview, lastReviewSHA, pluginIssues, knowledgeContext, filesChanged }) {
+export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, securityReport, model, codingGuidelines, reviewCycle, previousReview, lastReviewSHA, pluginIssues, knowledgeContext, filesChanged }) {
   const isIncremental = shouldUseIncrementalReview(reviewCycle || 1);
 
   // Select review depth based on task complexity and security findings
@@ -226,6 +269,9 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
   // Build QA report section if available
   const qaSection = qaReport ? buildQASection(qaReport) : '';
 
+  // Build Security Agent section if available
+  const securitySection = securityReport ? buildSecuritySection(securityReport) : '';
+
   // Build coding guidelines section if provided
   const guidelinesSection = codingGuidelines
     ? `\n## Project Coding Guidelines (MANDATORY — verify compliance)\n${codingGuidelines}\n`
@@ -290,7 +336,7 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
 
 ## Criterios de aceptación
 ${criteriaList || 'No especificados'}
-${guidelinesSection}${priorAgentSection}${pluginIssuesSection}${sonarSection}${coverageSection}${qaSection}${incrementalSection}
+${guidelinesSection}${priorAgentSection}${pluginIssuesSection}${sonarSection}${coverageSection}${qaSection}${securitySection}${incrementalSection}
 ## Instrucciones
 1. Llama a get_review_brief() para ver errores frecuentes del coder
 ${diffInstruction}

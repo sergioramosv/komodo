@@ -3,6 +3,7 @@ import { analyzeTask } from '../agents/architect.js';
 import { implementTask, fixReviewIssues } from '../agents/coder.js';
 import { runQAAgent } from '../agents/qa.js';
 import { runTesterAgent } from '../agents/tester.js';
+import { runSecurityAgent } from '../agents/security-agent.js';
 import { reviewLoop } from './review-loop.js';
 import { analyzeSonar } from '../sonar/analyzer.js';
 import { executePrePRTests } from '../testing/pre-pr-tests.js';
@@ -861,6 +862,132 @@ export async function runTask(projectId, cwd) {
     }
 
     // ═══════════════════════════════════════════
+    // PASO 2.7: SECURITY AGENT — Escanear vulnerabilidades post-Coder, pre-Reviewer
+    // ═══════════════════════════════════════════
+    let securityReport = null;
+
+    if (config.securityAgent !== false) {
+      logger.logStep(3, 7, 'Security scan...', 'KOMODO');
+
+      komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.title }, {
+        phase: 'security-scan',
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
+      });
+      eventBus.emitAgentEvent('SECURITY', 'working', { prNumber });
+
+      const securityResult = await withWatchdog(
+        () => runSecurityAgent({
+          taskSpec,
+          filesChanged: coderResult.pr.filesChanged || [],
+          branchName: taskSpec.branchName,
+          repo,
+          prNumber,
+          cwd,
+          model: config.forceModel_SECURITY,
+        }),
+        { agentName: 'SECURITY', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+      );
+
+      if (securityResult.cost) {
+        taskCost += securityResult.cost;
+        eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+          agentName: 'SECURITY',
+          metadata: { cost: securityResult.cost },
+        });
+      }
+
+      eventBus.emitAgentEvent('SECURITY', 'done');
+
+      if (securityResult.success) {
+        securityReport = securityResult.security;
+        const { verdict, criticalCount, highCount, mediumCount } = securityReport;
+        logger.info(`Security scan: ${verdict} (${criticalCount} CRITICAL, ${highCount} HIGH, ${mediumCount} MEDIUM)`, 'KOMODO');
+
+        if (verdict === 'BLOCK') {
+          // Feedback directo al Coder con los findings críticos — no pasar al Reviewer
+          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.DONE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK' });
+          logger.warn(`Security BLOCK: enviando findings críticos al Coder antes del Review`, 'KOMODO');
+
+          const blockingFindings = securityReport.findings.filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH');
+          const findingsList = blockingFindings.map(f => `[${f.severity}] ${f.description}${f.file ? ` (${f.file}${f.line ? `:${f.line}` : ''})` : ''}`);
+
+          try {
+            runGh([
+              'pr', 'comment', String(prNumber),
+              '--repo', repo,
+              '--body', `🚫 **[Security Agent - BLOCKED]**\n\nSe encontraron vulnerabilidades críticas. El Coder debe corregirlas antes de continuar:\n\n${findingsList.map(f => `- ${f}`).join('\n')}\n\n**Resumen**: ${securityReport.summary}`,
+            ]);
+          } catch (err) {
+            logger.warn(`Could not add Security block comment to PR: ${err.message}`, 'KOMODO');
+          }
+
+          komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING });
+          const securityFixResult = await fixReviewIssues(
+            taskSpec,
+            prNumber,
+            {
+              summary: `Security Agent blocked: ${criticalCount} CRITICAL and ${highCount} HIGH vulnerabilities found. Fix all security issues.`,
+              issues: findingsList,
+            },
+            cwd,
+            { model: coderModel, codingGuidelines },
+          );
+          komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE });
+          eventBus.emitAgentEvent('CODER', 'idle');
+
+          if (!securityFixResult.success) {
+            logger.warn(`Coder could not fix security issues: ${securityFixResult.error}`, 'KOMODO');
+          } else {
+            logger.success('Coder applied security fixes. Re-scanning...', 'KOMODO');
+            // Re-run security scan after Coder fix — with watchdog protection
+            const rescanResult = await withWatchdog(
+              () => runSecurityAgent({
+                taskSpec,
+                filesChanged: coderResult.pr.filesChanged || [],
+                branchName: taskSpec.branchName,
+                repo,
+                prNumber,
+                cwd,
+                model: config.forceModel_SECURITY,
+              }),
+              { agentName: 'SECURITY', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+            );
+            if (rescanResult.cost) {
+              taskCost += rescanResult.cost;
+              eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+                agentName: 'SECURITY',
+                metadata: { cost: rescanResult.cost },
+              });
+            }
+            if (rescanResult.success) {
+              securityReport = rescanResult.security;
+              logger.info(`Security re-scan: ${securityReport.verdict}`, 'KOMODO');
+            }
+          }
+          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK-resolved' });
+          eventBus.emitAgentEvent('SECURITY', 'idle');
+        } else if (verdict === 'WARN') {
+          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'WARN' });
+          eventBus.emitAgentEvent('SECURITY', 'idle');
+          logger.warn(`Security WARN: ${mediumCount} MEDIUM findings adjuntados al contexto del Reviewer`, 'KOMODO');
+        } else {
+          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'PASS' });
+          eventBus.emitAgentEvent('SECURITY', 'idle');
+        }
+      } else {
+        logger.warn(`Security agent failed: ${securityResult.error} — continuing without security report`, 'KOMODO');
+        komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+      }
+
+      // Check for rate limit pause
+      if (komodoState.isPauseRequested()) {
+        logger.warn('Execution paused by rate limit after Security step.', 'KOMODO');
+        return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
+      }
+    }
+
+    // ═══════════════════════════════════════════
     // PASO 3: PRE-PR TESTS — Ejecutar tests antes de review
     // ═══════════════════════════════════════════
     logger.logStep(3, 6, 'Pre-PR tests...', 'KOMODO');
@@ -1008,7 +1135,6 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     // PLUGINS: before-review
     // ═══════════════════════════════════════════
-    komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.title }, { phase: 'security-scan', taskId: taskSpec.taskId, taskTitle: taskSpec.title });
     let beforeReviewPluginResults = [];
     try {
       beforeReviewPluginResults = await pluginLoader.executePlugins('before-review', {
@@ -1021,13 +1147,6 @@ export async function runTask(projectId, cwd) {
       });
     } catch (err) {
       logger.warn(`Plugin before-review error (non-blocking): ${err.message}`, 'KOMODO');
-    }
-
-    const securityBlocked = beforeReviewPluginResults.some(r => r.blocked === true);
-    if (securityBlocked) {
-      komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.DONE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK' });
-    } else {
-      komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     }
 
     // ═══════════════════════════════════════════
@@ -1081,7 +1200,7 @@ export async function runTask(projectId, cwd) {
     }
 
     const reviewResult = await withWatchdog(
-      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold: config.smartModelRoutingThreshold, coderCli, knowledgeContext: reviewerKnowledgeContext, filesChanged: coderResult.pr.filesChanged || [] }),
+      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, securityReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold: config.smartModelRoutingThreshold, coderCli, knowledgeContext: reviewerKnowledgeContext, filesChanged: coderResult.pr.filesChanged || [] }),
       { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
     );
 
