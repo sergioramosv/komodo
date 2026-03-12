@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
+import { runAllExternalTools } from '../security/external-tools.js';
 
 /**
  * Ejecuta el agente de seguridad para escanear el código de una PR.
@@ -35,6 +36,15 @@ export async function runSecurityAgent({ taskSpec, filesChanged, branchName, rep
     .map(f => `- ${f}`)
     .join('\n');
 
+  // Run external tools before LLM analysis to include their findings as context
+  const externalTools = await runAllExternalTools({ cwd });
+  const externalFindingsCount = externalTools.findings.length;
+  const externalFindingsSummary = externalFindingsCount > 0
+    ? externalTools.findings
+      .map(f => `- [${f.severity}] ${f.description}${f.file ? ` (${f.file}${f.line ? `:${f.line}` : ''})` : ''}`)
+      .join('\n')
+    : 'Ningún finding de herramientas externas.';
+
   const userPrompt = `Escanea el código de la PR #${prNumber} en el repositorio "${repo}" en busca de vulnerabilidades de seguridad.
 
 ## Tarea
@@ -45,12 +55,18 @@ export async function runSecurityAgent({ taskSpec, filesChanged, branchName, rep
 ## Archivos cambiados
 ${filesList || 'No especificados'}
 
+## Findings de herramientas externas (npm audit, gitleaks, semgrep)
+Los siguientes findings fueron detectados automáticamente por herramientas estáticas. Tenlos en cuenta en tu análisis pero no los dupliques si ya los cubre tu revisión del código:
+
+${externalFindingsSummary}
+
 ## Instrucciones
 1. Lee cada archivo cambiado con las herramientas disponibles
 2. Analiza el código siguiendo las categorías OWASP Top 10 y los checks adicionales del system prompt
 3. Para cada vulnerabilidad encontrada, incluye severidad, categoría, descripción clara, archivo y línea
-4. Determina el verdict según las reglas: BLOCK (CRITICAL o 1+ HIGH), WARN (MEDIUM sin CRITICAL/HIGH), PASS (solo LOW o ninguno)
-5. Devuelve ÚNICAMENTE el JSON con: verdict, findings, summary`;
+4. Incorpora los findings de herramientas externas al análisis si son relevantes
+5. Determina el verdict según las reglas: BLOCK (CRITICAL o 1+ HIGH), WARN (MEDIUM sin CRITICAL/HIGH), PASS (solo LOW o ninguno)
+6. Devuelve ÚNICAMENTE el JSON con: verdict, findings, summary`;
 
   const result = await runAgent({
     name: 'SECURITY',
@@ -155,6 +171,7 @@ ${filesList || 'No especificados'}
       mediumCount,
       lowCount,
     },
+    toolResults: externalTools.toolResults,
     cost: result.cost,
     duration: result.duration,
   };
