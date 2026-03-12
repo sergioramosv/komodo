@@ -74,18 +74,18 @@ describe('estimateTaskTokensCalibrated', () => {
     expect(calibrated.multiplierApplied).toBe(2.0);
   });
 
-  it('falls back to 1.0 multiplier when complexityLevel is null', () => {
+  it('falls back to average multiplier when complexityLevel is null', () => {
     const base = estimateTaskTokens(TASK_SPEC);
     const multipliers = { trivial: 2.0, standard: 2.0, complex: 2.0 };
     const calibrated = estimateTaskTokensCalibrated(TASK_SPEC, null, multipliers);
-    expect(calibrated.multiplierApplied).toBe(1.0);
-    expect(calibrated.total).toBe(base.total);
+    expect(calibrated.multiplierApplied).toBe(2.0);
+    expect(calibrated.total).toBe(Math.round(base.total * 2.0));
   });
 
-  it('falls back to 1.0 multiplier when complexityLevel is invalid', () => {
+  it('falls back to average multiplier when complexityLevel is invalid', () => {
     const multipliers = { trivial: 1.5, standard: 1.5, complex: 1.5 };
     const calibrated = estimateTaskTokensCalibrated(TASK_SPEC, 'unknown', multipliers);
-    expect(calibrated.multiplierApplied).toBe(1.0);
+    expect(calibrated.multiplierApplied).toBe(1.5);
   });
 
   it('returns 1.0 multiplierApplied when multiplier for level is 1.0', () => {

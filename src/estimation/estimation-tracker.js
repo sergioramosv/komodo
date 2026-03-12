@@ -216,7 +216,7 @@ export async function getHistoricalMultipliers(projectId) {
     const BASELINE_REVIEW_CYCLES = 1;
 
     for (const [level, stats] of Object.entries(ratios)) {
-      if (!stats || stats.taskCount < 3) continue;
+      if (!stats || stats.taskCount < 3 || typeof stats.avgReviewCycles !== 'number') continue;
       // Scale token estimate by observed review cycles vs baseline
       const cycleMultiplier = stats.avgReviewCycles / BASELINE_REVIEW_CYCLES;
       // Clamp between 0.5 and 3.0 to avoid wild swings

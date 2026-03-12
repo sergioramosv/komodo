@@ -470,7 +470,7 @@ export async function runTask(projectId, cwd) {
 
     // Record estimated token consumption only after decomposition check,
     // so decomposed parent tasks don't pollute the sliding window
-    recordTokenConsumption(estimateTaskTokensCalibrated(taskSpec, null, historicalMultipliers).total);
+    recordTokenConsumption(estimatedTokens);
 
     // ── Triage: classify complexity + select models ──
     const classification = classifyAndEmit(taskSpec);
