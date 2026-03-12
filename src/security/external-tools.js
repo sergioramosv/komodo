@@ -1,5 +1,10 @@
-import { execSync } from 'child_process';
+import { execSync, execFile } from 'child_process';
+import { promisify } from 'util';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { logger } from '../utils/logger.js';
+
+const execFileAsync = promisify(execFile);
 
 const AGENT = 'SECURITY';
 
@@ -49,10 +54,10 @@ export async function runNpmAudit({ cwd } = {}) {
   }
 
   try {
-    const output = execSync('npm audit --json', {
+    const { stdout: output } = await execFileAsync('npm', ['audit', '--json'], {
       cwd,
-      stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 60_000,
+      maxBuffer: 10 * 1024 * 1024,
     });
 
     const auditData = JSON.parse(output.toString());
@@ -152,17 +157,19 @@ export async function runGitleaks({ cwd } = {}) {
     return { tool: 'gitleaks', available: false, findings: [] };
   }
 
+  const reportPath = join(tmpdir(), 'gitleaks-report.json');
+
   try {
-    execSync('gitleaks detect --source . --report-format json --report-path /tmp/gitleaks-report.json --no-git --exit-code 0', {
-      cwd,
-      stdio: 'ignore',
-      timeout: 120_000,
-    });
+    await execFileAsync(
+      'gitleaks',
+      ['detect', '--source', '.', '--report-format', 'json', '--report-path', reportPath, '--no-git', '--exit-code', '0'],
+      { cwd, timeout: 120_000 }
+    );
 
     let report = [];
     try {
       const { readFileSync } = await import('fs');
-      const content = readFileSync('/tmp/gitleaks-report.json', 'utf8');
+      const content = readFileSync(reportPath, 'utf8');
       report = JSON.parse(content);
     } catch {
       // No report file means no leaks found
@@ -218,13 +225,10 @@ export async function runSemgrep({ cwd } = {}) {
   }
 
   try {
-    const output = execSync(
-      'semgrep --config "p/owasp-top-ten" --json --quiet .',
-      {
-        cwd,
-        stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: 180_000,
-      }
+    const { stdout: output } = await execFileAsync(
+      'semgrep',
+      ['--config', 'p/owasp-top-ten', '--json', '--quiet', '.'],
+      { cwd, timeout: 180_000, maxBuffer: 10 * 1024 * 1024 }
     );
 
     const semgrepData = JSON.parse(output.toString());
