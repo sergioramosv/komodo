@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
 import { logger } from '../../utils/logger.js';
 
 /** Merge conflict patterns */
@@ -13,17 +13,20 @@ const MERGE_CONFLICT_PATTERNS = [
 ];
 
 /**
- * Run a shell command and return { success, output }.
- * @param {string} cmd
+ * Run a git command safely using spawnSync (no shell injection).
+ * @param {string[]} args - git subcommand arguments
  * @param {string} cwd
  * @returns {{ success: boolean, output: string }}
  */
-function runCmd(cmd, cwd) {
+function runGitCmd(args, cwd) {
   try {
-    const output = execSync(cmd, { cwd, encoding: 'utf-8', stdio: 'pipe' });
-    return { success: true, output: output || '' };
+    const result = spawnSync('git', args, { cwd, encoding: 'utf-8', stdio: 'pipe' });
+    if (result.status !== 0) {
+      return { success: false, output: result.stderr || result.stdout || '' };
+    }
+    return { success: true, output: result.stdout || '' };
   } catch (err) {
-    return { success: false, output: err.stderr || err.message || '' };
+    return { success: false, output: err.message || '' };
   }
 }
 
@@ -74,30 +77,30 @@ export const mergeConflictStrategy = {
     logger.info(`Self-healing merge conflict: rebasing ${branchName} onto ${baseBranch}`, 'SELF-HEALING');
 
     // 1. Fetch latest
-    const fetch = runCmd(`git fetch origin`, cwd);
+    const fetch = runGitCmd(['fetch', 'origin'], cwd);
     if (!fetch.success) {
       logger.warn(`Self-healing merge conflict: git fetch failed — ${fetch.output}`, 'SELF-HEALING');
       return { healed: false, action: 'fetch-failed' };
     }
 
     // 2. Checkout branch
-    const checkout = runCmd(`git checkout ${branchName}`, cwd);
+    const checkout = runGitCmd(['checkout', branchName], cwd);
     if (!checkout.success) {
       logger.warn(`Self-healing merge conflict: git checkout failed — ${checkout.output}`, 'SELF-HEALING');
       return { healed: false, action: 'checkout-failed' };
     }
 
     // 3. Rebase
-    const rebase = runCmd(`git rebase origin/${baseBranch}`, cwd);
+    const rebase = runGitCmd(['rebase', `origin/${baseBranch}`], cwd);
     if (!rebase.success) {
       // Abort rebase on failure to leave repo in clean state
-      runCmd(`git rebase --abort`, cwd);
+      runGitCmd(['rebase', '--abort'], cwd);
       logger.warn(`Self-healing merge conflict: rebase failed — ${rebase.output}`, 'SELF-HEALING');
       return { healed: false, action: 'rebase-failed' };
     }
 
     // 4. Force push
-    const push = runCmd(`git push --force-with-lease origin ${branchName}`, cwd);
+    const push = runGitCmd(['push', '--force-with-lease', 'origin', branchName], cwd);
     if (!push.success) {
       logger.warn(`Self-healing merge conflict: push failed — ${push.output}`, 'SELF-HEALING');
       return { healed: false, action: 'push-failed' };

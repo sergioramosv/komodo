@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mergeConflictStrategy } from './merge-conflict.js';
 
-// Mock execSync
+// Mock spawnSync
 vi.mock('child_process', () => ({
-  execSync: vi.fn(),
+  spawnSync: vi.fn(),
 }));
 vi.mock('../../utils/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const { execSync } = await import('child_process');
+const { spawnSync } = await import('child_process');
 
 describe('mergeConflictStrategy.detect', () => {
   it('detects CONFLICTING mergeStatus', () => {
@@ -44,7 +44,7 @@ describe('mergeConflictStrategy.diagnose', () => {
 describe('mergeConflictStrategy.heal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    execSync.mockReturnValue('');
+    spawnSync.mockReturnValue({ status: 0, stdout: '', stderr: '' });
   });
 
   it('returns healed=false when no branchName', async () => {
@@ -54,7 +54,6 @@ describe('mergeConflictStrategy.heal', () => {
   });
 
   it('returns healed=true after successful rebase', async () => {
-    execSync.mockReturnValue('');
     const result = await mergeConflictStrategy.heal({
       errorMessage: 'conflict',
       branchName: 'feature/test',
@@ -64,9 +63,23 @@ describe('mergeConflictStrategy.heal', () => {
     expect(result.action).toBe('rebased');
   });
 
+  it('uses spawnSync with array args (no shell injection)', async () => {
+    await mergeConflictStrategy.heal({
+      errorMessage: 'conflict',
+      branchName: 'feature/test; rm -rf /',
+      cwd: '/tmp',
+    });
+    // Verify spawnSync is called with array args, not string interpolation
+    const checkoutCall = spawnSync.mock.calls.find(c => c[1] && c[1][0] === 'checkout');
+    expect(checkoutCall).toBeDefined();
+    expect(checkoutCall[0]).toBe('git');
+    expect(checkoutCall[1]).toEqual(['checkout', 'feature/test; rm -rf /']);
+  });
+
   it('returns healed=false when git fetch fails', async () => {
-    execSync.mockImplementation((cmd) => {
-      if (cmd.includes('fetch')) throw new Error('fetch error');
+    spawnSync.mockImplementation((cmd, args) => {
+      if (args[0] === 'fetch') return { status: 1, stdout: '', stderr: 'fetch error' };
+      return { status: 0, stdout: '', stderr: '' };
     });
     const result = await mergeConflictStrategy.heal({
       errorMessage: 'conflict',
@@ -78,8 +91,11 @@ describe('mergeConflictStrategy.heal', () => {
   });
 
   it('returns healed=false when rebase fails and aborts', async () => {
-    execSync.mockImplementation((cmd) => {
-      if (cmd.includes('rebase') && !cmd.includes('--abort')) throw new Error('rebase conflict');
+    spawnSync.mockImplementation((cmd, args) => {
+      if (args[0] === 'rebase' && !args.includes('--abort')) {
+        return { status: 1, stdout: '', stderr: 'rebase conflict' };
+      }
+      return { status: 0, stdout: '', stderr: '' };
     });
     const result = await mergeConflictStrategy.heal({
       errorMessage: 'conflict',

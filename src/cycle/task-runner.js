@@ -819,7 +819,10 @@ export async function runTask(projectId, cwd) {
               return { success: fixResult.success };
             },
           });
-          return { fixed: healResult.healed };
+          if (healResult.healed) {
+            return { fixed: true };
+          }
+          // Self-healing failed — fall through to fixReviewIssues() below
         }
 
         const fixResult = await fixReviewIssues(

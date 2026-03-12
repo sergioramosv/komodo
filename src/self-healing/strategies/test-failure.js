@@ -29,7 +29,7 @@ const TEST_NAME_PATTERN = /●\s+(.+?)\n|FAIL.*›\s+(.+?)(?:\n|$)|✕\s+(.+?)(?
  * Classify failure type based on error output.
  * @param {string} output
  * @param {string[]} testNames
- * @returns {'flaky'|'new-test-failure'|'regression'}
+ * @returns {'flaky'|'new-test-failure'}
  */
 function classifyFailure(output, testNames) {
   // Known flaky test?
@@ -65,7 +65,6 @@ function extractTestNames(output) {
  * Classifies between:
  * - flaky: retry without LLM
  * - new-test-failure: fix code with LLM
- * - regression: fix with historical context
  */
 export const testFailureStrategy = {
   name: 'test-failure',
@@ -82,7 +81,7 @@ export const testFailureStrategy = {
 
   /**
    * @param {{ errorMessage: string, priorOutput?: string }} errorContext
-   * @returns {{ failureType: 'flaky'|'new-test-failure'|'regression', testNames: string[] }}
+   * @returns {{ failureType: 'flaky'|'new-test-failure', testNames: string[] }}
    */
   diagnose(errorContext) {
     const { errorMessage = '', priorOutput = '' } = errorContext;
@@ -117,13 +116,12 @@ export const testFailureStrategy = {
       return { healed: false, action: 'flaky-retry-failed' };
     }
 
-    // new-test-failure or regression: fix with LLM
+    // new-test-failure: fix with LLM
     if (typeof fixCode === 'function') {
       const fixResult = await fixCode({
         failureType,
         testNames,
         output: errorMessage,
-        includeHistory: failureType === 'regression',
       });
       return { healed: fixResult.success, action: `fix-${failureType}` };
     }
