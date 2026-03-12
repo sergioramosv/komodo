@@ -42,7 +42,7 @@ export async function waitForApproval({ step, description = '', metadata = {} } 
   });
 
   // Use channel manager when APPROVAL_CHANNELS is configured
-  if (config.approvalChannels.length > 0) {
+  if (config.approvalChannels?.length > 0) {
     const result = await approvalChannelManager.requestApproval({ step, description, metadata });
     komodoState.pendingApproval = null;
     komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
