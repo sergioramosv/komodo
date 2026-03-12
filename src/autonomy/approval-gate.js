@@ -3,13 +3,17 @@ import { config } from '../config.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
 import { logger } from '../utils/logger.js';
+import { approvalChannelManager } from './approval-channels.js';
 
 /**
  * Waits for human approval before continuing the pipeline.
  *
- * In interactive mode (TTY), prompts the user on stdin and waits up to
- * APPROVAL_TIMEOUT_MINUTES. If the timeout expires or stdin is not a TTY
- * (daemon/pipe mode), the gate auto-approves and emits AUTONOMY_TIMED_OUT.
+ * If APPROVAL_CHANNELS is set (e.g. 'telegram', 'dashboard', 'webhook'), the gate
+ * creates a pending approval in the approvalChannelManager and waits for a channel
+ * to call resolveApproval(). Timeout behavior is controlled by APPROVAL_ON_TIMEOUT.
+ *
+ * Falls back to TTY stdin when APPROVAL_CHANNELS is empty/unset and stdin is a TTY.
+ * In non-TTY environments without channels, auto-approves immediately.
  *
  * @param {Object} options
  * @param {string} options.step - The gate step name (e.g. GATE_STEPS.AFTER_PLANNING)
@@ -19,6 +23,7 @@ import { logger } from '../utils/logger.js';
  */
 export async function waitForApproval({ step, description = '', metadata = {} } = {}) {
   const timeoutMs = config.approvalTimeoutMinutes * 60 * 1000;
+  const requestId = `${step}-${Date.now()}`;
 
   logger.info(
     `[APPROVAL GATE] ${step}${description ? ' — ' + description : ''}`,
@@ -30,10 +35,19 @@ export async function waitForApproval({ step, description = '', metadata = {} } 
   );
 
   komodoState.setExecutionState(EXECUTION_STATES.AWAITING_APPROVAL);
+  komodoState.pendingApproval = { step, description, timeoutMs, requestId };
 
   eventBus.emitEvent(EVENT_TYPES.AUTONOMY_APPROVAL_REQUESTED, {
-    metadata: { step, description, timeoutMs, ...metadata },
+    metadata: { step, description, timeoutMs, requestId, ...metadata },
   });
+
+  // Use channel manager when APPROVAL_CHANNELS is configured
+  if (config.approvalChannels.length > 0) {
+    const result = await approvalChannelManager.requestApproval({ step, description, metadata });
+    komodoState.pendingApproval = null;
+    komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
+    return result;
+  }
 
   // In non-TTY environments (CI, daemon, piped), auto-approve immediately
   if (!process.stdin.isTTY) {
@@ -41,9 +55,10 @@ export async function waitForApproval({ step, description = '', metadata = {} } 
       `stdin no es TTY (modo daemon/pipe). Auto-aprobando inmediatamente para "${step}".`,
       'AUTONOMY',
     );
+    komodoState.pendingApproval = null;
     komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
     eventBus.emitEvent(EVENT_TYPES.AUTONOMY_AUTO_APPROVED, {
-      metadata: { step, description, reason: 'non-tty', ...metadata },
+      metadata: { step, description, reason: 'non-tty', requestId, ...metadata },
     });
     return { approved: true, timedOut: false };
   }
@@ -57,9 +72,10 @@ export async function waitForApproval({ step, description = '', metadata = {} } 
       if (resolved) return;
       resolved = true;
       rl.close();
+      komodoState.pendingApproval = null;
       komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
       eventBus.emitEvent(EVENT_TYPES.AUTONOMY_TIMED_OUT, {
-        metadata: { step, description, ...metadata },
+        metadata: { step, description, requestId, ...metadata },
       });
       logger.warn(`Timeout de aprobación alcanzado para "${step}". Continuando automáticamente.`, 'AUTONOMY');
       resolve({ approved: true, timedOut: true });
@@ -73,17 +89,18 @@ export async function waitForApproval({ step, description = '', metadata = {} } 
 
       const rejected = answer.trim().toLowerCase() === 'reject';
 
+      komodoState.pendingApproval = null;
       komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
 
       if (rejected) {
         eventBus.emitEvent(EVENT_TYPES.AUTONOMY_REJECTED, {
-          metadata: { step, description, ...metadata },
+          metadata: { step, description, requestId, ...metadata },
         });
         logger.warn(`Aprobación rechazada para "${step}".`, 'AUTONOMY');
         resolve({ approved: false, timedOut: false });
       } else {
         eventBus.emitEvent(EVENT_TYPES.AUTONOMY_APPROVED, {
-          metadata: { step, description, ...metadata },
+          metadata: { step, description, requestId, ...metadata },
         });
         logger.info(`Aprobado por el usuario para "${step}".`, 'AUTONOMY');
         resolve({ approved: true, timedOut: false });

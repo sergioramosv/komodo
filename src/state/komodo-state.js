@@ -140,6 +140,12 @@ export class KomodoState {
      * @type {{ enabled: boolean, projects: string[], strategy: string, activeProject: string|null, perProject: Object<string, { tasksCompleted: number, tasksFailed: number, dailySpent: number }> } | null}
      */
     this.multiProject = null;
+
+    /**
+     * Pending approval request (set while awaiting human approval).
+     * @type {{ step: string, description: string, timeoutMs: number, requestId: string } | null}
+     */
+    this.pendingApproval = null;
   }
 
   /**
@@ -181,6 +187,7 @@ export class KomodoState {
           Object.entries(this.multiProject.perProject).map(([k, v]) => [k, { ...v }]),
         ),
       } : null,
+      pendingApproval: this.pendingApproval ? { ...this.pendingApproval } : null,
     };
   }
 
