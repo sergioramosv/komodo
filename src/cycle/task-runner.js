@@ -854,6 +854,7 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     // PLUGINS: before-review
     // ═══════════════════════════════════════════
+    komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.title }, { phase: 'security-scan', taskId: taskSpec.taskId, taskTitle: taskSpec.title });
     let beforeReviewPluginResults = [];
     try {
       beforeReviewPluginResults = await pluginLoader.executePlugins('before-review', {
@@ -866,6 +867,13 @@ export async function runTask(projectId, cwd) {
       });
     } catch (err) {
       logger.warn(`Plugin before-review error (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
+    const securityBlocked = beforeReviewPluginResults.some(r => r.blocked === true);
+    if (securityBlocked) {
+      komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.DONE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK' });
+    } else {
+      komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     }
 
     // ═══════════════════════════════════════════
