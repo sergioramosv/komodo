@@ -4,9 +4,10 @@ import { eventBus } from '../events/event-bus.js';
 import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
+import { approvalChannelManager } from '../autonomy/approval-channels.js';
 
 /** Valid command types from dashboard. */
-const VALID_COMMANDS = new Set(['pause', 'stop']);
+const VALID_COMMANDS = new Set(['pause', 'stop', 'approve', 'reject']);
 
 /**
  * Servidor WebSocket + HTTP para emitir estado en tiempo real al dashboard.
@@ -55,7 +56,7 @@ export class KomodoWsServer {
           try {
             const msg = JSON.parse(raw.toString());
             if (msg.type === 'command' && VALID_COMMANDS.has(msg.command)) {
-              this._handleCommand(msg.command, ws);
+              this._handleCommand(msg.command, ws, msg);
             }
           } catch {
             // Ignore malformed messages
@@ -117,10 +118,11 @@ export class KomodoWsServer {
   /**
    * Handles an execution command from the dashboard.
    *
-   * @param {string} command - 'pause' | 'stop'
+   * @param {string} command - 'pause' | 'stop' | 'approve' | 'reject'
    * @param {import('ws').WebSocket} ws - The client that sent the command
+   * @param {Object} [msg] - Full message object (for approve/reject requestId)
    */
-  _handleCommand(command, ws) {
+  _handleCommand(command, ws, msg = {}) {
     switch (command) {
       case 'pause':
         logger.info('Pause command received from dashboard', 'WS');
@@ -129,6 +131,14 @@ export class KomodoWsServer {
       case 'stop':
         logger.info('Stop command received from dashboard', 'WS');
         komodoState.setExecutionState(EXECUTION_STATES.STOPPED);
+        break;
+      case 'approve':
+        logger.info('Approve command received from dashboard', 'WS');
+        approvalChannelManager.respond(true);
+        break;
+      case 'reject':
+        logger.info('Reject command received from dashboard', 'WS');
+        approvalChannelManager.respond(false);
         break;
     }
 
@@ -158,6 +168,29 @@ export class KomodoWsServer {
       const snapshot = komodoState.getSnapshot();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(snapshot));
+      return;
+    }
+
+    // POST /api/approve — approve or reject a pending approval request
+    if (req.method === 'POST' && req.url === '/api/approve') {
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', () => {
+        try {
+          const { requestId, approved } = JSON.parse(body);
+          if (!requestId) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end('{"error":"requestId required"}');
+            return;
+          }
+          const found = approvalChannelManager.resolveApproval(requestId, !!approved);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: found }));
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end('{"error":"Invalid JSON"}');
+        }
+      });
       return;
     }
 
