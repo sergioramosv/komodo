@@ -30,7 +30,7 @@ import { escalateModel } from '../triage/smart-model-router.js';
  *   error?: string
  * }>}
  */
-export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: initialSonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold, coderCli, knowledgeContext, filesChanged }) {
+export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: initialSonarReport, coverageReport, qaReport, securityReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold, coderCli, knowledgeContext, filesChanged }) {
   let sonarReport = initialSonarReport;
   const maxCycles = config.maxReviewCycles;
   let cycles = 0;
@@ -63,7 +63,7 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
     eventBus.emitAgentEvent('REVIEWER', 'working', { cycle: i });
 
     const reviewResult = await reviewPR({
-      prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport,
+      prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, securityReport,
       model: reviewerModel, codingGuidelines,
       reviewCycle: i,
       previousReview: lastReview,
