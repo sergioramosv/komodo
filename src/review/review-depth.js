@@ -29,7 +29,7 @@ export const REVIEW_DEPTHS = {
   deep: {
     model: 'claude-sonnet-4-6',
     estimatedMaxTokens: 20_000,
-    maxTurns: 16,
+    maxTurns: 22,
     criteria: ['correctitud', 'error-handling', 'edge-cases', 'naming', 'estructura', 'tests', 'seguridad', 'patrones'],
   },
   forensic: {

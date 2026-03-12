@@ -90,7 +90,6 @@ export async function reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport: i
     }
 
     if (reviewResult.reviewDepth) {
-      logger.info(`Review depth: ${reviewResult.reviewDepth}`, 'REVIEWER');
       if (reviewResult.reviewDepth in depthBreakdown) {
         depthBreakdown[reviewResult.reviewDepth]++;
       }
