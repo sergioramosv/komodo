@@ -353,6 +353,9 @@ export async function runTask(projectId, cwd) {
         metadata: { taskId: taskSpec.taskId, taskTitle: taskSpec.title },
       });
       if (!gateA.approved) {
+        // pickNextTask already marked this task as in-progress in Firebase,
+        // so we must rollback to avoid leaving it stuck/orphaned.
+        await rollbackTask(taskSpec.taskId);
         return makeResult({ success: false, taskSpec, startTime, error: 'Rejected at AFTER_PLANNING gate' });
       }
     }
@@ -570,6 +573,7 @@ export async function runTask(projectId, cwd) {
           metadata: { taskId: taskSpec.taskId, createCount, modifyCount },
         });
         if (!gateB.approved) {
+          await rollbackTask(taskSpec.taskId);
           return makeResult({ success: false, taskSpec, startTime, error: 'Rejected at AFTER_ARCHITECT gate' });
         }
       }
