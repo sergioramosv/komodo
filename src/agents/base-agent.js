@@ -408,6 +408,7 @@ export async function runAgent({
     CODER: config.cliCoder,
     REVIEWER: config.cliReviewer,
     QA: config.cliQA,
+    SECURITY: config.cliSecurity,
   };
   const configuredCli = cli || cliMap[name] || 'claude';
 
