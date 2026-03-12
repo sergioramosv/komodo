@@ -225,6 +225,11 @@ export const config = {
   smartBatching: process.env.SMART_BATCHING === 'true', // default: false
   batchMaxTasks: parseInt(process.env.BATCH_MAX_TASKS || '5', 10),
 
+  // Autonomy Levels
+  autonomyLevel: process.env.AUTONOMY_LEVEL || 'semi-autonomous', // 'supervised' | 'semi-autonomous' | 'autonomous' | 'guardian'
+  approvalTimeoutMinutes: parseInt(process.env.APPROVAL_TIMEOUT_MINUTES || '30', 10),
+  guardianMaxDiffLines: parseInt(process.env.GUARDIAN_MAX_DIFF_LINES || '200', 10),
+
   // Incremental Review (only re-review fix commits in fix cycles)
   incrementalReview: process.env.INCREMENTAL_REVIEW !== 'false', // default: true
 
