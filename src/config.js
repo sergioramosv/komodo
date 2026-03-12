@@ -184,6 +184,10 @@ export const config = {
   codebaseContextMaxTokens: parseInt(process.env.CODEBASE_CONTEXT_MAX_TOKENS || '2000', 10),
   cacheIndexTtlMs: parseInt(process.env.CACHE_INDEX_TTL_MS || '300000', 10), // default: 5 minutes
 
+  // Codebase Learning (architecture/testing patterns persisted in Firebase)
+  codebaseLearningEnabled: process.env.CODEBASE_LEARNING_ENABLED !== 'false', // default: true
+  codebaseLearningForceRefresh: process.env.CODEBASE_LEARNING_FORCE_REFRESH === 'true',
+
   // Style Guide Detector (auto-detected conventions injected into Coder prompt)
   styleDetectorEnabled: process.env.STYLE_DETECTOR_ENABLED !== 'false', // default: true
 
