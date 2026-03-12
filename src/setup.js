@@ -494,6 +494,11 @@ ENABLED_PLUGINS=${enabledPlugins}
 #FORCE_MODEL_PLANNER=
 #FORCE_MODEL_CODER=
 #FORCE_MODEL_REVIEWER=
+#FORCE_MODEL_SECURITY=
+
+# Security Agent
+#SECURITY_AGENT=true
+#CLI_SECURITY=claude
 
 # ═══════════════════════════════════════════
 # Scheduler (ventanas de ejecución)
