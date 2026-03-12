@@ -2,6 +2,7 @@ import { pickNextTask } from '../agents/planner.js';
 import { analyzeTask } from '../agents/architect.js';
 import { implementTask, fixReviewIssues } from '../agents/coder.js';
 import { runQAAgent } from '../agents/qa.js';
+import { runTesterAgent } from '../agents/tester.js';
 import { reviewLoop } from './review-loop.js';
 import { analyzeSonar } from '../sonar/analyzer.js';
 import { executePrePRTests } from '../testing/pre-pr-tests.js';
@@ -24,7 +25,7 @@ import { estimateTaskTokens, estimateTaskTokensCalibrated, getRateLimitHeadroom,
 import { getHistoricalMultipliers } from '../estimation/estimation-tracker.js';
 import { recordModelPerformance } from '../metrics/model-performance-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
-import { saveSection, buildCoderContext, buildReviewerContext, loadModuleLessons, extractAndSaveLessons } from '../knowledge/knowledge-graph.js';
+import { saveSection, buildCoderContext, buildReviewerContext, buildTesterContext, loadModuleLessons, extractAndSaveLessons } from '../knowledge/knowledge-graph.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
 import { runCanaryMerge } from '../canary/canary-merge.js';
@@ -783,6 +784,78 @@ export async function runTask(projectId, cwd) {
       // Check for rate limit pause
       if (komodoState.isPauseRequested()) {
         logger.warn('Execution paused by rate limit after QA step.', 'KOMODO');
+        return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
+      }
+    }
+
+    // ═══════════════════════════════════════════
+    // PASO 2.6: TESTER AGENT — Generar tests quirúrgicos desde Knowledge Graph
+    // ═══════════════════════════════════════════
+    let testerReport = null;
+
+    if (config.testerAgent) {
+      logger.logStep(3, 7, 'Tester generando tests quirúrgicos...', 'KOMODO');
+
+      komodoState.updatePhase(PHASES.TESTING, { currentPR: prNumber });
+      komodoState.updateAgent('TESTER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
+        phase: 'testing',
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
+      });
+      eventBus.emitAgentEvent('TESTER', 'working', { prNumber });
+
+      const testerModel = config.forceModel_TESTER || selectModel(config.cliTester, 'TESTER', complexityLevel, taskModelOverride);
+
+      const testerResult = await withWatchdog(
+        () => runTesterAgent({
+          taskSpec,
+          filesChanged: coderResult.pr.filesChanged || [],
+          branchName: taskSpec.branchName,
+          repo,
+          prNumber,
+          projectId,
+          cwd,
+          model: testerModel,
+        }),
+        { agentName: 'TESTER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+      );
+
+      if (testerResult.cost) {
+        eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+          agentName: 'TESTER',
+          metadata: { cost: testerResult.cost },
+        });
+      }
+
+      eventBus.emitAgentEvent('TESTER', 'done');
+      komodoState.updateAgent('TESTER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+      eventBus.emitAgentEvent('TESTER', 'idle');
+
+      if (testerResult.success) {
+        testerReport = testerResult.tester;
+        logger.info(`TESTER: ${testerReport.summary}`, 'KOMODO');
+
+        // If Tester found issues in Coder code, add a PR comment
+        const coderFaults = (testerReport.failedTests || []).filter(t => t.failsCoderCode);
+        if (coderFaults.length > 0) {
+          try {
+            const faultList = coderFaults.map(f => `- **${f.name}**: ${f.error}`).join('\n');
+            runGh([
+              'pr', 'comment', String(prNumber),
+              '--repo', repo,
+              '--body', `⚠️ **[Tester Agent - Tests failing Coder code]**\n\n${coderFaults.length} test(s) reveal issues in the implementation:\n\n${faultList}`,
+            ]);
+          } catch (err) {
+            logger.warn(`Could not add Tester comment to PR: ${err.message}`, 'KOMODO');
+          }
+        }
+      } else {
+        logger.warn(`Tester agent failed: ${testerResult.error}`, 'KOMODO');
+      }
+
+      // Check for rate limit pause
+      if (komodoState.isPauseRequested()) {
+        logger.warn('Execution paused by rate limit after Tester step.', 'KOMODO');
         return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
       }
     }
