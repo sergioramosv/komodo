@@ -297,6 +297,13 @@ export const config = {
   // Dead Letter Queue
   deadLetterMaxRetries: parseInt(process.env.DEAD_LETTER_MAX_RETRIES || '3', 10),
 
+  // Autonomy Levels Engine
+  autonomyLevel: process.env.AUTONOMY_LEVEL || 'autonomous', // supervised|semi-autonomous|autonomous|guardian
+  approvalTimeoutMinutes: parseInt(process.env.APPROVAL_TIMEOUT_MINUTES || '30', 10),
+  guardianMaxDiffLines: parseInt(process.env.GUARDIAN_MAX_DIFF_LINES || '500', 10),
+  guardianMaxComplexity: parseInt(process.env.GUARDIAN_MAX_COMPLEXITY || '8', 10),
+  autonomyLowScoreThreshold: parseFloat(process.env.AUTONOMY_LOW_SCORE_THRESHOLD || '5.0'),
+
   // Plugins
   pluginsDir: resolve(ROOT_DIR, process.env.PLUGINS_DIR || './plugins'),
   enabledPlugins: (process.env.ENABLED_PLUGINS || '')

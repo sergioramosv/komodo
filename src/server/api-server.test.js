@@ -629,7 +629,7 @@ describe('startApiServerIfEnabled()', () => {
   it('passes onRun callback to server', async () => {
     config.apiServer = true;
     config.komodoApiKey = 'test-secret';
-    config.apiPort = 3100;
+    config.apiPort = 3110;
     const onRun = vi.fn();
     const server = await startApiServerIfEnabled({ onRun });
     expect(server._onRun).toBe(onRun);

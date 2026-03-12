@@ -125,6 +125,11 @@ export class KomodoApiServer {
       return;
     }
 
+    if (method === 'POST' && path === '/api/approve') {
+      this._handleApprove(res);
+      return;
+    }
+
     res.writeHead(404);
     res.end(JSON.stringify({ error: 'Not found' }));
   }
@@ -315,6 +320,18 @@ export class KomodoApiServer {
     komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
     res.writeHead(200);
     res.end(JSON.stringify({ status: 'pausing' }));
+  }
+
+  /**
+   * POST /api/approve — grants approval for the current autonomy checkpoint.
+   *
+   * @param {import('http').ServerResponse} res
+   */
+  _handleApprove(res) {
+    logger.info('Approval granted via API', 'API');
+    komodoState.grantApproval();
+    res.writeHead(200);
+    res.end(JSON.stringify({ approved: true, state: komodoState.executionState }));
   }
 
   /**

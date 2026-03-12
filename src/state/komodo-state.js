@@ -31,6 +31,7 @@ export const EXECUTION_STATES = {
   STOPPED: 'stopped',
   RUNNING: 'running',
   PAUSED: 'paused',
+  AWAITING_APPROVAL: 'awaiting-approval',
   DAEMON_IDLE: 'daemon:idle',
   DAEMON_RUNNING: 'daemon:running',
   SCHEDULER_WAITING: 'scheduler:waiting',
@@ -67,6 +68,9 @@ function createAgentState(name) {
  */
 export class KomodoState {
   constructor() {
+    /** @type {boolean} */
+    this._approvalGranted = false;
+
     /** @type {Object<string, Object>} */
     this.agents = {
       PLANNER: createAgentState('PLANNER'),
@@ -275,6 +279,29 @@ export class KomodoState {
    */
   isStopRequested() {
     return this.executionState === EXECUTION_STATES.STOPPED;
+  }
+
+  /**
+   * Grants approval for the current awaiting-approval checkpoint.
+   * Transitions execution state back to RUNNING.
+   */
+  grantApproval() {
+    this._approvalGranted = true;
+    this.setExecutionState(EXECUTION_STATES.RUNNING);
+  }
+
+  /**
+   * @returns {boolean} True if approval has been granted since last reset.
+   */
+  isApprovalGranted() {
+    return this._approvalGranted;
+  }
+
+  /**
+   * Resets the approval flag (called after the checkpoint consumes it).
+   */
+  resetApproval() {
+    this._approvalGranted = false;
   }
 }
 

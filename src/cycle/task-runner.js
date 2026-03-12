@@ -32,6 +32,7 @@ import { analyzeCoverage, updateBaselineAfterMerge, recordCoverageHistory } from
 import { autoVersionBump } from '../versioning/version-bumper.js';
 import { autoRelease } from '../versioning/release-manager.js';
 import { pluginLoader } from '../plugins/plugin-loader.js';
+import { autonomyEngine, AUTONOMY_STEPS } from '../autonomy/autonomy-engine.js';
 
 /**
  * Fetches the codingGuidelines field from a project.
@@ -323,6 +324,13 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    // Autonomy checkpoint A: after Planner selects task
+    const approvedAfterPlan = await autonomyEngine.checkPoint(AUTONOMY_STEPS.AFTER_PLAN, { taskId: taskSpec.taskId });
+    if (!approvedAfterPlan) {
+      await rollbackTask(taskSpec.taskId);
+      return makeResult({ success: false, taskSpec, startTime, error: 'Autonomy: approval timeout after plan' });
+    }
+
     // KG: save planner section for downstream agents.
     // Not currently read by buildCoderContext/buildReviewerContext — stored for future
     // agents (e.g. a Planning Auditor) or post-mortem debugging of task intent.
@@ -531,6 +539,13 @@ export async function runTask(projectId, cwd) {
       logger.warn(`Architect failed (${architectResult.error}), proceeding without plan`, 'KOMODO');
     }
 
+    // Autonomy checkpoint B: after Architect generates plan
+    const approvedAfterArchitect = await autonomyEngine.checkPoint(AUTONOMY_STEPS.AFTER_ARCHITECT, { taskId: taskSpec.taskId });
+    if (!approvedAfterArchitect) {
+      await rollbackTask(taskSpec.taskId);
+      return makeResult({ success: false, taskSpec, startTime, error: 'Autonomy: approval timeout after architect' });
+    }
+
     // ═══════════════════════════════════════════
     // PASO 3: CODER — Implementar
     // ═══════════════════════════════════════════
@@ -655,6 +670,12 @@ export async function runTask(projectId, cwd) {
 
     // Canary: register files for parallel conflict detection
     registerActiveTaskFiles(taskSpec.taskId, coderResult.pr.filesChanged || []);
+
+    // Autonomy checkpoint C: after Coder opens PR
+    const approvedAfterCode = await autonomyEngine.checkPoint(AUTONOMY_STEPS.AFTER_CODE, { taskId: taskSpec.taskId });
+    if (!approvedAfterCode) {
+      return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Autonomy: approval timeout after code' });
+    }
 
     // Check for rate limit pause before next step
     if (komodoState.isPauseRequested()) {
@@ -1067,6 +1088,12 @@ export async function runTask(projectId, cwd) {
 
     // Canary: check parallel conflicts before merging
     detectParallelConflicts(taskSpec.taskId, coderResult.pr.filesChanged || []);
+
+    // Autonomy checkpoint D: before merge
+    const approvedBeforeMerge = await autonomyEngine.checkPoint(AUTONOMY_STEPS.BEFORE_MERGE, { taskId: taskSpec.taskId });
+    if (!approvedBeforeMerge) {
+      return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Autonomy: approval timeout before merge', reviewResult });
+    }
 
     if (config.autoMerge) {
       if (config.canaryEnabled) {

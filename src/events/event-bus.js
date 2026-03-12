@@ -209,6 +209,12 @@ export const EVENT_TYPES = {
   AGENT_SECURITY_WORKING: 'agent:security:working',
   AGENT_SECURITY_DONE: 'agent:security:done',
   AGENT_SECURITY_IDLE: 'agent:security:idle',
+
+  // Autonomy engine events
+  AUTONOMY_LEVEL_CHANGED: 'autonomy:level-changed',
+  AUTONOMY_APPROVAL_REQUESTED: 'autonomy:approval-requested',
+  AUTONOMY_APPROVAL_GRANTED: 'autonomy:approval-granted',
+  AUTONOMY_APPROVAL_TIMED_OUT: 'autonomy:approval-timed-out',
 };
 
 /**
