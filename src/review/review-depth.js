@@ -17,13 +17,13 @@ export const REVIEW_DEPTHS = {
   quick: {
     model: 'claude-haiku-4-5-20251001',
     estimatedMaxTokens: 3_000,
-    maxTurns: 6,
+    maxTurns: 10,
     criteria: ['correctitud', 'seguridad-critica'],
   },
   standard: {
     model: 'claude-sonnet-4-6',
     estimatedMaxTokens: 10_000,
-    maxTurns: 12,
+    maxTurns: 18,
     criteria: ['correctitud', 'error-handling', 'edge-cases', 'naming', 'estructura'],
   },
   deep: {
