@@ -42,7 +42,7 @@ Your goal is to scan code diffs and files for security issues and produce a stru
 
 ## Verdict rules
 
-- **BLOCK**: any CRITICAL finding, OR two or more HIGH findings
+- **BLOCK**: any CRITICAL finding, OR one or more HIGH findings
 - **WARN**: at least one MEDIUM finding and no CRITICAL/HIGH
 - **PASS**: only LOW findings or no findings at all
 

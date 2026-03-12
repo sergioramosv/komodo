@@ -222,7 +222,7 @@ export const config = {
   // Security Agent (OWASP scan before Reviewer)
   securityAgent: process.env.SECURITY_AGENT === 'true', // default: false
   cliSecurity: process.env.CLI_SECURITY || 'claude',
-  forceModel_SECURITY: process.env.FORCE_MODEL_SECURITY || 'claude-haiku-4-5-20251001',
+  forceModel_SECURITY: process.env.FORCE_MODEL_SECURITY || 'claude-sonnet-4-6-20250514',
 
   // Coverage Delta Check (compare PR coverage vs baseline)
   coverageCheck: process.env.COVERAGE_CHECK !== 'false', // default: true

@@ -49,7 +49,7 @@ ${filesList || 'No especificados'}
 1. Lee cada archivo cambiado con las herramientas disponibles
 2. Analiza el código siguiendo las categorías OWASP Top 10 y los checks adicionales del system prompt
 3. Para cada vulnerabilidad encontrada, incluye severidad, categoría, descripción clara, archivo y línea
-4. Determina el verdict según las reglas: BLOCK (CRITICAL o 2+ HIGH), WARN (MEDIUM sin CRITICAL/HIGH), PASS (solo LOW o ninguno)
+4. Determina el verdict según las reglas: BLOCK (CRITICAL o 1+ HIGH), WARN (MEDIUM sin CRITICAL/HIGH), PASS (solo LOW o ninguno)
 5. Devuelve ÚNICAMENTE el JSON con: verdict, findings, summary`;
 
   const result = await runAgent({
@@ -86,12 +86,25 @@ ${filesList || 'No especificados'}
     };
   }
 
-  const verdict = data.verdict;
   const findings = data.findings || [];
   const criticalCount = findings.filter(f => f.severity === 'CRITICAL').length;
   const highCount = findings.filter(f => f.severity === 'HIGH').length;
   const mediumCount = findings.filter(f => f.severity === 'MEDIUM').length;
   const lowCount = findings.filter(f => f.severity === 'LOW').length;
+
+  // Re-derive verdict in code to prevent LLM hallucination bypass
+  const computedVerdict = (criticalCount > 0 || highCount >= 1) ? 'BLOCK'
+    : (mediumCount > 0) ? 'WARN'
+    : 'PASS';
+
+  if (data.verdict !== computedVerdict) {
+    logger.warn(
+      `Verdict mismatch: LLM said "${data.verdict}" but findings indicate "${computedVerdict}". Using computed verdict.`,
+      'SECURITY'
+    );
+  }
+
+  const verdict = computedVerdict;
 
   eventBus.emitEvent(EVENT_TYPES.SECURITY_SCAN_COMPLETE, {
     agentName: 'SECURITY',
