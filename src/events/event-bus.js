@@ -117,6 +117,8 @@ export const EVENT_TYPES = {
 
   // Tester agent events
   TESTER_TESTS_GENERATED: 'tester:tests-generated',
+  TESTER_TESTS_FAILED: 'tester:tests-failed',
+  TESTER_TESTS_PASSED: 'tester:tests-passed',
   AGENT_TESTER_WORKING: 'agent:tester:working',
   AGENT_TESTER_DONE: 'agent:tester:done',
   AGENT_TESTER_IDLE: 'agent:tester:idle',
