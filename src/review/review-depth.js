@@ -11,30 +11,30 @@
 /**
  * Configuration for each review depth level.
  *
- * @type {Record<string, { model: string, maxTokens: number, maxTurns: number, criteria: string[] }>}
+ * @type {Record<string, { model: string, estimatedMaxTokens: number, maxTurns: number, criteria: string[] }>}
  */
 export const REVIEW_DEPTHS = {
   quick: {
     model: 'claude-haiku-4-5-20251001',
-    maxTokens: 3_000,
+    estimatedMaxTokens: 3_000,
     maxTurns: 6,
     criteria: ['correctitud', 'seguridad-critica'],
   },
   standard: {
     model: 'claude-sonnet-4-6',
-    maxTokens: 10_000,
+    estimatedMaxTokens: 10_000,
     maxTurns: 12,
     criteria: ['correctitud', 'error-handling', 'edge-cases', 'naming', 'estructura'],
   },
   deep: {
     model: 'claude-sonnet-4-6',
-    maxTokens: 20_000,
+    estimatedMaxTokens: 20_000,
     maxTurns: 16,
     criteria: ['correctitud', 'error-handling', 'edge-cases', 'naming', 'estructura', 'tests', 'seguridad', 'patrones'],
   },
   forensic: {
     model: 'claude-opus-4-6',
-    maxTokens: 40_000,
+    estimatedMaxTokens: 40_000,
     maxTurns: 24,
     criteria: ['correctitud', 'error-handling', 'edge-cases', 'naming', 'estructura', 'tests', 'seguridad', 'patrones', 'line-by-line'],
   },
@@ -64,6 +64,7 @@ const SENSITIVE_FILE_PATTERNS = [
  * @returns {boolean}
  */
 function isSensitiveFile(filePath) {
+  if (typeof filePath !== 'string') return false;
   return SENSITIVE_FILE_PATTERNS.some(pattern => pattern.test(filePath));
 }
 
@@ -80,7 +81,7 @@ function isSensitiveFile(filePath) {
  * @param {number} [options.devPoints] - Complexity points from task spec
  * @param {string[]} [options.filesChanged] - List of file paths changed by Coder
  * @param {Object} [options.sonarReport] - SonarQube report (optional)
- * @returns {{ depth: string, model: string, maxTokens: number, maxTurns: number, criteria: string[] }}
+ * @returns {{ depth: string, model: string, estimatedMaxTokens: number, maxTurns: number, criteria: string[] }}
  */
 export function selectReviewDepth({ devPoints = 5, filesChanged = [], sonarReport = null } = {}) {
   // Rule 1: forensic if critical security findings

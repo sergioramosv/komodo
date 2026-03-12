@@ -159,7 +159,7 @@ export async function reviewPR({ prNumber, repo, taskSpec, cwd, sonarReport, cov
       depth: selectedDepth,
       model: depthModel,
       maxTurns: depthMaxTurns,
-      maxTokens: depthResult.maxTokens,
+      estimatedMaxTokens: depthResult.estimatedMaxTokens,
       criteria: depthResult.criteria,
       devPoints: taskSpec?.devPoints,
       filesChangedCount: (filesChanged || []).length,
