@@ -205,6 +205,12 @@ export const config = {
   canaryWaitMinutes: parseInt(process.env.CANARY_WAIT_MINUTES || '10', 10),
   canaryAutoPromote: process.env.CANARY_AUTO_PROMOTE !== 'false', // default: true
 
+  // Autonomy Levels Engine
+  autonomyLevel: process.env.AUTONOMY_LEVEL || 'autonomous', // supervised | semi-autonomous | autonomous | guardian
+  approvalTimeoutMinutes: parseInt(process.env.APPROVAL_TIMEOUT_MINUTES || '30', 10),
+  guardianMaxDiffLines: parseInt(process.env.GUARDIAN_MAX_DIFF_LINES || '500', 10),
+  minReviewScore: parseFloat(process.env.MIN_REVIEW_SCORE || process.env.GUARDIAN_MIN_SCORE || '7.0'),
+
   // QA Agent (generate and execute tests between Coder and Reviewer)
   qaAgent: process.env.QA_AGENT === 'true', // default: false
   cliQA: process.env.CLI_QA || 'claude',
