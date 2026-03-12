@@ -206,10 +206,9 @@ export class KomodoState {
 
     if (updates.status && updates.status !== previousStatus) {
       eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
-        agentName: agentName,
+        agentName,
         previousState: previousStatus,
         newState: updates.status,
-        metadata,
       });
     }
 
