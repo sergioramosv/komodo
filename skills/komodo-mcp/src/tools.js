@@ -40,6 +40,8 @@ const { recordTaskMetrics } = await import('../../../src/estimation/estimation-t
 const { recordModelPerformance } = await import('../../../src/metrics/model-performance-tracker.js');
 const { selectModel } = await import('../../../src/triage/model-selector.js');
 const { startEventPersistence } = await import('../../../src/events/event-persistence.js');
+const { pluginLoader } = await import('../../../src/plugins/plugin-loader.js');
+const { DASHBOARD_AGENT_STATES } = await import('../../../src/state/komodo-state.js');
 
 // Start event persistence so MCP events get saved to Firebase
 const _projectId = config.defaultProjectId;
@@ -408,6 +410,8 @@ export const tools = {
       prNumber: z.number().describe('Número de la Pull Request'),
       repo: z.string().describe('Repositorio en formato owner/repo (ej: "SergioRVDev/my-app")'),
       taskTitle: z.string().describe('Título de la tarea (para contexto del review)'),
+      taskId: z.string().optional().describe('ID de la tarea (para metadata de eventos del Security Agent)'),
+      changedFiles: z.array(z.string()).optional().describe('Lista de archivos modificados en la PR (para el Security Agent)'),
       userStoryWho: z.string().optional().describe('User Story: Como...'),
       userStoryWhat: z.string().optional().describe('User Story: Quiero...'),
       userStoryWhy: z.string().optional().describe('User Story: Para...'),
@@ -474,6 +478,41 @@ export const tools = {
           // Graceful degradation — continue review without sonar if it fails
           sonarReport = null;
         }
+      }
+
+      // Run security plugins (before-review) and emit SECURITY agent events
+      await pluginLoader.load();
+      komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: params.taskTitle }, { phase: 'security-scan', taskId: params.taskId || '', taskTitle: params.taskTitle });
+
+      let beforeReviewPluginResults = [];
+      try {
+        let branchName = '';
+        if (runGh) {
+          try {
+            const prJson = await runGh(['pr', 'view', String(params.prNumber), '--json', 'headRefName', '--repo', params.repo]);
+            branchName = JSON.parse(prJson).headRefName || '';
+          } catch {
+            // non-blocking
+          }
+        }
+
+        beforeReviewPluginResults = await pluginLoader.executePlugins('before-review', {
+          task: { id: params.taskId || '', title: params.taskTitle, body: '' },
+          prNumber: String(params.prNumber),
+          branchName,
+          repoPath: params.cwd,
+          repo: params.repo,
+          changedFiles: params.changedFiles || [],
+        });
+      } catch (err) {
+        // non-blocking
+      }
+
+      const securityBlocked = beforeReviewPluginResults.some(r => r.blocked === true);
+      if (securityBlocked) {
+        komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.DONE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK' });
+      } else {
+        komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
       }
 
       komodoState.updatePhase('reviewing');
