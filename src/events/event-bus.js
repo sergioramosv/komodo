@@ -223,6 +223,13 @@ export const EVENT_TYPES = {
   WATCHDOG_ALERT: 'streaming:watchdog-alert',
   REVIEWER_EARLY_APPROVED: 'streaming:reviewer-early-approved',
   ANOMALY_DETECTED: 'streaming:anomaly-detected',
+
+  // Self-healing events
+  SELF_HEALING_ATTEMPTED: 'self-healing:attempted',
+  SELF_HEALING_SUCCEEDED: 'self-healing:succeeded',
+  SELF_HEALING_FAILED: 'self-healing:failed',
+  SELF_HEALING_OFFLINE_MODE: 'self-healing:offline-mode',
+  SELF_HEALING_SYNC_COMPLETED: 'self-healing:sync-completed',
 };
 
 /**
