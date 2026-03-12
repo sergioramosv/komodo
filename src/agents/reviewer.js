@@ -342,7 +342,7 @@ ${diffInstruction}
     if (!earlyReview) {
       earlyReview = {
         verdict: 'APPROVED',
-        score: 9,
+        score: null,
         issues: [],
         positives: ['Early approval: implementation meets acceptance criteria'],
         summary: 'Reviewer approved early based on initial analysis of the PR.',
@@ -353,7 +353,7 @@ ${diffInstruction}
       success: true,
       review: {
         verdict: 'APPROVED',
-        score: earlyReview.score || 9,
+        score: earlyReview.score ?? null,
         issues: earlyReview.issues || [],
         positives: earlyReview.positives || [],
         summary: earlyReview.summary || 'Early approval.',

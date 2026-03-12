@@ -39,7 +39,6 @@ export class StreamingWatchdog {
     this._totalTokensEstimate = 0;
     this._charsAtLastToolCall = 0;
     this._tokensSinceLastCodeBlock = 0;
-    this._consecutiveToolCalls = 0;
     this._lastToolName = null;
     this._consecutiveSameToolCount = 0;
     this._consecutiveToolCallsWithoutText = 0;
@@ -76,7 +75,7 @@ export class StreamingWatchdog {
    */
   get tokensSavedEstimate() {
     if (!this._terminated) return 0;
-    // Assume the agent would have continued for ~2x what it already consumed
+    // Conservative estimate: agent would have consumed ~20% more tokens before finishing
     return Math.round(this._totalTokensEstimate * 0.2);
   }
 
@@ -95,8 +94,10 @@ export class StreamingWatchdog {
 
     // ── Reviewer early-approval detector ──────────────────────────────────
     if (this.reviewerMode && this._totalChars <= 3000) {
-      const upper = (rawAccumulatedOutput || '').toUpperCase();
-      if (upper.includes('APPROVED') || upper.includes('"APPROVE"') || upper.includes('"verdict":"APPROVED"')) {
+      // Only match explicit JSON verdict patterns to avoid false positives from
+      // free-text analysis that mentions 'approved' (e.g. "previously approved").
+      const upper = (rawAccumulatedOutput || '').toUpperCase().replace(/\s+/g, '');
+      if (upper.includes('"VERDICT":"APPROVED"') || upper.includes('"VERDICT":"APPROVE"')) {
         this._kill('reviewer_early_approved', `Reviewer emitted APPROVED within first 3K chars (${this._totalChars} chars processed)`);
         eventBus.emitEvent(EVENT_TYPES.REVIEWER_EARLY_APPROVED, {
           agentName: this.agentName,
