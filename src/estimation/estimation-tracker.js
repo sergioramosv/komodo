@@ -187,6 +187,55 @@ export function detectUnderestimatedCategories(ratios) {
 }
 
 /**
+ * Converts historical task ratios into token multipliers per complexity level.
+ * Tasks with more review cycles consume more tokens — so the multiplier scales
+ * with avgReviewCycles relative to a baseline of 1 cycle.
+ *
+ * Returns { trivial: number, standard: number, complex: number } with fallback
+ * to 1.0 when data is insufficient (taskCount < 3).
+ *
+ * @param {string} projectId
+ * @returns {Promise<{ trivial: number, standard: number, complex: number }>}
+ */
+export async function getHistoricalMultipliers(projectId) {
+  const defaultMultipliers = { trivial: 1.0, standard: 1.0, complex: 1.0 };
+
+  if (!config.estimationTracking) {
+    return defaultMultipliers;
+  }
+
+  try {
+    const metrics = await getTaskMetrics(projectId);
+    if (metrics.length === 0) {
+      return defaultMultipliers;
+    }
+
+    const ratios = calculateEstimationRatios(metrics);
+    const multipliers = { ...defaultMultipliers };
+
+    const BASELINE_REVIEW_CYCLES = 1;
+
+    for (const [level, stats] of Object.entries(ratios)) {
+      if (!stats || stats.taskCount < 3) continue;
+      // Scale token estimate by observed review cycles vs baseline
+      const cycleMultiplier = stats.avgReviewCycles / BASELINE_REVIEW_CYCLES;
+      // Clamp between 0.5 and 3.0 to avoid wild swings
+      multipliers[level] = Math.min(3.0, Math.max(0.5, cycleMultiplier));
+    }
+
+    logger.debug(
+      `Historical multipliers for ${projectId}: trivial=${multipliers.trivial.toFixed(2)}, standard=${multipliers.standard.toFixed(2)}, complex=${multipliers.complex.toFixed(2)}`,
+      AGENT_TAG,
+    );
+
+    return multipliers;
+  } catch (err) {
+    logger.warn(`Failed to load historical multipliers: ${err.message}`, AGENT_TAG);
+    return defaultMultipliers;
+  }
+}
+
+/**
  * Builds a calibration context string for the Planner.
  * Queries historical metrics, calculates ratios, and formats as prompt context.
  *
