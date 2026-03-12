@@ -73,9 +73,18 @@ export function estimateTaskTokensCalibrated(taskSpec, complexityLevel, historic
   const base = estimateTaskTokens(taskSpec, complexityLevel);
 
   const level = complexityLevel && COMPLEXITY_TOKEN_ESTIMATES[complexityLevel] ? complexityLevel : null;
-  const multiplier = (historicalMultipliers && level && historicalMultipliers[level] != null)
-    ? historicalMultipliers[level]
-    : 1.0;
+  let multiplier = 1.0;
+  if (historicalMultipliers) {
+    if (level && historicalMultipliers[level] != null) {
+      multiplier = historicalMultipliers[level];
+    } else if (!level) {
+      // Pre-classification fallback: average all historical multipliers
+      const values = Object.values(historicalMultipliers).filter(v => typeof v === 'number');
+      if (values.length > 0) {
+        multiplier = values.reduce((sum, v) => sum + v, 0) / values.length;
+      }
+    }
+  }
 
   if (multiplier === 1.0) {
     return { ...base, multiplierApplied: 1.0 };
@@ -93,5 +102,3 @@ export function estimateTaskTokensCalibrated(taskSpec, complexityLevel, historic
 // Re-export rate limit functions so consumers can import everything from token-estimator
 export { getRateLimitHeadroom, recordTokenConsumption } from './rate-limit-tracker.js';
 
-// Re-export getHistoricalMultipliers so task-runner only imports from token-estimator
-export { getHistoricalMultipliers } from './estimation-tracker.js';
