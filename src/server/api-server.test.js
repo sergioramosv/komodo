@@ -620,7 +620,7 @@ describe('startApiServerIfEnabled()', () => {
   it('starts and returns server when apiServer=true and key is set', async () => {
     config.apiServer = true;
     config.komodoApiKey = 'test-secret';
-    config.apiPort = 3099;
+    config.apiPort = 0;
     const server = await startApiServerIfEnabled();
     expect(server).toBeInstanceOf(KomodoApiServer);
     await server.stop();
@@ -629,7 +629,7 @@ describe('startApiServerIfEnabled()', () => {
   it('passes onRun callback to server', async () => {
     config.apiServer = true;
     config.komodoApiKey = 'test-secret';
-    config.apiPort = 3100;
+    config.apiPort = 0;
     const onRun = vi.fn();
     const server = await startApiServerIfEnabled({ onRun });
     expect(server._onRun).toBe(onRun);
@@ -639,7 +639,7 @@ describe('startApiServerIfEnabled()', () => {
   it('passes onCreateTask callback to server', async () => {
     config.apiServer = true;
     config.komodoApiKey = 'test-secret';
-    config.apiPort = 3101;
+    config.apiPort = 0;
     const onCreateTask = vi.fn();
     const server = await startApiServerIfEnabled({ onCreateTask });
     expect(server._onCreateTask).toBe(onCreateTask);
