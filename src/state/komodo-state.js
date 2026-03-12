@@ -74,6 +74,7 @@ export class KomodoState {
       CODER: createAgentState('CODER'),
       QA: createAgentState('QA'),
       REVIEWER: createAgentState('REVIEWER'),
+      SECURITY: createAgentState('SECURITY'),
     };
 
     /** @type {string} */
@@ -153,6 +154,7 @@ export class KomodoState {
         CODER: { ...this.agents.CODER },
         QA: { ...this.agents.QA },
         REVIEWER: { ...this.agents.REVIEWER },
+        SECURITY: { ...this.agents.SECURITY },
       },
       phase: this.phase,
       currentTask: this.currentTask,
