@@ -201,6 +201,14 @@ export const EVENT_TYPES = {
   AGENT_ARCHITECT_WORKING: 'agent:architect:working',
   AGENT_ARCHITECT_DONE: 'agent:architect:done',
   AGENT_ARCHITECT_IDLE: 'agent:architect:idle',
+
+  // Security agent events
+  SECURITY_SCAN_START: 'security:scan:start',
+  SECURITY_SCAN_COMPLETE: 'security:scan:complete',
+  SECURITY_SCAN_BLOCKED: 'security:scan:blocked',
+  AGENT_SECURITY_WORKING: 'agent:security:working',
+  AGENT_SECURITY_DONE: 'agent:security:done',
+  AGENT_SECURITY_IDLE: 'agent:security:idle',
 };
 
 /**
