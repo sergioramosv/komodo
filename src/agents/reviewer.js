@@ -318,6 +318,55 @@ ${diffInstruction}
     );
   }
 
+  // Early termination: reviewer emitted APPROVED in the first 3K chars
+  if (result.earlyTerminated && result.earlyTerminationReason === 'reviewer_early_approved') {
+    logger.success(
+      `PR #${prNumber} EARLY APPROVED — reviewer approved within first chars (tokens saved: ~${result.tokensSavedEstimate})`,
+      'REVIEWER'
+    );
+
+    // Try to extract a partial JSON verdict from rawResult, otherwise synthesize one
+    let earlyReview = null;
+    if (result.rawResult) {
+      try {
+        const { extractJSON } = await import('../utils/parser.js');
+        const partial = extractJSON(result.rawResult);
+        if (partial?.verdict) {
+          earlyReview = partial;
+        }
+      } catch {
+        // ignore parse failure
+      }
+    }
+
+    if (!earlyReview) {
+      earlyReview = {
+        verdict: 'APPROVED',
+        score: null,
+        issues: [],
+        positives: ['Early approval: implementation meets acceptance criteria'],
+        summary: 'Reviewer approved early based on initial analysis of the PR.',
+      };
+    }
+
+    return {
+      success: true,
+      review: {
+        verdict: 'APPROVED',
+        score: earlyReview.score ?? null,
+        issues: earlyReview.issues || [],
+        positives: earlyReview.positives || [],
+        summary: earlyReview.summary || 'Early approval.',
+      },
+      cost: result.cost,
+      duration: result.duration,
+      reviewSHA: currentSHA,
+      reviewDepth: selectedDepth,
+      earlyTerminated: true,
+      tokensSavedEstimate: result.tokensSavedEstimate,
+    };
+  }
+
   if (!result.success || !result.result) {
     return {
       success: false,
