@@ -6,8 +6,20 @@ import { validateAgentResponse } from '../utils/parser.js';
 import { getAll } from '../../skills/planning-task-mcp/src/firebase.js';
 import { komodoState } from '../state/komodo-state.js';
 import { rankWithContextAffinity, buildAffinityHint } from '../smart-ordering/context-affinity.js';
-import { estimateTaskTokens } from '../estimation/token-estimator.js'; // Import new estimation
-import { classifyAndEmit } from '../triage/complexity-classifier.js'; // Import complexity classifier
+import { estimateTaskTokens } from '../estimation/token-estimator.js';
+import { classifyAndEmit } from '../triage/complexity-classifier.js';
+
+/**
+ * Fetches sprints for a project, sorted by startDate ASC (earliest first).
+ * Used to enforce sprint ordering: tasks from earlier sprints are prioritized.
+ */
+async function fetchSprintOrder(projectId) {
+  const allSprints = await getAll('sprints');
+  return allSprints
+    .filter(s => s.projectId === projectId && (s.status === 'active' || s.status === 'planned') && s.startDate)
+    .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
+    .map((s, index) => ({ id: s.id, name: s.name, order: index, startDate: s.startDate }));
+}
 
 /**
  * Fetches all tasks for a project from Firebase RTDB.
@@ -122,16 +134,21 @@ export async function pickNextTask(projectId, { model } = {}) {
       logger.info(`Filtered out ${blocked.length} blocked task(s), ${eligible.length} eligible`, 'PLANNER');
     }
 
+    // ── Step 1b: Fetch sprint order for sprint-first sorting ──
+    const sprintOrder = await fetchSprintOrder(projectId);
+    const sprintOrderMap = new Map(sprintOrder.map(s => [s.id, s.order]));
+
     // Calculate estimated tokens and efficiency for eligible tasks
     eligibleTasks = eligible.map(task => {
       const classification = classifyAndEmit(task);
       const complexityLevel = classification.level;
       const estimatedTokens = estimateTaskTokens(task, complexityLevel).total;
       const efficiency = task.bizPoints > 0 ? (task.bizPoints / estimatedTokens) : 0;
-      return { ...task, estimatedTokens, efficiency, complexityLevel };
+      const sprintIdx = sprintOrderMap.has(task.sprintId) ? sprintOrderMap.get(task.sprintId) : 9999;
+      return { ...task, estimatedTokens, efficiency, complexityLevel, sprintOrder: sprintIdx };
     });
 
-    // ── Step 1b: Context affinity boost ──
+    // ── Step 1c: Context affinity boost ──
     const previousContext = komodoState.lastCompletedTaskContext;
     if (previousContext && previousContext.filesChanged?.length > 0) {
       const ranked = rankWithContextAffinity(eligibleTasks, previousContext);
@@ -139,8 +156,12 @@ export async function pickNextTask(projectId, { model } = {}) {
     }
   }
 
-  // Sort eligible tasks by efficiency (bizPoints / estimatedTokens) DESC
-  eligibleTasks.sort((a, b) => b.efficiency - a.efficiency);
+  // Sort eligible tasks: first by sprint order ASC, then by efficiency DESC within same sprint
+  eligibleTasks.sort((a, b) => {
+    const sprintDiff = (a.sprintOrder ?? 9999) - (b.sprintOrder ?? 9999);
+    if (sprintDiff !== 0) return sprintDiff;
+    return b.efficiency - a.efficiency;
+  });
 
   // ── Step 2: Run the Planner agent with eligible task context ──
   const systemPrompt = getPlannerSystemPrompt({
@@ -158,11 +179,13 @@ ${inProgressTasks.map(t => `- ID: ${t.id}, Título: "${t.title}"`).join('\n')}`;
   } else {
     userPrompt = `Analiza el backlog del proyecto "${projectId}" y elige la siguiente tarea a implementar. Cambia su estado a in-progress y devuélveme los detalles en JSON.
 
-Prioriza las tareas con la mayor "eficiencia" (bizPoints / estimatedTokens).
-Si varias tareas tienen eficiencia similar, considera la prioridad inherente (bizPoints/devPoints) y la afinidad de contexto.
+REGLA PRINCIPAL: Siempre elige tareas del sprint con startDate más temprana primero. Solo pasa al siguiente sprint cuando el sprint anterior no tenga tareas to-do elegibles.
+Dentro del mismo sprint, prioriza por eficiencia (bizPoints / estimatedTokens).
 
-Tareas elegibles (ordenadas por eficiencia decreciente):
-${eligibleTasks.map(t => `- ID: ${t.id}, Título: "${t.title}", BizPoints: ${t.bizPoints}, DevPoints: ${t.devPoints}, EstimatedTokens: ${t.estimatedTokens}, Eficiencia: ${t.efficiency.toFixed(3)}, Complejidad: ${t.complexityLevel}`).join('\n')}`;
+Las tareas ya están ordenadas: primero por sprint (más antiguo primero), luego por eficiencia decreciente. ELIGE LA PRIMERA TAREA DE LA LISTA.
+
+Tareas elegibles (ordenadas por sprint → eficiencia):
+${eligibleTasks.map(t => `- ID: ${t.id}, Sprint: "${t.sprintId}", Título: "${t.title}", BizPoints: ${t.bizPoints}, DevPoints: ${t.devPoints}, EstimatedTokens: ${t.estimatedTokens}, Eficiencia: ${t.efficiency.toFixed(3)}, Complejidad: ${t.complexityLevel}`).join('\n')}`;
   }
 
   if (affinityHint) {

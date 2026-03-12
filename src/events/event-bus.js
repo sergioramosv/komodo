@@ -97,6 +97,18 @@ export const EVENT_TYPES = {
   CI_FAILED: 'ci:failed',
   CI_AUTO_REVERTED: 'ci:auto-reverted',
 
+  // Canary merge events
+  CANARY_STAGING_CREATED: 'canary:staging:created',
+  CANARY_CI_WAITING: 'canary:ci:waiting',
+  CANARY_CI_PASSED: 'canary:ci:passed',
+  CANARY_CI_FAILED: 'canary:ci:failed',
+  CANARY_AUTO_FIX_ATTEMPT: 'canary:auto-fix:attempt',
+  CANARY_AUTO_FIX_SUCCEEDED: 'canary:auto-fix:succeeded',
+  CANARY_AUTO_FIX_FAILED: 'canary:auto-fix:failed',
+  CANARY_PROMOTED: 'canary:promoted',
+  CANARY_ROLLED_BACK: 'canary:rolled-back',
+  CANARY_PARALLEL_CONFLICT: 'canary:parallel-conflict',
+
   // QA agent events
   QA_TESTS_GENERATED: 'qa:tests-generated',
 

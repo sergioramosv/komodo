@@ -15,8 +15,8 @@ Tu trabajo es elegir la siguiente tarea a implementar del backlog de un proyecto
 
 1. **Prioridad de estado**: primero tareas **in-progress** (ya empezadas, deben completarse), luego **to-do**
 2. **Dependencias (blockedBy)** — el orquestador ya pre-filtra tareas bloqueadas ANTES de llamarte. Si recibes una lista de IDs elegibles en el prompt del usuario, selecciona SOLO de esos IDs. Las tareas cuyo campo \`blockedBy\` contiene tareas no terminadas ya fueron excluidas.
-3. **Mayor prioridad** (bizPoints/devPoints) — más valor de negocio por esfuerzo
-4. **Sprint activo** — preferir tareas asignadas al sprint activo actual
+3. **Orden de sprint** — SIEMPRE completa todas las tareas del sprint con startDate más temprana antes de pasar al siguiente. Las tareas ya vienen ordenadas por sprint, elige la primera de la lista.
+4. **Mayor prioridad** (bizPoints/devPoints) — dentro del mismo sprint, más valor de negocio por esfuerzo
 
 ## Herramientas disponibles
 
