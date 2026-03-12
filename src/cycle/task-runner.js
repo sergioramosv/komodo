@@ -35,6 +35,8 @@ import { autoRelease } from '../versioning/release-manager.js';
 import { pluginLoader } from '../plugins/plugin-loader.js';
 import { shouldPause, GATE_STEPS } from '../autonomy/autonomy-engine.js';
 import { waitForApproval } from '../autonomy/approval-gate.js';
+import { healingEngine } from '../self-healing/healing-engine.js';
+import { testFailureStrategy } from '../self-healing/strategies/test-failure.js';
 
 /**
  * Fetches the codingGuidelines field from a project.
@@ -796,6 +798,30 @@ export async function runTask(projectId, cwd) {
       cwd,
       onFixAttempt: async (failureOutput, attempt) => {
         logger.info(`Auto-fixing test failures (attempt ${attempt})...`, 'KOMODO');
+
+        // Self-healing: classify failure type before attempting fix
+        if (testFailureStrategy.detect({ errorMessage: failureOutput })) {
+          const healResult = await healingEngine.attemptHealing({
+            type: 'test-failure',
+            errorMessage: failureOutput,
+            runTests: null, // re-run handled by executePrePRTests
+            fixCode: async () => {
+              const fixResult = await fixReviewIssues(
+                taskSpec,
+                prNumber,
+                {
+                  summary: 'Pre-PR tests are failing. Fix the test failures.',
+                  issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
+                },
+                cwd,
+                { model: coderModel, codingGuidelines },
+              );
+              return { success: fixResult.success };
+            },
+          });
+          return { fixed: healResult.healed };
+        }
+
         const fixResult = await fixReviewIssues(
           taskSpec,
           prNumber,
@@ -936,17 +962,26 @@ export async function runTask(projectId, cwd) {
     // Check for merge conflicts before starting review
     const conflictCheck = checkMergeConflicts(repo, prNumber);
     if (conflictCheck.conflicting) {
-      logger.error(`PR #${prNumber} has merge conflicts. Cannot proceed with review.`, 'KOMODO');
-      closePR(repo, prNumber, 'Merge conflicts detected. PR needs rebase before review.');
-      await rollbackTask(taskSpec.taskId);
-      return makeResult({
-        success: false,
-        taskSpec,
-        prNumber,
-        startTime,
-        error: 'Merge conflicts detected. PR closed.',
-        reviewResult: null,
+      logger.warn(`PR #${prNumber} has merge conflicts — attempting self-healing rebase`, 'KOMODO');
+      const conflictHeal = await healingEngine.attemptHealing({
+        type: 'merge-conflict',
+        errorMessage: 'Merge conflicts detected',
+        branchName: taskSpec.branchName,
+        cwd,
       });
+      if (!conflictHeal.healed) {
+        logger.error(`PR #${prNumber} has merge conflicts. Cannot proceed with review.`, 'KOMODO');
+        closePR(repo, prNumber, 'Merge conflicts detected. PR needs rebase before review.');
+        await rollbackTask(taskSpec.taskId);
+        return makeResult({
+          success: false,
+          taskSpec,
+          prNumber,
+          startTime,
+          error: 'Merge conflicts detected. PR closed.',
+          reviewResult: null,
+        });
+      }
     }
 
     komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
@@ -1119,17 +1154,26 @@ export async function runTask(projectId, cwd) {
     // Check for merge conflicts before attempting merge
     const preMergeConflictCheck = checkMergeConflicts(repo, prNumber);
     if (preMergeConflictCheck.conflicting) {
-      logger.error(`PR #${prNumber} has merge conflicts. Cannot merge.`, 'KOMODO');
-      closePR(repo, prNumber, 'Merge conflicts detected at merge time. PR needs rebase.');
-      await rollbackTask(taskSpec.taskId);
-      return makeResult({
-        success: false,
-        taskSpec,
-        prNumber,
-        startTime,
-        error: 'Merge conflicts detected at merge time. PR closed.',
-        reviewResult,
+      logger.warn(`PR #${prNumber} has merge conflicts at merge time — attempting self-healing rebase`, 'KOMODO');
+      const preMergeHeal = await healingEngine.attemptHealing({
+        type: 'merge-conflict',
+        errorMessage: 'Merge conflicts detected at merge time',
+        branchName: taskSpec.branchName,
+        cwd,
       });
+      if (!preMergeHeal.healed) {
+        logger.error(`PR #${prNumber} has merge conflicts. Cannot merge.`, 'KOMODO');
+        closePR(repo, prNumber, 'Merge conflicts detected at merge time. PR needs rebase.');
+        await rollbackTask(taskSpec.taskId);
+        return makeResult({
+          success: false,
+          taskSpec,
+          prNumber,
+          startTime,
+          error: 'Merge conflicts detected at merge time. PR closed.',
+          reviewResult,
+        });
+      }
     }
 
     // Canary: check parallel conflicts before merging
