@@ -150,19 +150,26 @@ function getCommitParentCount(repo, sha) {
  * Creates a revert branch from origin/main, reverts the merge commit, and pushes.
  */
 function createBranchAndRevert(cwd, revertBranch, mergeCommitSha, parentCount) {
-  runGit(['fetch', 'origin', 'main'], cwd);
-  runGit(['checkout', '-b', revertBranch, 'origin/main'], cwd);
+  const originalBranch = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
 
-  const revertArgs = ['revert', '--no-edit'];
-  if (parentCount >= 2) {
-    revertArgs.push('-m', '1');
+  try {
+    runGit(['fetch', 'origin', 'main'], cwd);
+    runGit(['checkout', '-b', revertBranch, 'origin/main'], cwd);
+
+    const revertArgs = ['revert', '--no-edit'];
+    if (parentCount >= 2) {
+      revertArgs.push('-m', '1');
+    }
+    revertArgs.push(mergeCommitSha);
+
+    runGit(revertArgs, cwd);
+    runGit(['push', 'origin', revertBranch], cwd);
+
+    logger.info(`Revert commit pushed to ${revertBranch}`, AGENT);
+  } finally {
+    try { runGit(['checkout', originalBranch], cwd); } catch { /* best effort */ }
+    try { runGit(['branch', '-D', revertBranch], cwd); } catch { /* best effort */ }
   }
-  revertArgs.push(mergeCommitSha);
-
-  runGit(revertArgs, cwd);
-  runGit(['push', 'origin', revertBranch], cwd);
-
-  logger.info(`Revert commit pushed to ${revertBranch}`, AGENT);
 }
 
 /**

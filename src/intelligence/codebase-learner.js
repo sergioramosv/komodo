@@ -13,28 +13,35 @@ const SUPPORTED_EXTENSIONS = new Set(['js', 'mjs', 'ts', 'tsx', 'jsx', 'py', 'go
 const MAX_SAMPLE_FILES = 10;
 
 /**
- * Lists tracked source files using git ls-files.
+ * Lists all tracked files matching SUPPORTED_EXTENSIONS using git ls-files.
+ *
+ * @param {string} cwd - Repository root
+ * @returns {string[]} Array of relative file paths
+ */
+function listAllFiles(cwd) {
+  const args = ['ls-files'];
+  for (const ext of SUPPORTED_EXTENSIONS) {
+    args.push('--', `*.${ext}`);
+  }
+
+  const output = execFileSync('git', args, {
+    cwd,
+    encoding: 'utf-8',
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  return output.trim().split('\n').filter(Boolean);
+}
+
+/**
+ * Lists tracked source files using git ls-files (excludes test files and node_modules).
  *
  * @param {string} cwd - Repository root
  * @returns {string[]} Array of relative file paths
  */
 function listSourceFiles(cwd) {
   try {
-    const args = ['ls-files'];
-    for (const ext of SUPPORTED_EXTENSIONS) {
-      args.push('--', `*.${ext}`);
-    }
-
-    const output = execFileSync('git', args, {
-      cwd,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    return output
-      .trim()
-      .split('\n')
-      .filter(f => f && !f.includes('node_modules') && !f.includes('.test.') && !f.includes('/test/'));
+    return listAllFiles(cwd).filter(f => !f.includes('node_modules') && !f.includes('.test.') && !f.includes('/test/'));
   } catch (err) {
     logger.warn(`Could not list source files: ${err.message}`, AGENT_TAG);
     return [];
@@ -93,7 +100,7 @@ function readConfigFiles(cwd) {
  */
 function sampleRepresentativeFiles(cwd, files) {
   const sampled = files.length > MAX_SAMPLE_FILES
-    ? files.sort(() => 0.5 - Math.random()).slice(0, MAX_SAMPLE_FILES)
+    ? [...files].sort(() => 0.5 - Math.random()).slice(0, MAX_SAMPLE_FILES)
     : files;
 
   const result = [];
@@ -313,16 +320,7 @@ export async function learnFromCodebase({ projectId, cwd }) {
   // All files including test files for testing pattern detection
   let allFiles = [];
   try {
-    const args = ['ls-files'];
-    for (const ext of SUPPORTED_EXTENSIONS) {
-      args.push('--', `*.${ext}`);
-    }
-    const output = execFileSync('git', args, {
-      cwd,
-      encoding: 'utf-8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    allFiles = output.trim().split('\n').filter(Boolean);
+    allFiles = listAllFiles(cwd);
   } catch {
     allFiles = files;
   }

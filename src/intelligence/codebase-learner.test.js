@@ -102,7 +102,7 @@ describe('detectArchitecturePatterns', () => {
     const files = ['a/b.js', 'c/d.js', 'e/f.js', 'g/h.js', 'i/j.js', 'k/l.js'];
     // None of the known directory patterns → Unknown
     const result = detectArchitecturePatterns(files);
-    expect(['Unknown', 'Flat'].includes(result)).toBe(true);
+    expect(result).toBe('Unknown');
   });
 });
 
@@ -231,15 +231,16 @@ describe('learnFromCodebase', () => {
     // allFiles (second call)
     mockExecFileSync.mockReturnValueOnce('src/controllers/user.js\nsrc/services/user-service.js\nsrc/services/user-service.test.js\n');
 
-    // sampleRepresentativeFiles — readFileSync for each file
-    mockReadFileSync.mockReturnValue("import express from 'express';\nexport function handler() {}");
-
     // readConfigFiles — existsSync returns true only for package.json
     mockExistsSync.mockImplementation((p) => p.endsWith('package.json'));
-    mockReadFileSync.mockReturnValue(JSON.stringify({
+
+    // First call: readConfigFiles reads package.json
+    mockReadFileSync.mockReturnValueOnce(JSON.stringify({
       dependencies: { express: '^4.0.0' },
       devDependencies: { vitest: '^1.0.0' },
     }));
+    // Subsequent calls: sampleRepresentativeFiles reads source files
+    mockReadFileSync.mockReturnValue("import express from 'express';\nexport function handler() {}");
 
     const result = await learnFromCodebase({ projectId: 'proj-2', cwd: '/repo' });
 
