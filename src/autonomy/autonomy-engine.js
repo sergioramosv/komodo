@@ -1,6 +1,7 @@
 import { config } from '../config.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { logger } from '../utils/logger.js';
+import { evaluateGuardianGates } from './guardian-gates.js';
 
 /**
  * Autonomy levels available in Komodo.
@@ -61,6 +62,9 @@ export function getActiveLevel() {
  * @param {Object} [context] - Contextual data for decision
  * @param {number|null} [context.reviewScore] - Review score (0-10), used by semi-autonomous and guardian
  * @param {number|null} [context.diffLines] - Total diff lines, used by guardian
+ * @param {string[]} [context.filesChanged] - Files changed in the PR, used by guardian gates
+ * @param {number|null} [context.usedTokens] - Token usage estimate, used by guardian gates
+ * @param {number|null} [context.reviewCycles] - Number of review cycles completed, used by guardian gates
  * @returns {boolean} true if the engine recommends pausing for human approval
  */
 export function shouldPause(step, context = {}) {
@@ -83,13 +87,16 @@ export function shouldPause(step, context = {}) {
       return false;
 
     case AUTONOMY_LEVELS.GUARDIAN:
-      // Dynamic gates: pause when diff is too large or score is below threshold
+      // Dynamic gates: pause when any guardian gate triggers or score is below threshold
       if (step === GATE_STEPS.BEFORE_MERGE) {
-        if (diffLines !== null && diffLines > config.guardianMaxDiffLines) {
-          logger.info(
-            `Guardian: diff lines (${diffLines}) exceeds threshold (${config.guardianMaxDiffLines}). Requiriendo aprobación.`,
-            'AUTONOMY',
-          );
+        const gateResult = evaluateGuardianGates(context);
+        if (gateResult.shouldPause) {
+          gateResult.triggeredGates.forEach((gate, i) => {
+            logger.info(`Guardian gate [${gate}]: ${gateResult.reasons[i]}. Requiriendo aprobación.`, 'AUTONOMY');
+          });
+          eventBus.emitEvent(EVENT_TYPES.GUARDIAN_GATE_TRIGGERED, {
+            metadata: { triggeredGates: gateResult.triggeredGates, reasons: gateResult.reasons },
+          });
           return true;
         }
         if (reviewScore !== null && reviewScore < config.minReviewScore) {

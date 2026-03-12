@@ -211,6 +211,7 @@ export const EVENT_TYPES = {
   AGENT_SECURITY_IDLE: 'agent:security:idle',
 
   // Autonomy level events
+  GUARDIAN_GATE_TRIGGERED: 'guardian:gate:triggered',
   AUTONOMY_APPROVAL_REQUESTED: 'autonomy:approval:requested',
   AUTONOMY_APPROVED: 'autonomy:approved',
   AUTONOMY_REJECTED: 'autonomy:rejected',

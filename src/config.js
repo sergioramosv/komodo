@@ -213,6 +213,14 @@ export const config = {
   autonomyLevel: process.env.AUTONOMY_LEVEL || 'autonomous', // supervised | semi-autonomous | autonomous | guardian
   approvalTimeoutMinutes: parseInt(process.env.APPROVAL_TIMEOUT_MINUTES || '30', 10),
   guardianMaxDiffLines: parseInt(process.env.GUARDIAN_MAX_DIFF_LINES || '500', 10),
+  guardianMaxTokenUsage: parseInt(process.env.GUARDIAN_MAX_TOKEN_USAGE || '80000', 10),
+  guardianMaxReviewCycles: parseInt(process.env.GUARDIAN_MAX_REVIEW_CYCLES || '3', 10),
+  guardianEnableLargeDiff: process.env.GUARDIAN_ENABLE_LARGE_DIFF !== 'false',
+  guardianEnableSecurityFiles: process.env.GUARDIAN_ENABLE_SECURITY_FILES !== 'false',
+  guardianEnableHighTokenUsage: process.env.GUARDIAN_ENABLE_HIGH_TOKEN_USAGE !== 'false',
+  guardianEnableReviewCycles: process.env.GUARDIAN_ENABLE_REVIEW_CYCLES !== 'false',
+  guardianEnableDatabaseMigration: process.env.GUARDIAN_ENABLE_DATABASE_MIGRATION !== 'false',
+  guardianEnableDependencyChange: process.env.GUARDIAN_ENABLE_DEPENDENCY_CHANGE !== 'false',
   minReviewScore: parseFloat(process.env.MIN_REVIEW_SCORE || process.env.GUARDIAN_MIN_SCORE || '7.0'),
 
   // QA Agent (generate and execute tests between Coder and Reviewer)
