@@ -13,6 +13,7 @@ import { pluginLoader } from './plugins/plugin-loader.js';
 import { heartbeatMonitor } from './heartbeat/heartbeat-monitor.js';
 import { startApiServerIfEnabled } from './server/api-server.js';
 import { resilienceManager } from './resilience/resilience-manager.js';
+import { learnFromCodebase } from './intelligence/codebase-learner.js';
 
 // Daemon / watch mode
 export { watch } from './daemon/daemon.js';
@@ -126,6 +127,15 @@ export async function run(projectId, options = {}) {
 
     // Register graceful shutdown handlers (SIGINT/SIGTERM)
     shutdownManager.register({ wsServer, apiServer });
+  }
+
+  // Run codebase learning to detect architecture/testing patterns for this project
+  if (config.codebaseLearningEnabled) {
+    try {
+      await learnFromCodebase({ projectId, cwd });
+    } catch (err) {
+      logger.warn(`Codebase learning failed (non-critical): ${err.message}`, 'KOMODO');
+    }
   }
 
   const results = [];

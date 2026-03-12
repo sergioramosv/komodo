@@ -52,6 +52,9 @@ function setupMocks({ mergeCommitSha = 'abc123', parentCount = '1', prUrl = 'htt
       }
       return '';
     }
+    if (cmd === 'git' && args[0] === 'rev-parse') {
+      return 'main';
+    }
     return '';
   });
 }
@@ -127,11 +130,14 @@ describe('auto-revert', () => {
     expect(result.revertPrNumber).toBe(55);
 
     const gitCalls = execFileSync.mock.calls.filter(([cmd]) => cmd === 'git');
-    expect(gitCalls).toHaveLength(4);
-    expect(gitCalls[0][1]).toEqual(['fetch', 'origin', 'main']);
-    expect(gitCalls[1][1]).toEqual(['checkout', '-b', 'revert-pr-42', 'origin/main']);
-    expect(gitCalls[2][1]).toEqual(['revert', '--no-edit', 'abc123']);
-    expect(gitCalls[3][1]).toEqual(['push', 'origin', 'revert-pr-42']);
+    expect(gitCalls).toHaveLength(7);
+    expect(gitCalls[0][1]).toEqual(['rev-parse', '--abbrev-ref', 'HEAD']);
+    expect(gitCalls[1][1]).toEqual(['fetch', 'origin', 'main']);
+    expect(gitCalls[2][1]).toEqual(['checkout', '-b', 'revert-pr-42', 'origin/main']);
+    expect(gitCalls[3][1]).toEqual(['revert', '--no-edit', 'abc123']);
+    expect(gitCalls[4][1]).toEqual(['push', 'origin', 'revert-pr-42']);
+    expect(gitCalls[5][1]).toEqual(['checkout', 'main']);
+    expect(gitCalls[6][1]).toEqual(['branch', '-D', 'revert-pr-42']);
 
     expect(eventBus.emitEvent).toHaveBeenCalledWith('ci:auto-reverted', {
       metadata: {

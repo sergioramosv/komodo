@@ -148,7 +148,6 @@ function getCommitParentCount(repo, sha) {
 
 /**
  * Creates a revert branch from origin/main, reverts the merge commit, and pushes.
- * Saves and restores the original branch, and cleans up the local revert branch.
  */
 function createBranchAndRevert(cwd, revertBranch, mergeCommitSha, parentCount) {
   const originalBranch = runGit(['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
