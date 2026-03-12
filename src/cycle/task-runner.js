@@ -822,6 +822,10 @@ export async function runTask(projectId, cwd) {
           if (healResult.healed) {
             return { fixed: true };
           }
+          // If healing attempted a code fix (action starts with 'fix-'), don't double-call fixReviewIssues
+          if (healResult.result?.action?.startsWith('fix-')) {
+            return { fixed: false };
+          }
           // Self-healing failed — fall through to fixReviewIssues() below
         }
 

@@ -74,6 +74,9 @@ export const firebaseDownStrategy = {
     if (operation) {
       offlineQueue.enqueue(operation);
       logger.info(`Offline queue: ${offlineQueue.size} operations pending`, 'SELF-HEALING');
+    } else {
+      logger.warn('Self-healing Firebase down: no operation to enqueue', 'SELF-HEALING');
+      return { healed: false, action: 'no-operation', queueSize: offlineQueue.size };
     }
 
     // Schedule sync if a recovery function is provided and not already scheduled

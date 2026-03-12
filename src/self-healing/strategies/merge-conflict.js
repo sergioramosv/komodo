@@ -83,14 +83,21 @@ export const mergeConflictStrategy = {
       return { healed: false, action: 'fetch-failed' };
     }
 
-    // 2. Checkout branch
+    // 2. Check for uncommitted changes before checkout
+    const status = runGitCmd(['status', '--porcelain'], cwd);
+    if (status.success && status.output.trim().length > 0) {
+      logger.warn('Self-healing merge conflict: working directory has uncommitted changes', 'SELF-HEALING');
+      return { healed: false, action: 'dirty-working-directory' };
+    }
+
+    // 3. Checkout branch
     const checkout = runGitCmd(['checkout', branchName], cwd);
     if (!checkout.success) {
       logger.warn(`Self-healing merge conflict: git checkout failed — ${checkout.output}`, 'SELF-HEALING');
       return { healed: false, action: 'checkout-failed' };
     }
 
-    // 3. Rebase
+    // 4. Rebase
     const rebase = runGitCmd(['rebase', `origin/${baseBranch}`], cwd);
     if (!rebase.success) {
       // Abort rebase on failure to leave repo in clean state
@@ -99,7 +106,7 @@ export const mergeConflictStrategy = {
       return { healed: false, action: 'rebase-failed' };
     }
 
-    // 4. Force push
+    // 5. Force push
     const push = runGitCmd(['push', '--force-with-lease', 'origin', branchName], cwd);
     if (!push.success) {
       logger.warn(`Self-healing merge conflict: push failed — ${push.output}`, 'SELF-HEALING');
