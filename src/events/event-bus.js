@@ -115,6 +115,12 @@ export const EVENT_TYPES = {
   // QA agent events
   QA_TESTS_GENERATED: 'qa:tests-generated',
 
+  // Tester agent events
+  TESTER_TESTS_GENERATED: 'tester:tests-generated',
+  AGENT_TESTER_WORKING: 'agent:tester:working',
+  AGENT_TESTER_DONE: 'agent:tester:done',
+  AGENT_TESTER_IDLE: 'agent:tester:idle',
+
   // Coverage delta events
   COVERAGE_CHECK_START: 'coverage:check:start',
   COVERAGE_CHECK_COMPLETE: 'coverage:check:complete',

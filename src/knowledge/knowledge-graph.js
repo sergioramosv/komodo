@@ -190,6 +190,65 @@ export function buildReviewerContext(projectId, taskId) {
 }
 
 /**
+ * Builds a context object for the Tester agent.
+ *
+ * Combines architect plan (filesToCreate, filesToModify, risks) with coder
+ * decisions (filesChanged, summary) and acceptance criteria from the task spec
+ * so the Tester can generate surgical, targeted tests.
+ *
+ * @param {string} projectId
+ * @param {string} taskId
+ * @param {string[]} [acceptanceCriteria] - Acceptance criteria from the task spec
+ * @returns {{ testerBrief: string } | null}
+ */
+export function buildTesterContext(projectId, taskId, acceptanceCriteria = []) {
+  const architect = loadSection(projectId, taskId, 'architect');
+  const coder = loadSection(projectId, taskId, 'coder');
+
+  if (!architect && !coder) return null;
+
+  try {
+    const lines = ['## Test Context from Knowledge Graph'];
+
+    if (architect) {
+      if (architect.filesToCreate?.length) {
+        lines.push('### Files created by Coder');
+        lines.push(architect.filesToCreate.map(f => `- ${f.path}`).join('\n'));
+      }
+      if (architect.filesToModify?.length) {
+        lines.push('### Files modified by Coder');
+        lines.push(architect.filesToModify.map(f => `- ${f.path}`).join('\n'));
+      }
+      if (architect.risks?.length) {
+        lines.push('### Risks identified by Architect');
+        lines.push(architect.risks.map(r => `- ${r}`).join('\n'));
+      }
+    }
+
+    if (coder) {
+      if (coder.summary) {
+        lines.push('### Coder summary');
+        lines.push(coder.summary);
+      }
+      if (coder.filesChanged?.length) {
+        lines.push('### Actual files changed');
+        lines.push(coder.filesChanged.map(f => `- ${f}`).join('\n'));
+      }
+    }
+
+    if (acceptanceCriteria.length) {
+      lines.push('### Acceptance criteria to cover');
+      lines.push(acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join('\n'));
+    }
+
+    return { testerBrief: lines.join('\n') };
+  } catch (err) {
+    logger.warn(`KG buildTesterContext failed: ${err.message}`, AGENT_TAG);
+    return null;
+  }
+}
+
+/**
  * Extracts lessons from a completed task and saves them under
  * knowledge/{projectId}/lessons/{module}.json for future tasks in the same module.
  *

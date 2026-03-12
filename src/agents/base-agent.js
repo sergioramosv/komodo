@@ -429,6 +429,7 @@ export async function runAgent({
     REVIEWER: config.cliReviewer,
     QA: config.cliQA,
     SECURITY: config.cliSecurity,
+    TESTER: config.cliTester,
   };
   const configuredCli = cli || cliMap[name] || 'claude';
 

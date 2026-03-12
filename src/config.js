@@ -231,6 +231,11 @@ export const config = {
     .map(s => s.trim())
     .filter(Boolean),
 
+  // Tester Agent (generate surgical tests from Knowledge Graph context)
+  testerAgent: process.env.TESTER_AGENT === 'true', // default: false
+  cliTester: process.env.CLI_TESTER || 'claude',
+  forceModel_TESTER: _dashboardConfig?.agents?.tester?.model || process.env.FORCE_MODEL_TESTER || '',
+
   // Security Agent (OWASP scan before Reviewer)
   securityAgent: process.env.SECURITY_AGENT === 'true', // default: false
   cliSecurity: process.env.CLI_SECURITY || 'claude',
