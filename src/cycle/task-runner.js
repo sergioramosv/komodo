@@ -59,6 +59,26 @@ function extractOwnerRepo(repoUrl) {
 }
 
 /**
+ * Returns the total number of diff lines (additions + deletions) for a PR.
+ * Falls back to null if the data cannot be fetched.
+ */
+function getPrDiffLines(repo, prNumber) {
+  try {
+    const pr = runGh(
+      ['pr', 'view', String(prNumber), '--repo', repo, '--json', 'additions,deletions'],
+      { json: true },
+    );
+    if (!pr || typeof pr !== 'object') return null;
+    const additions = pr.additions ?? 0;
+    const deletions = pr.deletions ?? 0;
+    return additions + deletions;
+  } catch (err) {
+    logger.warn(`Could not fetch diff lines for PR #${prNumber}: ${err.message}`, 'KOMODO');
+    return null;
+  }
+}
+
+/**
  * Checks if a PR has merge conflicts using the GitHub API.
  * Returns { mergeable, conflicting } where conflicting is true if there are conflicts.
  */
@@ -326,7 +346,7 @@ export async function runTask(projectId, cwd) {
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
     // Autonomy gate A: after Planner selects task
-    if (shouldPause(GATE_STEPS.AFTER_PLANNING, { metadata: { taskId: taskSpec.taskId } })) {
+    if (shouldPause(GATE_STEPS.AFTER_PLANNING)) {
       const gateA = await waitForApproval({
         step: GATE_STEPS.AFTER_PLANNING,
         description: `Tarea seleccionada: "${taskSpec.title}"`,
@@ -1110,7 +1130,7 @@ export async function runTask(projectId, cwd) {
     detectParallelConflicts(taskSpec.taskId, coderResult.pr.filesChanged || []);
 
     // Autonomy gate D: before merge
-    const diffLinesCount = coderResult.pr.filesChanged?.length ?? null;
+    const diffLinesCount = getPrDiffLines(repo, prNumber);
     if (shouldPause(GATE_STEPS.BEFORE_MERGE, { reviewScore, diffLines: diffLinesCount })) {
       const gateD = await waitForApproval({
         step: GATE_STEPS.BEFORE_MERGE,

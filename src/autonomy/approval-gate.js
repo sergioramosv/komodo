@@ -35,19 +35,17 @@ export async function waitForApproval({ step, description = '', metadata = {} } 
     metadata: { step, description, timeoutMs, ...metadata },
   });
 
-  // In non-TTY environments (CI, daemon, piped), auto-approve after timeout
+  // In non-TTY environments (CI, daemon, piped), auto-approve immediately
   if (!process.stdin.isTTY) {
     logger.warn(
-      `stdin no es TTY (modo daemon/pipe). Auto-aprobando en ${config.approvalTimeoutMinutes} min.`,
+      `stdin no es TTY (modo daemon/pipe). Auto-aprobando inmediatamente para "${step}".`,
       'AUTONOMY',
     );
-    await new Promise(resolve => setTimeout(resolve, timeoutMs));
     komodoState.setExecutionState(EXECUTION_STATES.RUNNING);
-    eventBus.emitEvent(EVENT_TYPES.AUTONOMY_TIMED_OUT, {
-      metadata: { step, description, ...metadata },
+    eventBus.emitEvent(EVENT_TYPES.AUTONOMY_AUTO_APPROVED, {
+      metadata: { step, description, reason: 'non-tty', ...metadata },
     });
-    logger.warn(`Timeout de aprobación alcanzado para "${step}". Continuando automáticamente.`, 'AUTONOMY');
-    return { approved: true, timedOut: true };
+    return { approved: true, timedOut: false };
   }
 
   return new Promise(resolve => {

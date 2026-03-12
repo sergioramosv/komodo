@@ -75,7 +75,7 @@ export function shouldPause(step, context = {}) {
     case AUTONOMY_LEVELS.SEMI_AUTONOMOUS:
       // Pause before merge and when review score is low
       if (step === GATE_STEPS.BEFORE_MERGE) return true;
-      if (step === GATE_STEPS.AFTER_REVIEW && reviewScore !== null && reviewScore < config.guardianMinScore) return true;
+      if (step === GATE_STEPS.AFTER_REVIEW && reviewScore !== null && reviewScore < config.minReviewScore) return true;
       return false;
 
     case AUTONOMY_LEVELS.AUTONOMOUS:
@@ -92,9 +92,9 @@ export function shouldPause(step, context = {}) {
           );
           return true;
         }
-        if (reviewScore !== null && reviewScore < config.guardianMinScore) {
+        if (reviewScore !== null && reviewScore < config.minReviewScore) {
           logger.info(
-            `Guardian: review score (${reviewScore}) below threshold (${config.guardianMinScore}). Requiriendo aprobación.`,
+            `Guardian: review score (${reviewScore}) below threshold (${config.minReviewScore}). Requiriendo aprobación.`,
             'AUTONOMY',
           );
           return true;

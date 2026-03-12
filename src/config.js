@@ -209,7 +209,7 @@ export const config = {
   autonomyLevel: process.env.AUTONOMY_LEVEL || 'autonomous', // supervised | semi-autonomous | autonomous | guardian
   approvalTimeoutMinutes: parseInt(process.env.APPROVAL_TIMEOUT_MINUTES || '30', 10),
   guardianMaxDiffLines: parseInt(process.env.GUARDIAN_MAX_DIFF_LINES || '500', 10),
-  guardianMinScore: parseFloat(process.env.GUARDIAN_MIN_SCORE || '7.0'),
+  minReviewScore: parseFloat(process.env.MIN_REVIEW_SCORE || process.env.GUARDIAN_MIN_SCORE || '7.0'),
 
   // QA Agent (generate and execute tests between Coder and Reviewer)
   qaAgent: process.env.QA_AGENT === 'true', // default: false
