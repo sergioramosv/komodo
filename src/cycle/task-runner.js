@@ -1184,7 +1184,15 @@ export async function runTask(projectId, cwd) {
 
     // Autonomy gate D: before merge
     const diffLinesCount = getPrDiffLines(repo, prNumber);
-    if (shouldPause(GATE_STEPS.BEFORE_MERGE, { reviewScore, diffLines: diffLinesCount })) {
+    const { usedTokens: _usedTokens } = getRateLimitHeadroom();
+    const gateDContext = {
+      reviewScore,
+      diffLines: diffLinesCount,
+      filesChanged: coderResult.pr.filesChanged || [],
+      reviewCycles: reviewResult.cycles || 0,
+      usedTokens: _usedTokens,
+    };
+    if (shouldPause(GATE_STEPS.BEFORE_MERGE, gateDContext)) {
       const gateD = await waitForApproval({
         step: GATE_STEPS.BEFORE_MERGE,
         description: `Listo para mergear PR #${prNumber}`,
