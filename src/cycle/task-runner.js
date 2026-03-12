@@ -934,31 +934,46 @@ export async function runTask(projectId, cwd) {
             { model: coderModel, codingGuidelines },
           );
           komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE });
+          eventBus.emitAgentEvent('CODER', 'idle');
 
           if (!securityFixResult.success) {
             logger.warn(`Coder could not fix security issues: ${securityFixResult.error}`, 'KOMODO');
           } else {
             logger.success('Coder applied security fixes. Re-scanning...', 'KOMODO');
-            // Re-run security scan after Coder fix
-            const rescanResult = await runSecurityAgent({
-              taskSpec,
-              filesChanged: coderResult.pr.filesChanged || [],
-              branchName: taskSpec.branchName,
-              repo,
-              prNumber,
-              cwd,
-              model: config.forceModel_SECURITY,
-            });
+            // Re-run security scan after Coder fix — with watchdog protection
+            const rescanResult = await withWatchdog(
+              () => runSecurityAgent({
+                taskSpec,
+                filesChanged: coderResult.pr.filesChanged || [],
+                branchName: taskSpec.branchName,
+                repo,
+                prNumber,
+                cwd,
+                model: config.forceModel_SECURITY,
+              }),
+              { agentName: 'SECURITY', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+            );
+            if (rescanResult.cost) {
+              taskCost += rescanResult.cost;
+              eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+                agentName: 'SECURITY',
+                metadata: { cost: rescanResult.cost },
+              });
+            }
             if (rescanResult.success) {
               securityReport = rescanResult.security;
               logger.info(`Security re-scan: ${securityReport.verdict}`, 'KOMODO');
             }
           }
+          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK-resolved' });
+          eventBus.emitAgentEvent('SECURITY', 'idle');
         } else if (verdict === 'WARN') {
           komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'WARN' });
+          eventBus.emitAgentEvent('SECURITY', 'idle');
           logger.warn(`Security WARN: ${mediumCount} MEDIUM findings adjuntados al contexto del Reviewer`, 'KOMODO');
         } else {
           komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'PASS' });
+          eventBus.emitAgentEvent('SECURITY', 'idle');
         }
       } else {
         logger.warn(`Security agent failed: ${securityResult.error} — continuing without security report`, 'KOMODO');
