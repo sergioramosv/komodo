@@ -34,6 +34,7 @@ export const EVENT_TYPES = {
   RATE_LIMIT_DETECTED: 'agent:rate-limit',
   RATE_LIMIT_PREEMPTIVE_WAIT: 'rate-limit:preemptive-wait',
   RATE_LIMIT_FORECAST_UPDATED: 'rate-limit:forecast:updated',
+  BUDGET_STRATEGY_APPLIED: 'budget:strategy:applied',
 
   // Agent fallback on rate limit
   AGENT_FALLBACK: 'agent:fallback',

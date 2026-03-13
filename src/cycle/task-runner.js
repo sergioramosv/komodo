@@ -40,6 +40,7 @@ import { shouldPause, GATE_STEPS, getActiveLevel, AUTONOMY_LEVELS } from '../aut
 import { waitForApproval } from '../autonomy/approval-gate.js';
 import { healingEngine } from '../self-healing/healing-engine.js';
 import { testFailureStrategy } from '../self-healing/strategies/test-failure.js';
+import { selectTaskStrategy, shouldPauseForForecast, isTaskAllowedByStrategy, applyForecastModelOverride } from '../estimation/budget-strategy.js';
 
 /**
  * Fetches the codingGuidelines field from a project.
@@ -488,6 +489,23 @@ export async function runTask(projectId, cwd) {
       'KOMODO',
     );
 
+    // ── Budget strategy: filter tasks and apply model overrides based on forecast ──
+    const budgetStrategy = selectTaskStrategy(forecast);
+    if (shouldPauseForForecast(forecast)) {
+      logger.warn('Rate limit forecast is RED — pausing execution until recovery.', 'KOMODO');
+      await rollbackTask(taskSpec.taskId);
+      return makeResult({ success: false, taskSpec, startTime, error: 'Budget strategy: RED forecast, execution paused.' });
+    }
+    if (!isTaskAllowedByStrategy(taskSpec, budgetStrategy)) {
+      logger.warn(
+        `Budget strategy [${budgetStrategy.recommendation.toUpperCase()}]: task "${taskSpec.title}" ` +
+        `skipped (devPoints=${taskSpec.devPoints ?? 0} > max=${budgetStrategy.maxDevPoints}).`,
+        'KOMODO',
+      );
+      await rollbackTask(taskSpec.taskId);
+      return makeResult({ success: true, taskSpec, startTime });
+    }
+
     // ── Triage: classify complexity + select models ──
     const classification = classifyAndEmit(taskSpec);
     const complexityLevel = classification.level;
@@ -500,6 +518,15 @@ export async function runTask(projectId, cwd) {
     const architectModel = selectModel(architectCli, 'ARCHITECT', complexityLevel, taskModelOverride);
     let coderModel = await selectModelSmart({ cliType: coderCli, agentRole: 'CODER', complexityLevel, taskSpec, projectId, taskOverride: taskModelOverride });
     let reviewerModel = await selectModelSmart({ cliType: reviewerCli, agentRole: 'REVIEWER', complexityLevel, taskSpec, projectId, taskOverride: taskModelOverride });
+
+    // Apply forecast model override when not green (overrides smart model selection)
+    if (budgetStrategy.modelTier) {
+      ({ coderModel, reviewerModel } = applyForecastModelOverride(forecast, {
+        coderModel,
+        reviewerModel,
+        cliType: coderCli,
+      }));
+    }
 
     // Fetch project coding guidelines for injection into agent prompts
     const codingGuidelines = await fetchCodingGuidelines(projectId);
