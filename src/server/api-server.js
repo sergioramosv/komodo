@@ -3,7 +3,7 @@ import { timingSafeEqual } from 'crypto';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
-import { getTaskTimeline, explainDecision, listRecentTaskIds } from '../observability/index.js';
+import { getTaskTimeline, explainDecision, listRecentTaskIds, getRecentAlerts } from '../observability/index.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 
 /**
@@ -139,6 +139,11 @@ export class KomodoApiServer {
 
     if (method === 'GET' && path === '/api/observability/tasks') {
       this._handleListTasks(req, res);
+      return;
+    }
+
+    if (method === 'GET' && path === '/api/observability/alerts') {
+      this._handleListAlerts(req, res);
       return;
     }
 
@@ -515,6 +520,29 @@ export class KomodoApiServer {
       res.writeHead(500);
       res.end(JSON.stringify({ error: 'Failed to list tasks' }));
     }
+  }
+
+  /**
+   * GET /api/observability/alerts?projectId=Y&limit=20
+   * Returns recent anomaly alerts for a project.
+   *
+   * @param {import('http').IncomingMessage} req
+   * @param {import('http').ServerResponse} res
+   */
+  _handleListAlerts(req, res) {
+    const url = new URL(req.url, `http://localhost`);
+    const projectId = url.searchParams.get('projectId') || undefined;
+    const limitParam = url.searchParams.has('limit') ? Number(url.searchParams.get('limit')) : 20;
+
+    if (!Number.isFinite(limitParam) || limitParam <= 0) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'limit must be a positive number' }));
+      return;
+    }
+
+    const alerts = getRecentAlerts({ projectId, limit: limitParam });
+    res.writeHead(200);
+    res.end(JSON.stringify({ projectId: projectId || null, limit: limitParam, alerts }));
   }
 }
 

@@ -735,6 +735,57 @@ export function formatNothingRunning() {
   return `\u2139\uFE0F No hay ninguna ejecuci\u00f3n en curso\\.`;
 }
 
+// --- Anomaly alert formatter ---
+
+const ANOMALY_EMOJIS = {
+  'token-spike': '\u26A0\uFE0F',
+  'review-regression': '\u{1F4C9}',
+  'model-degradation': '\u{1F916}',
+};
+
+/**
+ * Notificación: Anomalía detectada por el sistema de alerting.
+ * @param {Object} metadata - { rule, data, suggestion, projectId }
+ * @returns {string} MarkdownV2 message
+ */
+export function formatAnomalyAlert(metadata) {
+  const rule = metadata.rule || 'unknown';
+  const emoji = ANOMALY_EMOJIS[rule] || '\u26A0\uFE0F';
+  const ruleLabel = escapeMarkdown(rule);
+  const suggestion = escapeMarkdown(metadata.suggestion || '');
+  const projectId = escapeMarkdown(metadata.projectId || '?');
+
+  const lines = [
+    `${emoji} *Anomalía detectada: \`${ruleLabel}\`*`,
+    ``,
+    `*Proyecto:* \`${projectId}\``,
+  ];
+
+  // Rule-specific data lines
+  const data = metadata.data || {};
+  if (rule === 'token-spike') {
+    lines.push(`*Tokens usados:* ${escapeMarkdown(String(data.totalTokensUsed ?? '?'))}`);
+    lines.push(`*Tokens esperados:* ${escapeMarkdown(String(data.expectedAvg ?? '?'))}`);
+    lines.push(`*Ratio:* ${escapeMarkdown(String(data.ratio ?? '?'))}x`);
+    if (data.taskId) lines.push(`*Tarea:* \`${escapeMarkdown(data.taskId)}\``);
+  } else if (rule === 'review-regression') {
+    const scores = (data.recentScores || []).map(s => escapeMarkdown(String(s))).join(', ');
+    lines.push(`*Últimos ${escapeMarkdown(String((data.recentScores || []).length))} scores:* ${scores}`);
+    lines.push(`*Promedio:* ${escapeMarkdown(String(data.avgScore ?? '?'))}`);
+  } else if (rule === 'model-degradation') {
+    lines.push(`*Modelo:* \`${escapeMarkdown(data.model ?? '?')}\``);
+    lines.push(`*Fail rate:* ${escapeMarkdown(String(data.failRatePercent ?? '?'))}%`);
+    lines.push(`*Fallos:* ${escapeMarkdown(String(data.failCount ?? '?'))}/${escapeMarkdown(String(data.taskCount ?? '?'))}`);
+  }
+
+  if (suggestion) {
+    lines.push(``);
+    lines.push(`_${suggestion}_`);
+  }
+
+  return lines.join('\n');
+}
+
 // --- Weekly digest formatter ---
 
 const TREND_EMOJIS = {
