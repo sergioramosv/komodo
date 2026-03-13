@@ -35,11 +35,16 @@ export function getMemoryDb() {
   }
 
   if (!existingApp) {
-    const credential = admin.credential.cert(
-      JSON.parse(readFileSync(firebaseConfig.serviceAccountPath, 'utf8'))
-    );
+    let serviceAccount;
+    try {
+      serviceAccount = JSON.parse(readFileSync(firebaseConfig.serviceAccountPath, 'utf8'));
+    } catch (err) {
+      throw new Error(
+        `No se pudo leer o parsear el service account en "${firebaseConfig.serviceAccountPath}": ${err.message}`
+      );
+    }
     admin.initializeApp(
-      { credential, databaseURL: firebaseConfig.databaseURL },
+      { credential: admin.credential.cert(serviceAccount), databaseURL: firebaseConfig.databaseURL },
       APP_NAME
     );
   }
