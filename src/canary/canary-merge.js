@@ -112,7 +112,7 @@ function mergeMainIntoStaging(stagingBranch, repo) {
     ]);
     return { success: true };
   } catch (err) {
-    if (err.status === 409 || err.stderr?.toLowerCase().includes('conflict')) {
+    if (err.status === 409 || err.stderr?.toLowerCase().includes('conflict') || err.message?.toLowerCase().includes('conflict')) {
       return { success: false, reason: 'merge-conflict' };
     }
     return { success: false, reason: err.stderr || err.message || String(err) };

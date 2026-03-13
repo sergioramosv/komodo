@@ -66,8 +66,13 @@ vi.mock('../utils/logger.js', () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), success: vi.fn(), taskHeader: vi.fn() },
 }));
 
+vi.mock('../observability/index.js', () => ({
+  startAnomalyDetector: vi.fn(),
+  stopAnomalyDetector: vi.fn(),
+}));
+
 vi.mock('../events/event-bus.js', () => ({
-  eventBus: { emitEvent: vi.fn() },
+  eventBus: { emitEvent: vi.fn(), on: vi.fn(), off: vi.fn() },
   EVENT_TYPES: {
     DAEMON_STARTED: 'daemon:started',
     DAEMON_STOPPED: 'daemon:stopped',

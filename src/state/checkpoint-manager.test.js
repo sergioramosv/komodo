@@ -14,6 +14,7 @@ vi.mock('fs/promises', () => ({
 vi.mock('../events/event-bus.js', () => ({
   eventBus: {
     on: vi.fn().mockReturnValue(vi.fn()),
+    off: vi.fn(),
     emitEvent: vi.fn(),
   },
   EVENT_TYPES: {
