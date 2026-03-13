@@ -836,18 +836,82 @@ export async function runTask(projectId, cwd) {
         testerReport = testerResult.tester;
         logger.info(`TESTER: ${testerReport.summary}`, 'KOMODO');
 
-        // If Tester found issues in Coder code, add a PR comment
-        const coderFaults = (testerReport.failedTests || []).filter(t => t.failsCoderCode);
-        if (coderFaults.length > 0) {
-          try {
-            const faultList = coderFaults.map(f => `- **${f.name}**: ${f.error}`).join('\n');
-            runGh([
-              'pr', 'comment', String(prNumber),
-              '--repo', repo,
-              '--body', `⚠️ **[Tester Agent - Tests failing Coder code]**\n\n${coderFaults.length} test(s) reveal issues in the implementation:\n\n${faultList}`,
-            ]);
-          } catch (err) {
-            logger.warn(`Could not add Tester comment to PR: ${err.message}`, 'KOMODO');
+        // Execute tests locally — if they fail, send feedback to Coder before reaching Reviewer
+        logger.info('Tester: executing generated tests locally...', 'KOMODO');
+        komodoState.updatePhase(PHASES.TESTING, { currentPR: prNumber });
+
+        const testerTestReport = await executePrePRTests({
+          cwd,
+          onFixAttempt: async (failureOutput, attempt) => {
+            logger.info(`Tester auto-fixing test failures (attempt ${attempt})...`, 'KOMODO');
+
+            eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_FAILED, {
+              agentName: 'TESTER',
+              metadata: { attempt, output: failureOutput.slice(0, 2000) },
+            });
+
+            komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
+              phase: 'fixing-tester-failures',
+              taskId: taskSpec.taskId,
+            });
+            eventBus.emitAgentEvent('CODER', 'working', { reason: 'tester-failures', attempt });
+
+            if (testFailureStrategy.detect({ errorMessage: failureOutput })) {
+              const healResult = await healingEngine.attemptHealing({
+                type: 'test-failure',
+                errorMessage: failureOutput,
+                runTests: null,
+                fixCode: async () => {
+                  const fixResult = await fixReviewIssues(
+                    taskSpec,
+                    prNumber,
+                    {
+                      summary: 'Tester agent found failing tests. Fix the implementation so all tests pass.',
+                      issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
+                    },
+                    cwd,
+                    { model: coderModel, codingGuidelines },
+                  );
+                  return { success: fixResult.success };
+                },
+              });
+              if (healResult.healed) {
+                komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+                eventBus.emitAgentEvent('CODER', 'idle');
+                return { fixed: true };
+              }
+            }
+
+            const fixResult = await fixReviewIssues(
+              taskSpec,
+              prNumber,
+              {
+                summary: 'Tester agent found failing tests. Fix the implementation so all tests pass.',
+                issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
+              },
+              cwd,
+              { model: coderModel, codingGuidelines },
+            );
+
+            komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+            eventBus.emitAgentEvent('CODER', 'idle');
+            return { fixed: fixResult.success };
+          },
+        });
+
+        if (!testerTestReport.skipped) {
+          if (testerTestReport.passed) {
+            eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_PASSED, {
+              agentName: 'TESTER',
+              metadata: { summary: testerTestReport.summary },
+            });
+            logger.success(`Tester: local tests passed — ${testerTestReport.summary}`, 'KOMODO');
+          } else if (testerTestReport.needsManualReview) {
+            logger.warn(`Tester: tests still failing after ${testerTestReport.attempts} attempts — continuing to Security`, 'KOMODO');
+            eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_FAILED, {
+              agentName: 'TESTER',
+              metadata: { attempts: testerTestReport.attempts, output: testerTestReport.output?.slice(0, 2000) },
+            });
           }
         }
       } else {
@@ -989,12 +1053,13 @@ export async function runTask(projectId, cwd) {
 
     // ═══════════════════════════════════════════
     // PASO 3: PRE-PR TESTS — Ejecutar tests antes de review
+    // (skipped when testerAgent already ran local tests above)
     // ═══════════════════════════════════════════
     logger.logStep(3, 6, 'Pre-PR tests...', 'KOMODO');
 
     komodoState.updatePhase(PHASES.ANALYZING, { currentPR: prNumber });
 
-    const testReport = await executePrePRTests({
+    const testReport = config.testerAgent ? { skipped: true } : await executePrePRTests({
       cwd,
       onFixAttempt: async (failureOutput, attempt) => {
         logger.info(`Auto-fixing test failures (attempt ${attempt})...`, 'KOMODO');
