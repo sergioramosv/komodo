@@ -258,6 +258,10 @@ export const EVENT_TYPES = {
   // Codebase learning events
   CODEBASE_LEARNING_STARTED: 'codebase-learning:started',
   CODEBASE_LEARNING_COMPLETED: 'codebase-learning:completed',
+
+  // Structured event log
+  STRUCTURED_EVENT_LOGGED: 'structured-event:logged',
+  TASK_TOKEN_METRICS_UPDATED: 'task:token-metrics:updated',
 };
 
 /**

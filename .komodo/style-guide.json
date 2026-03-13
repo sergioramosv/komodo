@@ -9,11 +9,11 @@
     "naming": "camelCase",
     "imports": "esm",
     "testFramework": "vitest",
-    "validation": "zod",
-    "errorHandling": "mixed",
+    "validation": null,
+    "errorHandling": "callbacks",
     "primaryLanguage": "js"
   },
-  "summary": "Style: camelCase functions, 2-space indent, mixed quotes, semicolons, ES modules (import/export), vitest for tests, zod for validation, mixed error handling",
-  "checksum": "e38308106c5e661afdcf6c6bdcc7573420ad5ee896b153bf0853b1f11dfa7a51",
-  "generatedAt": "2026-03-11T14:18:49.635Z"
+  "summary": "Style: camelCase functions, 2-space indent, mixed quotes, semicolons, ES modules (import/export), vitest for tests, callbacks error handling",
+  "checksum": "1e43c94598088d7b38d560dbaa97b1952602f97597a94f899768a54d6b2b7663",
+  "generatedAt": "2026-03-13T16:31:07.387Z"
 }
