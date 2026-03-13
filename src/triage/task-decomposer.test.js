@@ -424,5 +424,111 @@ describe('task-decomposer', () => {
         'KOMODO',
       );
     });
+
+    it('includes implementationOrder steps in systemPrompt when plan has them', async () => {
+      runAgent.mockResolvedValue({
+        success: true,
+        result: { subtaskIds: ['s1', 's2'], decomposed: true },
+      });
+
+      const architectPlan = {
+        filesToModify: [{ path: 'src/foo.js', changes: 'Update foo' }],
+        implementationOrder: ['Step A: setup', 'Step B: implement', 'Step C: test'],
+      };
+
+      await decomposeTask(baseTask, 'proj-1', { architectPlan });
+
+      const { systemPrompt } = runAgent.mock.calls[0][0];
+      expect(systemPrompt).toContain('Orden de implementación');
+      expect(systemPrompt).toContain('Step A: setup');
+      expect(systemPrompt).toContain('Step B: implement');
+      expect(systemPrompt).toContain('Step C: test');
+    });
+
+    it('includes dataModelChanges in systemPrompt when plan has them', async () => {
+      runAgent.mockResolvedValue({
+        success: true,
+        result: { subtaskIds: ['s1', 's2'], decomposed: true },
+      });
+
+      const architectPlan = {
+        filesToModify: [{ path: 'src/db.js', changes: 'Add table' }],
+        dataModelChanges: 'Add permissions table with migration script',
+      };
+
+      await decomposeTask(baseTask, 'proj-1', { architectPlan });
+
+      const { systemPrompt } = runAgent.mock.calls[0][0];
+      expect(systemPrompt).toContain('Cambios en data model');
+      expect(systemPrompt).toContain('Add permissions table with migration script');
+    });
+
+    it('includes apiChanges in systemPrompt when plan has them', async () => {
+      runAgent.mockResolvedValue({
+        success: true,
+        result: { subtaskIds: ['s1', 's2'], decomposed: true },
+      });
+
+      const architectPlan = {
+        filesToModify: [{ path: 'src/api.js', changes: 'New endpoint' }],
+        apiChanges: 'POST /permissions and GET /permissions/:id endpoints',
+      };
+
+      await decomposeTask(baseTask, 'proj-1', { architectPlan });
+
+      const { systemPrompt } = runAgent.mock.calls[0][0];
+      expect(systemPrompt).toContain('Cambios en API');
+      expect(systemPrompt).toContain('POST /permissions and GET /permissions/:id endpoints');
+    });
+
+    it('includes risks in systemPrompt when plan has them', async () => {
+      runAgent.mockResolvedValue({
+        success: true,
+        result: { subtaskIds: ['s1', 's2'], decomposed: true },
+      });
+
+      const architectPlan = {
+        filesToModify: [{ path: 'src/auth.js', changes: 'Update auth' }],
+        risks: ['Breaking auth flow', 'Migration rollback complexity'],
+      };
+
+      await decomposeTask(baseTask, 'proj-1', { architectPlan });
+
+      const { systemPrompt } = runAgent.mock.calls[0][0];
+      expect(systemPrompt).toContain('Riesgos identificados');
+      expect(systemPrompt).toContain('Breaking auth flow');
+      expect(systemPrompt).toContain('Migration rollback complexity');
+    });
+
+    it('includes real complexity score in userPrompt when plan data is available', async () => {
+      runAgent.mockResolvedValue({
+        success: true,
+        result: { subtaskIds: ['s1', 's2'], decomposed: true },
+      });
+
+      const architectPlan = {
+        filesToModify: [{ path: 'src/x.js', changes: 'Change X' }],
+        implementationOrder: ['Step 1'],
+        risks: ['Risk A'],
+      };
+
+      await decomposeTask(baseTask, 'proj-1', { architectPlan });
+
+      const { userPrompt } = runAgent.mock.calls[0][0];
+      expect(userPrompt).toContain('Complejidad real calculada:');
+      expect(userPrompt).toMatch(/Complejidad real calculada: \d+\/10/);
+    });
+
+    it('does not include real complexity in userPrompt when no plan data', async () => {
+      runAgent.mockResolvedValue({
+        success: true,
+        result: { subtaskIds: ['s1', 's2'], decomposed: true },
+      });
+
+      await decomposeTask(baseTask, 'proj-1');
+
+      const { userPrompt } = runAgent.mock.calls[0][0];
+      expect(userPrompt).not.toContain('Complejidad real calculada:');
+    });
   });
 });
