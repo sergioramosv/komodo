@@ -790,265 +790,330 @@ export async function runTask(projectId, cwd) {
     }
 
     // ═══════════════════════════════════════════
-    // PASO 2.6: TESTER AGENT — Generar tests quirúrgicos desde Knowledge Graph
+    // PASO 4: PARALLEL SECURITY + TESTER
+    // Security y Tester corren en paralelo sobre el mismo diff.
+    // Si Security BLOQUEA, cancela el Tester y devuelve al Coder.
+    // Si Tester falla, devuelve al Coder independientemente de Security.
+    // El Reviewer espera a que ambos terminen.
     // ═══════════════════════════════════════════
     let testerReport = null;
+    let securityReport = null;
 
-    if (config.testerAgent) {
-      logger.logStep(3, 7, 'Tester generando tests quirúrgicos...', 'KOMODO');
+    const runTester = config.testerAgent === true;
+    const runSecurity = config.securityAgent !== false;
 
-      komodoState.updatePhase(PHASES.TESTING, { currentPR: prNumber });
-      komodoState.updateAgent('TESTER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
-        phase: 'testing',
-        taskId: taskSpec.taskId,
-        taskTitle: taskSpec.title,
+    if (runTester || runSecurity) {
+      const parallelStartTs = new Date().toISOString();
+      logger.logStep(3, 7, 'Security + Tester en paralelo...', 'KOMODO');
+      logger.info(`[${parallelStartTs}] Lanzando Security y Tester en paralelo`, 'KOMODO');
+
+      eventBus.emitEvent(EVENT_TYPES.PARALLEL_INTRA_START, {
+        metadata: {
+          agents: [runSecurity ? 'SECURITY' : null, runTester ? 'TESTER' : null].filter(Boolean),
+          startTs: parallelStartTs,
+        },
       });
-      eventBus.emitAgentEvent('TESTER', 'working', { prNumber });
 
-      const testerModel = config.forceModel_TESTER || selectModel(config.cliTester, 'TESTER', complexityLevel, taskModelOverride);
+      // AbortController para cancelar el Tester si Security bloquea
+      const abortController = new AbortController();
 
-      const testerResult = await withWatchdog(
-        () => runTesterAgent({
-          taskSpec,
-          filesChanged: coderResult.pr.filesChanged || [],
-          branchName: taskSpec.branchName,
-          repo,
-          prNumber,
-          projectId,
-          cwd,
-          model: testerModel,
-        }),
-        { agentName: 'TESTER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
-      );
-
-      if (testerResult.cost) {
-        eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
-          agentName: 'TESTER',
-          metadata: { cost: testerResult.cost },
+      // Actualizar estados a WORKING antes del paralelo
+      if (runSecurity) {
+        komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.title }, {
+          phase: 'security-scan',
+          taskId: taskSpec.taskId,
+          taskTitle: taskSpec.title,
         });
+        eventBus.emitAgentEvent('SECURITY', 'working', { prNumber });
+      }
+      if (runTester) {
+        komodoState.updatePhase(PHASES.TESTING, { currentPR: prNumber });
+        komodoState.updateAgent('TESTER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
+          phase: 'testing',
+          taskId: taskSpec.taskId,
+          taskTitle: taskSpec.title,
+        });
+        eventBus.emitAgentEvent('TESTER', 'working', { prNumber });
       }
 
-      eventBus.emitAgentEvent('TESTER', 'done');
-      komodoState.updateAgent('TESTER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
-      eventBus.emitAgentEvent('TESTER', 'idle');
+      const testerModel = runTester
+        ? (config.forceModel_TESTER || selectModel(config.cliTester, 'TESTER', complexityLevel, taskModelOverride))
+        : null;
 
-      if (testerResult.success) {
-        testerReport = testerResult.tester;
-        logger.info(`TESTER: ${testerReport.summary}`, 'KOMODO');
-
-        // Execute tests locally — if they fail, send feedback to Coder before reaching Reviewer
-        logger.info('Tester: executing generated tests locally...', 'KOMODO');
-        komodoState.updatePhase(PHASES.TESTING, { currentPR: prNumber });
-
-        const testerTestReport = await executePrePRTests({
-          cwd,
-          onFixAttempt: async (failureOutput, attempt) => {
-            logger.info(`Tester auto-fixing test failures (attempt ${attempt})...`, 'KOMODO');
-
-            eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_FAILED, {
-              agentName: 'TESTER',
-              metadata: { attempt, output: failureOutput.slice(0, 2000) },
+      // Security promise: si BLOCK, aborta el Tester inmediatamente
+      const securityPromise = runSecurity
+        ? withWatchdog(
+            () => runSecurityAgent({
+              taskSpec,
+              filesChanged: coderResult.pr.filesChanged || [],
+              branchName: taskSpec.branchName,
+              repo,
+              prNumber,
+              cwd,
+              model: config.forceModel_SECURITY,
+            }),
+            { agentName: 'SECURITY', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+          ).then(result => {
+            const secDoneTs = new Date().toISOString();
+            logger.info(`[${secDoneTs}] Security terminó`, 'KOMODO');
+            eventBus.emitEvent(EVENT_TYPES.PARALLEL_INTRA_SECURITY_DONE, {
+              metadata: { verdict: result.security?.verdict || null, doneTs: secDoneTs },
             });
-
-            komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
-              phase: 'fixing-tester-failures',
-              taskId: taskSpec.taskId,
-            });
-            eventBus.emitAgentEvent('CODER', 'working', { reason: 'tester-failures', attempt });
-
-            if (testFailureStrategy.detect({ errorMessage: failureOutput })) {
-              const healResult = await healingEngine.handleFailure({
-                type: 'test-failure',
-                taskId: taskSpec.taskId,
-                projectId,
-                errorMessage: failureOutput,
-                runTests: null,
-                fixCode: async () => {
-                  const fixResult = await fixReviewIssues(
-                    taskSpec,
-                    prNumber,
-                    {
-                      summary: 'Tester agent found failing tests. Fix the implementation so all tests pass.',
-                      issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
-                    },
-                    cwd,
-                    { model: coderModel, codingGuidelines },
-                  );
-                  return { success: fixResult.success };
-                },
+            if (result.success && result.security?.verdict === 'BLOCK') {
+              logger.warn('Security BLOCK detectado — cancelando Tester', 'KOMODO');
+              abortController.abort();
+              eventBus.emitEvent(EVENT_TYPES.PARALLEL_INTRA_TESTER_CANCELLED, {
+                metadata: { reason: 'security-block', ts: new Date().toISOString() },
               });
-              if (healResult.healed) {
-                komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
-                eventBus.emitAgentEvent('CODER', 'idle');
-                return { fixed: true };
-              }
+            }
+            return result;
+          })
+        : Promise.resolve(null);
+
+      // Tester promise: acepta la señal de cancelación
+      const testerPromise = runTester
+        ? withWatchdog(
+            () => runTesterAgent({
+              taskSpec,
+              filesChanged: coderResult.pr.filesChanged || [],
+              branchName: taskSpec.branchName,
+              repo,
+              prNumber,
+              projectId,
+              cwd,
+              model: testerModel,
+              signal: abortController.signal,
+            }),
+            { agentName: 'TESTER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+          ).then(result => {
+            const testerDoneTs = new Date().toISOString();
+            logger.info(`[${testerDoneTs}] Tester terminó`, 'KOMODO');
+            return result;
+          })
+        : Promise.resolve(null);
+
+      // Esperar a que ambos terminen (allSettled para no perder resultados)
+      const [securitySettled, testerSettled] = await Promise.allSettled([securityPromise, testerPromise]);
+
+      const parallelEndTs = new Date().toISOString();
+      logger.info(`[${parallelEndTs}] Security + Tester completados en paralelo`, 'KOMODO');
+      eventBus.emitEvent(EVENT_TYPES.PARALLEL_INTRA_COMPLETE, {
+        metadata: {
+          startTs: parallelStartTs,
+          endTs: parallelEndTs,
+          securityStatus: securitySettled.status,
+          testerStatus: testerSettled.status,
+        },
+      });
+
+      // ── Procesar resultado de Security ──
+      if (runSecurity) {
+        const securityResult = securitySettled.status === 'fulfilled' ? securitySettled.value : null;
+
+        if (securityResult?.cost) {
+          taskCost += securityResult.cost;
+          eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+            agentName: 'SECURITY',
+            metadata: { cost: securityResult.cost },
+          });
+        }
+
+        eventBus.emitAgentEvent('SECURITY', 'done');
+
+        if (securityResult?.success) {
+          securityReport = securityResult.security;
+          const { verdict, criticalCount, highCount, mediumCount } = securityReport;
+          logger.info(`Security scan: ${verdict} (${criticalCount} CRITICAL, ${highCount} HIGH, ${mediumCount} MEDIUM)`, 'KOMODO');
+
+          if (verdict === 'BLOCK') {
+            komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.DONE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK' });
+            logger.warn('Security BLOCK: enviando findings críticos al Coder antes del Review', 'KOMODO');
+
+            const blockingFindings = securityReport.findings.filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH');
+            const findingsList = blockingFindings.map(f => `[${f.severity}] ${f.description}${f.file ? ` (${f.file}${f.line ? `:${f.line}` : ''})` : ''}`);
+
+            try {
+              runGh([
+                'pr', 'comment', String(prNumber),
+                '--repo', repo,
+                '--body', `🚫 **[Security Agent - BLOCKED]**\n\nSe encontraron vulnerabilidades críticas. El Coder debe corregirlas antes de continuar:\n\n${findingsList.map(f => `- ${f}`).join('\n')}\n\n**Resumen**: ${securityReport.summary}`,
+              ]);
+            } catch (err) {
+              logger.warn(`Could not add Security block comment to PR: ${err.message}`, 'KOMODO');
             }
 
-            const fixResult = await fixReviewIssues(
+            komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING });
+            const securityFixResult = await fixReviewIssues(
               taskSpec,
               prNumber,
               {
-                summary: 'Tester agent found failing tests. Fix the implementation so all tests pass.',
-                issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
+                summary: `Security Agent blocked: ${criticalCount} CRITICAL and ${highCount} HIGH vulnerabilities found. Fix all security issues.`,
+                issues: findingsList,
               },
               cwd,
               { model: coderModel, codingGuidelines },
             );
-
-            komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+            komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE });
             eventBus.emitAgentEvent('CODER', 'idle');
-            return { fixed: fixResult.success };
-          },
-        });
 
-        if (!testerTestReport.skipped) {
-          if (testerTestReport.passed) {
-            eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_PASSED, {
-              agentName: 'TESTER',
-              metadata: { summary: testerTestReport.summary },
-            });
-            logger.success(`Tester: local tests passed — ${testerTestReport.summary}`, 'KOMODO');
-          } else if (testerTestReport.needsManualReview) {
-            logger.warn(`Tester: tests still failing after ${testerTestReport.attempts} attempts — continuing to Security`, 'KOMODO');
-            eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_FAILED, {
-              agentName: 'TESTER',
-              metadata: { attempts: testerTestReport.attempts, output: testerTestReport.output?.slice(0, 2000) },
-            });
-          }
-        }
-      } else {
-        logger.warn(`Tester agent failed: ${testerResult.error}`, 'KOMODO');
-      }
-
-      // Check for rate limit pause
-      if (komodoState.isPauseRequested()) {
-        logger.warn('Execution paused by rate limit after Tester step.', 'KOMODO');
-        return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
-      }
-    }
-
-    // ═══════════════════════════════════════════
-    // PASO 2.7: SECURITY AGENT — Escanear vulnerabilidades post-Coder, pre-Reviewer
-    // ═══════════════════════════════════════════
-    let securityReport = null;
-
-    if (config.securityAgent !== false) {
-      logger.logStep(3, 7, 'Security scan...', 'KOMODO');
-
-      komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.title }, {
-        phase: 'security-scan',
-        taskId: taskSpec.taskId,
-        taskTitle: taskSpec.title,
-      });
-      eventBus.emitAgentEvent('SECURITY', 'working', { prNumber });
-
-      const securityResult = await withWatchdog(
-        () => runSecurityAgent({
-          taskSpec,
-          filesChanged: coderResult.pr.filesChanged || [],
-          branchName: taskSpec.branchName,
-          repo,
-          prNumber,
-          cwd,
-          model: config.forceModel_SECURITY,
-        }),
-        { agentName: 'SECURITY', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
-      );
-
-      if (securityResult.cost) {
-        taskCost += securityResult.cost;
-        eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
-          agentName: 'SECURITY',
-          metadata: { cost: securityResult.cost },
-        });
-      }
-
-      eventBus.emitAgentEvent('SECURITY', 'done');
-
-      if (securityResult.success) {
-        securityReport = securityResult.security;
-        const { verdict, criticalCount, highCount, mediumCount } = securityReport;
-        logger.info(`Security scan: ${verdict} (${criticalCount} CRITICAL, ${highCount} HIGH, ${mediumCount} MEDIUM)`, 'KOMODO');
-
-        if (verdict === 'BLOCK') {
-          // Feedback directo al Coder con los findings críticos — no pasar al Reviewer
-          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.DONE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK' });
-          logger.warn(`Security BLOCK: enviando findings críticos al Coder antes del Review`, 'KOMODO');
-
-          const blockingFindings = securityReport.findings.filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH');
-          const findingsList = blockingFindings.map(f => `[${f.severity}] ${f.description}${f.file ? ` (${f.file}${f.line ? `:${f.line}` : ''})` : ''}`);
-
-          try {
-            runGh([
-              'pr', 'comment', String(prNumber),
-              '--repo', repo,
-              '--body', `🚫 **[Security Agent - BLOCKED]**\n\nSe encontraron vulnerabilidades críticas. El Coder debe corregirlas antes de continuar:\n\n${findingsList.map(f => `- ${f}`).join('\n')}\n\n**Resumen**: ${securityReport.summary}`,
-            ]);
-          } catch (err) {
-            logger.warn(`Could not add Security block comment to PR: ${err.message}`, 'KOMODO');
-          }
-
-          komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING });
-          const securityFixResult = await fixReviewIssues(
-            taskSpec,
-            prNumber,
-            {
-              summary: `Security Agent blocked: ${criticalCount} CRITICAL and ${highCount} HIGH vulnerabilities found. Fix all security issues.`,
-              issues: findingsList,
-            },
-            cwd,
-            { model: coderModel, codingGuidelines },
-          );
-          komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE });
-          eventBus.emitAgentEvent('CODER', 'idle');
-
-          if (!securityFixResult.success) {
-            logger.warn(`Coder could not fix security issues: ${securityFixResult.error}`, 'KOMODO');
+            if (!securityFixResult.success) {
+              logger.warn(`Coder could not fix security issues: ${securityFixResult.error}`, 'KOMODO');
+            } else {
+              logger.success('Coder applied security fixes. Re-scanning...', 'KOMODO');
+              const rescanResult = await withWatchdog(
+                () => runSecurityAgent({
+                  taskSpec,
+                  filesChanged: coderResult.pr.filesChanged || [],
+                  branchName: taskSpec.branchName,
+                  repo,
+                  prNumber,
+                  cwd,
+                  model: config.forceModel_SECURITY,
+                }),
+                { agentName: 'SECURITY', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+              );
+              if (rescanResult.cost) {
+                taskCost += rescanResult.cost;
+                eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+                  agentName: 'SECURITY',
+                  metadata: { cost: rescanResult.cost },
+                });
+              }
+              if (rescanResult.success) {
+                securityReport = rescanResult.security;
+                logger.info(`Security re-scan: ${securityReport.verdict}`, 'KOMODO');
+              }
+            }
+            komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK-resolved' });
+            eventBus.emitAgentEvent('SECURITY', 'idle');
+          } else if (verdict === 'WARN') {
+            komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'WARN' });
+            eventBus.emitAgentEvent('SECURITY', 'idle');
+            logger.warn(`Security WARN: ${mediumCount} MEDIUM findings adjuntados al contexto del Reviewer`, 'KOMODO');
           } else {
-            logger.success('Coder applied security fixes. Re-scanning...', 'KOMODO');
-            // Re-run security scan after Coder fix — with watchdog protection
-            const rescanResult = await withWatchdog(
-              () => runSecurityAgent({
-                taskSpec,
-                filesChanged: coderResult.pr.filesChanged || [],
-                branchName: taskSpec.branchName,
-                repo,
-                prNumber,
-                cwd,
-                model: config.forceModel_SECURITY,
-              }),
-              { agentName: 'SECURITY', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
-            );
-            if (rescanResult.cost) {
-              taskCost += rescanResult.cost;
-              eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
-                agentName: 'SECURITY',
-                metadata: { cost: rescanResult.cost },
-              });
-            }
-            if (rescanResult.success) {
-              securityReport = rescanResult.security;
-              logger.info(`Security re-scan: ${securityReport.verdict}`, 'KOMODO');
-            }
+            komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'PASS' });
+            eventBus.emitAgentEvent('SECURITY', 'idle');
           }
-          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK-resolved' });
-          eventBus.emitAgentEvent('SECURITY', 'idle');
-        } else if (verdict === 'WARN') {
-          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'WARN' });
-          eventBus.emitAgentEvent('SECURITY', 'idle');
-          logger.warn(`Security WARN: ${mediumCount} MEDIUM findings adjuntados al contexto del Reviewer`, 'KOMODO');
         } else {
-          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict: 'PASS' });
-          eventBus.emitAgentEvent('SECURITY', 'idle');
+          logger.warn(`Security agent failed: ${securitySettled.reason?.message || securityResult?.error || 'unknown'} — continuing without security report`, 'KOMODO');
+          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
         }
-      } else {
-        logger.warn(`Security agent failed: ${securityResult.error} — continuing without security report`, 'KOMODO');
-        komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
       }
 
-      // Check for rate limit pause
+      // ── Procesar resultado de Tester ──
+      if (runTester) {
+        const testerResult = testerSettled.status === 'fulfilled' ? testerSettled.value : null;
+        const testerCancelled = abortController.signal.aborted;
+
+        if (testerCancelled) {
+          logger.info('Tester fue cancelado por Security BLOCK — omitiendo resultado', 'KOMODO');
+          komodoState.updateAgent('TESTER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+          eventBus.emitAgentEvent('TESTER', 'idle');
+        } else {
+          if (testerResult?.cost) {
+            eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+              agentName: 'TESTER',
+              metadata: { cost: testerResult.cost },
+            });
+          }
+
+          eventBus.emitAgentEvent('TESTER', 'done');
+          komodoState.updateAgent('TESTER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+          eventBus.emitAgentEvent('TESTER', 'idle');
+
+          if (testerResult?.success) {
+            testerReport = testerResult.tester;
+            logger.info(`TESTER: ${testerReport.summary}`, 'KOMODO');
+
+            // Execute tests locally — if they fail, send feedback to Coder before reaching Reviewer
+            logger.info('Tester: executing generated tests locally...', 'KOMODO');
+            komodoState.updatePhase(PHASES.TESTING, { currentPR: prNumber });
+
+            const testerTestReport = await executePrePRTests({
+              cwd,
+              onFixAttempt: async (failureOutput, attempt) => {
+                logger.info(`Tester auto-fixing test failures (attempt ${attempt})...`, 'KOMODO');
+
+                eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_FAILED, {
+                  agentName: 'TESTER',
+                  metadata: { attempt, output: failureOutput.slice(0, 2000) },
+                });
+
+                komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
+                  phase: 'fixing-tester-failures',
+                  taskId: taskSpec.taskId,
+                });
+                eventBus.emitAgentEvent('CODER', 'working', { reason: 'tester-failures', attempt });
+
+                if (testFailureStrategy.detect({ errorMessage: failureOutput })) {
+                  const healResult = await healingEngine.handleFailure({
+                    type: 'test-failure',
+                    taskId: taskSpec.taskId,
+                    projectId,
+                    errorMessage: failureOutput,
+                    runTests: null,
+                    fixCode: async () => {
+                      const fixResult = await fixReviewIssues(
+                        taskSpec,
+                        prNumber,
+                        {
+                          summary: 'Tester agent found failing tests. Fix the implementation so all tests pass.',
+                          issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
+                        },
+                        cwd,
+                        { model: coderModel, codingGuidelines },
+                      );
+                      return { success: fixResult.success };
+                    },
+                  });
+                  if (healResult.healed) {
+                    komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+                    eventBus.emitAgentEvent('CODER', 'idle');
+                    return { fixed: true };
+                  }
+                }
+
+                const fixResult = await fixReviewIssues(
+                  taskSpec,
+                  prNumber,
+                  {
+                    summary: 'Tester agent found failing tests. Fix the implementation so all tests pass.',
+                    issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
+                  },
+                  cwd,
+                  { model: coderModel, codingGuidelines },
+                );
+
+                komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+                eventBus.emitAgentEvent('CODER', 'idle');
+                return { fixed: fixResult.success };
+              },
+            });
+
+            if (!testerTestReport.skipped) {
+              if (testerTestReport.passed) {
+                eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_PASSED, {
+                  agentName: 'TESTER',
+                  metadata: { summary: testerTestReport.summary },
+                });
+                logger.success(`Tester: local tests passed — ${testerTestReport.summary}`, 'KOMODO');
+              } else if (testerTestReport.needsManualReview) {
+                logger.warn(`Tester: tests still failing after ${testerTestReport.attempts} attempts — continuing to Reviewer`, 'KOMODO');
+                eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_FAILED, {
+                  agentName: 'TESTER',
+                  metadata: { attempts: testerTestReport.attempts, output: testerTestReport.output?.slice(0, 2000) },
+                });
+              }
+            }
+          } else {
+            logger.warn(`Tester agent failed: ${testerSettled.reason?.message || testerResult?.error || 'unknown'}`, 'KOMODO');
+          }
+        }
+      }
+
+      // Check for rate limit pause after parallel step
       if (komodoState.isPauseRequested()) {
-        logger.warn('Execution paused by rate limit after Security step.', 'KOMODO');
+        logger.warn('Execution paused by rate limit after parallel Security + Tester step.', 'KOMODO');
         return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
       }
     }

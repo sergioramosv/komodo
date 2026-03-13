@@ -346,6 +346,15 @@ function spawnCli(command, args, options = {}) {
       });
     }
 
+    // Register AbortSignal listener for external cancellation (e.g. parallel pipeline)
+    if (options.signal) {
+      options.signal.addEventListener('abort', () => {
+        earlyTerminated = true;
+        earlyTerminationReason = 'aborted';
+        child.kill('SIGTERM');
+      }, { once: true });
+    }
+
     child.stdout.on('data', (data) => {
       const text = data.toString();
       stdout += text;
@@ -420,6 +429,7 @@ export async function runAgent({
   totalTimeout,
   enableWatchdog = true,
   expectedLanguage,
+  signal,
 }) {
   // Resolve which CLI to use
   const cliMap = {
@@ -551,6 +561,7 @@ export async function runAgent({
       onOutput,
       onStderr,
       earlyTerminationSignal,
+      signal,
     });
 
     const { stdout, earlyTerminated, earlyTerminationReason } = spawnResult;
