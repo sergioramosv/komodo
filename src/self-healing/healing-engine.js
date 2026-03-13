@@ -57,7 +57,10 @@ export const healingEngine = {
    */
   async handleFailure(errorContext) {
     const { taskId, projectId, errorMessage = '' } = errorContext;
-    const key = `${taskId || 'unknown'}:${errorMessage.slice(0, 80)}`;
+    // Use projectId as a scope separator so that services without a taskId
+    // don't share the same attempt counter across unrelated projects.
+    const scope = taskId ? `task:${taskId}` : `proj:${projectId || 'global'}`;
+    const key = `${scope}:${errorMessage.slice(0, 80)}`;
     const count = this._attemptCounts.get(key) || 0;
 
     if (count >= MAX_HEALING_ATTEMPTS) {

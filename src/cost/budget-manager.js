@@ -112,23 +112,7 @@ class BudgetManager {
    * @returns {{ allowed: boolean, dailySpent: number, weeklySpent: number, warning: boolean, exceeded: boolean }}
    */
   recordCost(cost, metadata = {}) {
-    // Explicit null → no-op (distinct from undefined which uses the configured default)
-    if (cost === null) {
-      return { allowed: true, dailySpent: this._dailySpent, weeklySpent: this._weeklySpent, warning: false, exceeded: false };
-    }
-
     const amount = cost ?? config.estimatedCostPerInvocation;
-
-    // Zero amount → no-op, nothing to record
-    if (amount === 0) {
-      return { allowed: true, dailySpent: this._dailySpent, weeklySpent: this._weeklySpent, warning: false, exceeded: false };
-    }
-
-    // Negative amount → rejected
-    if (amount < 0) {
-      return { allowed: false, dailySpent: this._dailySpent, weeklySpent: this._weeklySpent, warning: false, exceeded: false };
-    }
-
     this._checkReset();
 
     this._dailySpent += amount;

@@ -6,10 +6,15 @@ vi.mock('../events/event-bus.js', () => ({
     SELF_HEALING_ATTEMPTED: 'self-healing:attempted',
     SELF_HEALING_SUCCEEDED: 'self-healing:succeeded',
     SELF_HEALING_FAILED: 'self-healing:failed',
+    SELF_HEAL_RECOVERED: 'self-heal:recovered',
+    SELF_HEAL_EXHAUSTED: 'self-heal:exhausted',
   },
 }));
 vi.mock('../utils/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock('../knowledge/knowledge-graph.js', () => ({
+  saveHealingAttempt: vi.fn(),
 }));
 
 // Stub all strategies
@@ -63,6 +68,7 @@ vi.mock('./strategies/firebase-down.js', () => ({
 }));
 
 const { eventBus } = await import('../events/event-bus.js');
+const { saveHealingAttempt } = await import('../knowledge/knowledge-graph.js');
 const { mergeConflictStrategy } = await import('./strategies/merge-conflict.js');
 const { testFailureStrategy } = await import('./strategies/test-failure.js');
 const { rateLimitStrategy } = await import('./strategies/rate-limit.js');
@@ -129,6 +135,92 @@ describe('healingEngine.attemptHealing', () => {
     const result = await healingEngine.attemptHealing({ errorMessage: 'Tests failed' });
     expect(result.healed).toBe(false);
     expect(result.strategy).toBe('test-failure');
+  });
+});
+
+describe('healingEngine.handleFailure', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    healingEngine._attemptCounts.clear();
+  });
+
+  it('increments attempt count and delegates to attemptHealing', async () => {
+    mergeConflictStrategy.detect.mockReturnValue(true);
+    const result = await healingEngine.handleFailure({
+      taskId: 'task-1',
+      projectId: 'proj-A',
+      errorMessage: 'merge conflict',
+    });
+    expect(result.healed).toBe(true);
+    expect(result.strategy).toBe('merge-conflict');
+    expect(result.exhausted).toBe(false);
+  });
+
+  it('emits SELF_HEAL_RECOVERED when strategy succeeds', async () => {
+    mergeConflictStrategy.detect.mockReturnValue(true);
+    await healingEngine.handleFailure({
+      taskId: 'task-2',
+      projectId: 'proj-A',
+      errorMessage: 'conflict',
+    });
+    expect(eventBus.emitEvent).toHaveBeenCalledWith(
+      'self-heal:recovered',
+      expect.objectContaining({ metadata: expect.objectContaining({ taskId: 'task-2', strategy: 'merge-conflict' }) }),
+    );
+  });
+
+  it('clears attempt count after successful heal', async () => {
+    mergeConflictStrategy.detect.mockReturnValue(true);
+    const ctx = { taskId: 'task-clear', projectId: 'proj-A', errorMessage: 'conflict' };
+    await healingEngine.handleFailure(ctx);
+    expect(healingEngine._attemptCounts.has('task:task-clear:conflict')).toBe(false);
+  });
+
+  it('returns exhausted=true and emits SELF_HEAL_EXHAUSTED when max attempts reached', async () => {
+    rateLimitStrategy.detect.mockReturnValue(true);
+    const ctx = { taskId: 'task-ex', projectId: 'proj-B', errorMessage: 'rate limit hit' };
+    // First 2 calls consume the budget (MAX_HEALING_ATTEMPTS = 2)
+    await healingEngine.handleFailure(ctx);
+    await healingEngine.handleFailure(ctx);
+    // 3rd call should be blocked immediately
+    const result = await healingEngine.handleFailure(ctx);
+    expect(result.exhausted).toBe(true);
+    expect(result.healed).toBe(false);
+    expect(eventBus.emitEvent).toHaveBeenCalledWith('self-heal:exhausted', expect.anything());
+  });
+
+  it('persists attempt to KnowledgeGraph when taskId and projectId are present', async () => {
+    mergeConflictStrategy.detect.mockReturnValue(true);
+    await healingEngine.handleFailure({
+      taskId: 'task-kg',
+      projectId: 'proj-kg',
+      errorMessage: 'merge conflict',
+    });
+    expect(saveHealingAttempt).toHaveBeenCalledWith(
+      'proj-kg',
+      'task-kg',
+      expect.objectContaining({ strategy: 'merge-conflict', healed: true }),
+    );
+  });
+
+  it('skips KnowledgeGraph persistence when taskId or projectId is missing', async () => {
+    mergeConflictStrategy.detect.mockReturnValue(true);
+    await healingEngine.handleFailure({ errorMessage: 'merge conflict' });
+    expect(saveHealingAttempt).not.toHaveBeenCalled();
+  });
+
+  it('uses separate attempt counters for different projects when taskId is absent', async () => {
+    rateLimitStrategy.detect.mockReturnValue(true);
+    const ctxA = { projectId: 'proj-A', errorMessage: 'rate limit hit' };
+    const ctxB = { projectId: 'proj-B', errorMessage: 'rate limit hit' };
+    // Exhaust proj-A
+    await healingEngine.handleFailure(ctxA);
+    await healingEngine.handleFailure(ctxA);
+    const exhaustedA = await healingEngine.handleFailure(ctxA);
+    // proj-B should still have fresh budget
+    const resultB = await healingEngine.handleFailure(ctxB);
+    expect(exhaustedA.exhausted).toBe(true);
+    expect(resultB.exhausted).toBe(false);
   });
 });
 

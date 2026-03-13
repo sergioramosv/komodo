@@ -3,17 +3,21 @@ import { pipeline } from '@xenova/transformers';
 const MODEL_NAME = 'Xenova/all-MiniLM-L6-v2';
 const EMBEDDING_DIM = 384;
 
+let _pipelinePromise = null;
 let pipelineInstance = null;
 
 /**
- * Returns (and caches) the feature-extraction pipeline.
+ * Returns (and caches) the resolved feature-extraction pipeline.
+ * The Promise is also cached to prevent parallel initializations.
  * @returns {Promise<Function>}
  */
 async function getEmbeddingPipeline() {
-      if (!pipelineInstance) {
-            pipelineInstance = pipeline('feature-extraction', MODEL_NAME, { revision: 'main' });
-      }
-      return pipelineInstance;
+  if (pipelineInstance) return pipelineInstance;
+  if (!_pipelinePromise) {
+    _pipelinePromise = pipeline('feature-extraction', MODEL_NAME, { revision: 'main' });
+  }
+  pipelineInstance = await _pipelinePromise;
+  return pipelineInstance;
 }
 
 /**
