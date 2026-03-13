@@ -101,4 +101,5 @@ export function estimateTaskTokensCalibrated(taskSpec, complexityLevel, historic
 
 // Re-export rate limit functions so consumers can import everything from token-estimator
 export { getRateLimitHeadroom, recordTokenConsumption } from './rate-limit-tracker.js';
+export { rateLimitForecaster, recordForecasterConsumption, forecastRateLimit } from './rate-limit-forecaster.js';
 

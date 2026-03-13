@@ -22,7 +22,7 @@ import { fallbackManager } from '../agents/fallback-manager.js';
 import { withWatchdog } from '../watchdog/watchdog.js';
 import { createTechDebtTasks } from '../tech-debt/tech-debt-tracker.js';
 import { recordTaskMetrics } from '../estimation/estimation-tracker.js';
-import { estimateTaskTokens, estimateTaskTokensCalibrated, getRateLimitHeadroom, recordTokenConsumption } from '../estimation/token-estimator.js';
+import { estimateTaskTokens, estimateTaskTokensCalibrated, getRateLimitHeadroom, recordTokenConsumption, recordForecasterConsumption, forecastRateLimit } from '../estimation/token-estimator.js';
 import { getHistoricalMultipliers } from '../estimation/estimation-tracker.js';
 import { recordModelPerformance } from '../metrics/model-performance-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
@@ -476,6 +476,17 @@ export async function runTask(projectId, cwd) {
     // Record estimated token consumption only after decomposition check,
     // so decomposed parent tasks don't pollute the sliding window
     recordTokenConsumption(estimatedTokens);
+    recordForecasterConsumption(config.cliCoder, estimatedTokens);
+
+    // Log rate limit forecast for the coder CLI
+    const forecast = forecastRateLimit(config.cliCoder, config.rateLimitTokenBudget);
+    logger.info(
+      `Rate limit forecast [${config.cliCoder}]: ${forecast.recommendation.toUpperCase()} — ` +
+      `${forecast.minutesToRateLimit === Infinity ? '∞' : forecast.minutesToRateLimit}min to limit, ` +
+      `${forecast.tokensPerMinute} tok/min, headroom ${forecast.estimatedHeadroom}` +
+      (forecast.confident ? '' : ' (low confidence)'),
+      'KOMODO',
+    );
 
     // ── Triage: classify complexity + select models ──
     const classification = classifyAndEmit(taskSpec);
