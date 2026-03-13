@@ -50,8 +50,65 @@ import {
   getMemoryEntry,
   updateMemoryEntry,
   deleteMemoryEntry,
+  getMemoryDb,
   COLLECTIONS,
 } from './firebase-memory.js';
+
+// ── getMemoryDb — error paths ─────────────────────────────
+// Each test uses vi.resetModules() + vi.doMock() to get a fresh module instance
+// with db=null so the initialization guards can be exercised.
+
+describe('getMemoryDb — error paths', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('lanza error cuando useFirebaseMemory=false', async () => {
+    vi.doMock('./config.js', () => ({
+      firebaseConfig: { useFirebaseMemory: false, serviceAccountPath: '', databaseURL: '' },
+    }));
+    vi.doMock('firebase-admin', () => ({
+      default: { app: vi.fn(), initializeApp: vi.fn(), credential: { cert: vi.fn() } },
+    }));
+    vi.doMock('fs', () => ({ readFileSync: vi.fn() }));
+    const { getMemoryDb: fresh } = await import('./firebase-memory.js');
+    expect(() => fresh()).toThrow('USE_FIREBASE_MEMORY=true requerido');
+  });
+
+  it('lanza error cuando faltan credenciales', async () => {
+    vi.doMock('./config.js', () => ({
+      firebaseConfig: { useFirebaseMemory: true, serviceAccountPath: '', databaseURL: '' },
+    }));
+    vi.doMock('firebase-admin', () => ({
+      default: { app: vi.fn(), initializeApp: vi.fn(), credential: { cert: vi.fn() } },
+    }));
+    vi.doMock('fs', () => ({ readFileSync: vi.fn() }));
+    const { getMemoryDb: fresh } = await import('./firebase-memory.js');
+    expect(() => fresh()).toThrow('Faltan variables de entorno Firebase');
+  });
+
+  it('lanza error cuando readFileSync falla', async () => {
+    vi.doMock('./config.js', () => ({
+      firebaseConfig: {
+        useFirebaseMemory: true,
+        serviceAccountPath: '/bad/path.json',
+        databaseURL: 'https://test.firebaseio.com',
+      },
+    }));
+    vi.doMock('firebase-admin', () => ({
+      default: {
+        app: vi.fn(() => { throw new Error('app not found'); }),
+        initializeApp: vi.fn(),
+        credential: { cert: vi.fn() },
+      },
+    }));
+    vi.doMock('fs', () => ({
+      readFileSync: vi.fn(() => { throw new Error('ENOENT: no such file'); }),
+    }));
+    const { getMemoryDb: fresh } = await import('./firebase-memory.js');
+    expect(() => fresh()).toThrow('No se pudo leer o parsear');
+  });
+});
 
 describe('firebase-memory', () => {
   beforeEach(() => {
@@ -192,6 +249,30 @@ describe('firebase-memory', () => {
 
       expect(mockRef).toHaveBeenCalledWith('memory/proj-1/lessons/lesson-99');
       expect(mockRemove).toHaveBeenCalled();
+    });
+  });
+
+  // ── collection validation ─────────────────────────────────
+
+  describe('validación de collection', () => {
+    it('createMemoryEntry lanza error con colección inválida', async () => {
+      await expect(createMemoryEntry('proj-1', 'hacks', { text: 'x' })).rejects.toThrow('Colección inválida');
+    });
+
+    it('getMemoryEntries lanza error con colección inválida', async () => {
+      await expect(getMemoryEntries('proj-1', 'hacks')).rejects.toThrow('Colección inválida');
+    });
+
+    it('getMemoryEntry lanza error con colección inválida', async () => {
+      await expect(getMemoryEntry('proj-1', 'hacks', 'id-1')).rejects.toThrow('Colección inválida');
+    });
+
+    it('updateMemoryEntry lanza error con colección inválida', async () => {
+      await expect(updateMemoryEntry('proj-1', 'hacks', 'id-1', { frequency: 1 })).rejects.toThrow('Colección inválida');
+    });
+
+    it('deleteMemoryEntry lanza error con colección inválida', async () => {
+      await expect(deleteMemoryEntry('proj-1', 'hacks', 'id-1')).rejects.toThrow('Colección inválida');
     });
   });
 });

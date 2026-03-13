@@ -10,6 +10,19 @@ export const COLLECTIONS = /** @type {const} */ ({
   LESSONS: 'lessons',
 });
 
+const VALID_COLLECTIONS = new Set(Object.values(COLLECTIONS));
+
+/**
+ * @param {string} collection
+ */
+function assertValidCollection(collection) {
+  if (!VALID_COLLECTIONS.has(collection)) {
+    throw new Error(
+      `Colección inválida: "${collection}". Valores permitidos: ${[...VALID_COLLECTIONS].join(', ')}`
+    );
+  }
+}
+
 /** @type {admin.database.Database|null} */
 let db = null;
 
@@ -70,6 +83,7 @@ function sanitize(data) {
  * @returns {Promise<{ id: string }>}
  */
 export async function createMemoryEntry(projectId, collection, data) {
+  assertValidCollection(collection);
   const ref = getMemoryDb().ref(`memory/${projectId}/${collection}`).push();
   const entry = sanitize({
     text: data.text,
@@ -90,6 +104,7 @@ export async function createMemoryEntry(projectId, collection, data) {
  * @returns {Promise<Record<string, unknown>[]>}
  */
 export async function getMemoryEntries(projectId, collection) {
+  assertValidCollection(collection);
   const snap = await getMemoryDb().ref(`memory/${projectId}/${collection}`).once('value');
   if (!snap.exists()) return [];
   return Object.entries(snap.val()).map(([id, val]) => ({ id, ...val }));
@@ -103,6 +118,7 @@ export async function getMemoryEntries(projectId, collection) {
  * @returns {Promise<Record<string, unknown>|null>}
  */
 export async function getMemoryEntry(projectId, collection, id) {
+  assertValidCollection(collection);
   const snap = await getMemoryDb().ref(`memory/${projectId}/${collection}/${id}`).once('value');
   if (!snap.exists()) return null;
   return { id, ...snap.val() };
@@ -117,6 +133,7 @@ export async function getMemoryEntry(projectId, collection, id) {
  * @returns {Promise<void>}
  */
 export async function updateMemoryEntry(projectId, collection, id, data) {
+  assertValidCollection(collection);
   await getMemoryDb()
     .ref(`memory/${projectId}/${collection}/${id}`)
     .update(sanitize(data));
@@ -130,5 +147,6 @@ export async function updateMemoryEntry(projectId, collection, id, data) {
  * @returns {Promise<void>}
  */
 export async function deleteMemoryEntry(projectId, collection, id) {
+  assertValidCollection(collection);
   await getMemoryDb().ref(`memory/${projectId}/${collection}/${id}`).remove();
 }
