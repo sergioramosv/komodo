@@ -3,6 +3,8 @@ import { timingSafeEqual } from 'crypto';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
+import { getTaskTimeline, explainDecision, listRecentTaskIds } from '../observability/index.js';
+import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 
 /**
  * Servidor HTTP REST para control externo de Komodo via API key.
@@ -122,6 +124,21 @@ export class KomodoApiServer {
 
     if (method === 'GET' && path === '/api/status') {
       this._handleStatus(res);
+      return;
+    }
+
+    if (method === 'GET' && path === '/api/observability/timeline') {
+      this._handleTimeline(req, res);
+      return;
+    }
+
+    if (method === 'GET' && path === '/api/observability/explain') {
+      this._handleExplainDecision(req, res);
+      return;
+    }
+
+    if (method === 'GET' && path === '/api/observability/tasks') {
+      this._handleListTasks(req, res);
       return;
     }
 
@@ -391,6 +408,113 @@ export class KomodoApiServer {
     const snapshot = komodoState.getSnapshot();
     res.writeHead(200);
     res.end(JSON.stringify(snapshot));
+  }
+
+  /**
+   * GET /api/observability/timeline?taskId=X&projectId=Y
+   * Returns the full structured event timeline for a task.
+   *
+   * @param {import('http').IncomingMessage} req
+   * @param {import('http').ServerResponse} res
+   */
+  async _handleTimeline(req, res) {
+    const url = new URL(req.url, `http://localhost`);
+    const taskId = url.searchParams.get('taskId');
+    const projectId = url.searchParams.get('projectId');
+
+    if (!taskId || !projectId) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'taskId and projectId are required' }));
+      return;
+    }
+
+    try {
+      const timeline = await getTaskTimeline(projectId, taskId);
+      eventBus.emitEvent(EVENT_TYPES.TASK_TIMELINE_QUERIED, {
+        metadata: { taskId, projectId },
+      });
+      res.writeHead(200);
+      res.end(JSON.stringify(timeline));
+    } catch (err) {
+      logger.error(`API timeline error: ${err.message}`, 'API');
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'Failed to retrieve timeline' }));
+    }
+  }
+
+  /**
+   * GET /api/observability/explain?taskId=X&projectId=Y&eventId=Z
+   * Reconstructs the decision context for a specific event.
+   *
+   * @param {import('http').IncomingMessage} req
+   * @param {import('http').ServerResponse} res
+   */
+  async _handleExplainDecision(req, res) {
+    const url = new URL(req.url, `http://localhost`);
+    const taskId = url.searchParams.get('taskId');
+    const projectId = url.searchParams.get('projectId');
+    const eventId = url.searchParams.get('eventId');
+
+    if (!taskId || !projectId || !eventId) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'taskId, projectId and eventId are required' }));
+      return;
+    }
+
+    try {
+      const explanation = await explainDecision(projectId, taskId, eventId);
+      if (!explanation) {
+        res.writeHead(404);
+        res.end(JSON.stringify({ error: 'Event not found' }));
+        return;
+      }
+      eventBus.emitEvent(EVENT_TYPES.DECISION_EXPLAINED, {
+        metadata: { taskId, projectId, eventId, agent: explanation.agent },
+      });
+      res.writeHead(200);
+      res.end(JSON.stringify(explanation));
+    } catch (err) {
+      logger.error(`API explain error: ${err.message}`, 'API');
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'Failed to explain decision' }));
+    }
+  }
+
+  /**
+   * GET /api/observability/tasks?projectId=Y&hoursBack=48
+   * Lists task IDs that have events within the given time window.
+   *
+   * @param {import('http').IncomingMessage} req
+   * @param {import('http').ServerResponse} res
+   */
+  async _handleListTasks(req, res) {
+    const url = new URL(req.url, `http://localhost`);
+    const projectId = url.searchParams.get('projectId');
+    const hoursBack = url.searchParams.has('hoursBack')
+      ? Number(url.searchParams.get('hoursBack'))
+      : 48;
+
+    if (!projectId) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'projectId is required' }));
+      return;
+    }
+
+    if (!Number.isFinite(hoursBack) || hoursBack <= 0) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'hoursBack must be a positive number' }));
+      return;
+    }
+
+    try {
+      const taskIds = await listRecentTaskIds(projectId, hoursBack);
+      res.writeHead(200);
+      res.end(JSON.stringify({ projectId, hoursBack, taskIds }));
+    } catch (err) {
+      logger.error(`API list tasks error: ${err.message}`, 'API');
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'Failed to list tasks' }));
+    }
   }
 }
 
