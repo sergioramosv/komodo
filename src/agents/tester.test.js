@@ -44,7 +44,8 @@ vi.mock('../knowledge/knowledge-graph.js', () => ({
 
 import { runTesterAgent } from './tester.js';
 import { runAgent } from './base-agent.js';
-import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
+import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
+import { validateAgentResponse } from '../utils/parser.js';
 
 const taskSpec = {
   taskId: 'task-abc',
@@ -66,61 +67,82 @@ describe('runTesterAgent', () => {
     vi.clearAllMocks();
   });
 
-  it('emite AGENT_STATE_CHANGE working con metadata al inicio', async () => {
+  it('no emite AGENT_STATE_CHANGE directamente (task-runner lo maneja via updateAgent)', async () => {
     runAgent.mockResolvedValue({ success: false, result: null, cost: 0, duration: 100, error: 'fail' });
 
     await runTesterAgent(baseOptions);
 
-    expect(eventBus.emitEvent).toHaveBeenNthCalledWith(1, EVENT_TYPES.AGENT_STATE_CHANGE, {
-      agentName: 'TESTER',
-      previousState: AGENT_STATES.IDLE,
-      newState: AGENT_STATES.WORKING,
-      metadata: { phase: 'testing', taskId: taskSpec.taskId, taskTitle: taskSpec.title },
-    });
+    const stateChangeCalls = eventBus.emitEvent.mock.calls.filter(
+      ([type]) => type === EVENT_TYPES.AGENT_STATE_CHANGE,
+    );
+    expect(stateChangeCalls).toHaveLength(0);
   });
 
-  it('emite AGENT_STATE_CHANGE idle al finalizar con error de runAgent', async () => {
+  it('retorna error cuando runAgent falla', async () => {
     runAgent.mockResolvedValue({ success: false, result: null, cost: 0, duration: 100, error: 'fail' });
 
     const result = await runTesterAgent(baseOptions);
 
     expect(result.success).toBe(false);
-    const idleCall = eventBus.emitEvent.mock.calls.find(
-      ([type, data]) => type === EVENT_TYPES.AGENT_STATE_CHANGE && data.newState === AGENT_STATES.IDLE,
-    );
-    expect(idleCall).toBeDefined();
-    expect(idleCall[1]).toMatchObject({
-      agentName: 'TESTER',
-      previousState: AGENT_STATES.WORKING,
-      newState: AGENT_STATES.IDLE,
-      metadata: { phase: 'idle' },
-    });
+    expect(result.error).toBe('fail');
+    expect(result.tester).toBeNull();
   });
 
-  it('emite AGENT_STATE_CHANGE idle al finalizar con éxito', async () => {
+  it('retorna error cuando validateAgentResponse retorna valid: false', async () => {
     runAgent.mockResolvedValue({
       success: true,
-      result: { testsGenerated: 3, testsPassed: 3, testsFailed: 0, coverage: '80%', filesCreated: [], filesChanged: [], pushed: true, failedTests: [], summary: 'ok' },
+      result: { someField: 'value' },
+      cost: 0.01,
+      duration: 200,
+    });
+    validateAgentResponse.mockReturnValueOnce({ valid: false, missing: ['testsGenerated', 'testsPassed'] });
+
+    const result = await runTesterAgent(baseOptions);
+
+    expect(result.success).toBe(false);
+    expect(result.tester).toBeNull();
+    expect(result.error).toContain('testsGenerated');
+    expect(result.error).toContain('testsPassed');
+  });
+
+  it('no emite AGENT_STATE_CHANGE en path !valid (task-runner lo maneja)', async () => {
+    runAgent.mockResolvedValue({
+      success: true,
+      result: { someField: 'value' },
+      cost: 0.01,
+      duration: 200,
+    });
+    validateAgentResponse.mockReturnValueOnce({ valid: false, missing: ['testsGenerated'] });
+
+    await runTesterAgent(baseOptions);
+
+    const stateChangeCalls = eventBus.emitEvent.mock.calls.filter(
+      ([type]) => type === EVENT_TYPES.AGENT_STATE_CHANGE,
+    );
+    expect(stateChangeCalls).toHaveLength(0);
+  });
+
+  it('emite TESTER_TESTS_GENERATED al finalizar con éxito', async () => {
+    runAgent.mockResolvedValue({
+      success: true,
+      result: { testsGenerated: 3, testsPassed: 3, testsFailed: 0, coverage: '80%', filesCreated: ['foo.test.js'], filesChanged: [], pushed: true, failedTests: [], summary: 'ok' },
       cost: 0.01,
       duration: 200,
     });
 
-    const result = await runTesterAgent(baseOptions);
+    await runTesterAgent(baseOptions);
 
-    expect(result.success).toBe(true);
-    const idleCall = eventBus.emitEvent.mock.calls.find(
-      ([type, data]) => type === EVENT_TYPES.AGENT_STATE_CHANGE && data.newState === AGENT_STATES.IDLE,
+    const testsGeneratedCall = eventBus.emitEvent.mock.calls.find(
+      ([type]) => type === EVENT_TYPES.TESTER_TESTS_GENERATED,
     );
-    expect(idleCall).toBeDefined();
-    expect(idleCall[1]).toMatchObject({
+    expect(testsGeneratedCall).toBeDefined();
+    expect(testsGeneratedCall[1]).toMatchObject({
       agentName: 'TESTER',
-      previousState: AGENT_STATES.WORKING,
-      newState: AGENT_STATES.IDLE,
-      metadata: { phase: 'idle' },
+      metadata: { count: 3, passed: 3, failed: 0, coverage: '80%', prNumber: 42 },
     });
   });
 
-  it('emite exactamente 2 eventos AGENT_STATE_CHANGE en flujo exitoso (working + idle)', async () => {
+  it('retorna datos correctos en flujo exitoso', async () => {
     runAgent.mockResolvedValue({
       success: true,
       result: { testsGenerated: 1, testsPassed: 1, testsFailed: 0, coverage: null, filesCreated: [], filesChanged: [], pushed: true, failedTests: [], summary: 'ok' },
@@ -128,13 +150,15 @@ describe('runTesterAgent', () => {
       duration: 100,
     });
 
-    await runTesterAgent(baseOptions);
+    const result = await runTesterAgent(baseOptions);
 
-    const stateChangeCalls = eventBus.emitEvent.mock.calls.filter(
-      ([type]) => type === EVENT_TYPES.AGENT_STATE_CHANGE,
-    );
-    expect(stateChangeCalls).toHaveLength(2);
-    expect(stateChangeCalls[0][1].newState).toBe(AGENT_STATES.WORKING);
-    expect(stateChangeCalls[1][1].newState).toBe(AGENT_STATES.IDLE);
+    expect(result.success).toBe(true);
+    expect(result.tester).toMatchObject({
+      testsGenerated: 1,
+      testsPassed: 1,
+      testsFailed: 0,
+      pushed: true,
+      summary: 'ok',
+    });
   });
 });
