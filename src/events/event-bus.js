@@ -227,9 +227,6 @@ export const EVENT_TYPES = {
   SECURITY_SCAN_START: 'security:scan:start',
   SECURITY_SCAN_COMPLETE: 'security:scan:complete',
   SECURITY_SCAN_BLOCKED: 'security:scan:blocked',
-  AGENT_SECURITY_WORKING: 'agent:security:working',
-  AGENT_SECURITY_DONE: 'agent:security:done',
-  AGENT_SECURITY_IDLE: 'agent:security:idle',
 
   // Autonomy level events
   GUARDIAN_GATE_TRIGGERED: 'guardian:gate:triggered',
