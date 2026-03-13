@@ -25,6 +25,10 @@ vi.mock('child_process', () => ({
   execFileSync: vi.fn(),
 }));
 
+vi.mock('./changelog-generator.js', () => ({
+  autoChangelog: vi.fn(() => ({ skipped: true })),
+}));
+
 const { config } = await import('../config.js');
 const { readFileSync, writeFileSync } = await import('fs');
 const { execFileSync } = await import('child_process');
