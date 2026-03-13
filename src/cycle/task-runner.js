@@ -506,7 +506,7 @@ export async function runTask(projectId, cwd) {
     const tokenEstimation = estimateTaskTokensCalibrated(taskSpec, complexityLevel, historicalMultipliers);
     eventBus.emitEvent(EVENT_TYPES.TASK_STARTED, {
       metadata: {
-        taskId: taskSpec.taskId,
+        taskId: taskSpec.taskId || '',
         title: taskSpec.title,
         branchName: taskSpec.branchName,
         repo,
