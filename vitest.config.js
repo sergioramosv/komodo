@@ -7,6 +7,6 @@ export default defineConfig({
       '**/skills/**',
       '**/dashboard/**',
     ],
-    isolate: false,
+    isolate: true,
   },
 });
