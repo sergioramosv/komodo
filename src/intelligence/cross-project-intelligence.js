@@ -10,6 +10,9 @@ const AGENT_TAG = 'CROSS-PROJECT';
 /** Firebase root path for global intelligence. */
 const GLOBAL_ROOT = 'global-intelligence';
 
+/** Maximum tokens for injected global insights (≈4 chars/token). */
+const GLOBAL_INSIGHTS_MAX_TOKENS = 500;
+
 /**
  * Converts a string to a Firebase-safe key (dots and slashes → underscores).
  * @param {string} text
@@ -327,5 +330,137 @@ export async function applyGlobalAntiPatternsToProject(projectId) {
   } catch (err) {
     logger.warn(`applyGlobalAntiPatternsToProject failed (non-blocking): ${err.message}`, AGENT_TAG);
     return { applied: 0 };
+  }
+}
+
+/**
+ * Applies promoted global patterns to a project's local learning store.
+ * Only patterns with a universality score above the configured threshold are applied.
+ *
+ * @param {string} projectId
+ * @returns {Promise<{ applied: number }>}
+ */
+export async function applyGlobalPatternsToProject(projectId) {
+  if (!config.crossProjectIntelligence) return { applied: 0 };
+  if (!projectId) return { applied: 0 };
+
+  try {
+    const threshold = config.crossProjectUniversalityThreshold || 0.6;
+    const promotedPatterns = await getGlobalPatterns({ minScore: threshold });
+    if (!promotedPatterns.length) return { applied: 0 };
+
+    const store = loadLearningStore(projectId);
+    const GLOBAL_PREFIX_RE = /^\[global\]\s*/i;
+    const existingSet = new Set(store.patterns.map((s) => s.trim().toLowerCase().replace(GLOBAL_PREFIX_RE, '')));
+
+    let applied = 0;
+    for (const { text } of promotedPatterns) {
+      if (!text) continue;
+      const normalized = text.trim().toLowerCase();
+      if (!existingSet.has(normalized)) {
+        store.patterns.push(`[global] ${text.trim()}`);
+        existingSet.add(normalized);
+        applied++;
+      }
+    }
+
+    if (applied > 0) {
+      saveLearningStore(projectId, store);
+      logger.info(`Applied ${applied} global patterns to project ${projectId}`, AGENT_TAG);
+    }
+
+    return { applied };
+  } catch (err) {
+    logger.warn(`applyGlobalPatternsToProject failed (non-blocking): ${err.message}`, AGENT_TAG);
+    return { applied: 0 };
+  }
+}
+
+/**
+ * Returns a formatted string of global patterns and anti-patterns relevant to
+ * the current task. Patterns are filtered by keyword overlap. Anti-patterns
+ * are always included. Output is capped at 2000 characters.
+ *
+ * @param {{ title?: string, acceptanceCriteria?: string[] }} [taskContext]
+ * @returns {Promise<string>}
+ */
+export async function getGlobalInsights(taskContext = {}) {
+  if (!config.crossProjectIntelligence) return '';
+
+  try {
+    const threshold = config.crossProjectUniversalityThreshold || 0.6;
+    const contextText = [
+      taskContext.title || '',
+      ...(taskContext.acceptanceCriteria || []),
+    ].join(' ').toLowerCase();
+    const keywords = [...new Set(contextText.split(/\W+/).filter((w) => w.length >= 3))];
+
+    const [patterns, antiPatterns] = await Promise.all([
+      getGlobalPatterns({ minScore: threshold }),
+      getGlobalAntiPatterns(),
+    ]);
+
+    const relevantPatterns = keywords.length > 0
+      ? patterns.filter((p) => keywords.some((kw) => p.text.toLowerCase().includes(kw)))
+      : [];
+
+    const lines = [];
+    if (relevantPatterns.length > 0) {
+      lines.push('## Global Patterns');
+      for (const p of relevantPatterns) {
+        lines.push(`- ${p.text}`);
+      }
+    }
+    if (antiPatterns.length > 0) {
+      lines.push('## Global Anti-Patterns');
+      for (const ap of antiPatterns) {
+        lines.push(`- ${ap.text}`);
+      }
+    }
+
+    if (lines.length === 0) return '';
+
+    const result = lines.join('\n');
+    return result.length > GLOBAL_INSIGHTS_MAX_TOKENS * 4 ? result.slice(0, GLOBAL_INSIGHTS_MAX_TOKENS * 4) : result;
+  } catch (err) {
+    logger.warn(`getGlobalInsights failed (non-blocking): ${err.message}`, AGENT_TAG);
+    return '';
+  }
+}
+
+/**
+ * Returns the best-performing model globally for a given agent role and CLI family.
+ * Used as a fallback when the local project has insufficient routing data.
+ *
+ * @param {string} role - 'coder' | 'reviewer'
+ * @param {string} cliFamily - 'claude' | 'codex' | 'gemini'
+ * @returns {Promise<string|null>}
+ */
+export async function getGlobalModelRecommendation(role, cliFamily) {
+  if (!config.crossProjectIntelligence) return null;
+
+  try {
+    const db = getDb();
+    const snap = await db.ref(`${GLOBAL_ROOT}/model-performance`).once('value');
+    const data = snap.val();
+    if (!data) return null;
+
+    const MIN_GLOBAL_TASKS = 3;
+    const candidates = [];
+
+    for (const [modelKey, roles] of Object.entries(data)) {
+      if (!modelKey.toLowerCase().startsWith(cliFamily.toLowerCase())) continue;
+      const roleData = roles[role];
+      if (!roleData || (roleData.taskCount || 0) < MIN_GLOBAL_TASKS) continue;
+      candidates.push({ model: roleData.model || modelKey, avgSuccessRate: roleData.avgSuccessRate || 0 });
+    }
+
+    if (!candidates.length) return null;
+
+    candidates.sort((a, b) => b.avgSuccessRate - a.avgSuccessRate);
+    return candidates[0].model;
+  } catch (err) {
+    logger.warn(`getGlobalModelRecommendation failed: ${err.message}`, AGENT_TAG);
+    return null;
   }
 }

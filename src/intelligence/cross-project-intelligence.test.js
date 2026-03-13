@@ -60,10 +60,10 @@ vi.mock('../knowledge/codebase-learning.js', () => ({
   saveLearningStore: mockSaveLearningStore,
 }));
 
-import { evaluatePatternUniversality, syncPatternsToGlobal, syncModelPerformanceToGlobal, getGlobalPatterns, getGlobalAntiPatterns, applyGlobalAntiPatternsToProject } from './cross-project-intelligence.js';
+import { evaluatePatternUniversality, syncPatternsToGlobal, syncModelPerformanceToGlobal, getGlobalPatterns, getGlobalAntiPatterns, applyGlobalAntiPatternsToProject, applyGlobalPatternsToProject, getGlobalInsights, getGlobalModelRecommendation } from './cross-project-intelligence.js';
 
 beforeEach(() => {
-  vi.resetAllMocks();
+  vi.clearAllMocks();
   mockConfig.crossProjectIntelligence = true;
   mockConfig.crossProjectUniversalityThreshold = 0.6;
   mockGetDb.mockReturnValue({ ref: vi.fn().mockReturnValue({ once: vi.fn(), transaction: vi.fn(), set: vi.fn() }) });
@@ -444,5 +444,203 @@ describe('applyGlobalAntiPatternsToProject', () => {
     mockGetDb.mockImplementation(() => { throw new Error('firebase down'); });
     const result = await applyGlobalAntiPatternsToProject('proj-1');
     expect(result).toEqual({ applied: 0 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// applyGlobalPatternsToProject
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('applyGlobalPatternsToProject', () => {
+  it('returns early when disabled', async () => {
+    mockConfig.crossProjectIntelligence = false;
+    const result = await applyGlobalPatternsToProject('proj-1');
+    expect(result).toEqual({ applied: 0 });
+  });
+
+  it('returns early when projectId is falsy', async () => {
+    const result = await applyGlobalPatternsToProject('');
+    expect(result).toEqual({ applied: 0 });
+  });
+
+  it('applies promoted patterns not already in local store', async () => {
+    const patternsData = {
+      p1: { text: 'use async/await', universalityScore: 0.8, projectsSeenIn: {} },
+    };
+    const mockRef = { once: vi.fn().mockResolvedValue({ val: () => patternsData }) };
+    mockGetDb.mockReturnValue({ ref: vi.fn().mockReturnValue(mockRef) });
+    mockLoadLearningStore.mockReturnValue({ patterns: [], antiPatterns: [] });
+
+    const result = await applyGlobalPatternsToProject('proj-1');
+
+    expect(result.applied).toBe(1);
+    expect(mockSaveLearningStore).toHaveBeenCalledWith(
+      'proj-1',
+      expect.objectContaining({
+        patterns: expect.arrayContaining(['[global] use async/await']),
+      }),
+    );
+  });
+
+  it('skips patterns already present (case-insensitive, strips [global] prefix)', async () => {
+    const patternsData = {
+      p1: { text: 'use async/await', universalityScore: 0.8, projectsSeenIn: {} },
+    };
+    const mockRef = { once: vi.fn().mockResolvedValue({ val: () => patternsData }) };
+    mockGetDb.mockReturnValue({ ref: vi.fn().mockReturnValue(mockRef) });
+    mockLoadLearningStore.mockReturnValue({
+      patterns: ['[global] use async/await'],
+      antiPatterns: [],
+    });
+
+    const result = await applyGlobalPatternsToProject('proj-1');
+    expect(result.applied).toBe(0);
+    expect(mockSaveLearningStore).not.toHaveBeenCalled();
+  });
+
+  it('returns zeroes on Firebase error (non-blocking)', async () => {
+    mockGetDb.mockImplementation(() => { throw new Error('firebase down'); });
+    const result = await applyGlobalPatternsToProject('proj-1');
+    expect(result).toEqual({ applied: 0 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getGlobalInsights
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getGlobalInsights', () => {
+  function makeRef(patternsData, antiPatternsData) {
+    return vi.fn().mockImplementation((path) => {
+      if (path.includes('anti-patterns')) {
+        return { once: vi.fn().mockResolvedValue({ val: () => antiPatternsData }) };
+      }
+      return { once: vi.fn().mockResolvedValue({ val: () => patternsData }) };
+    });
+  }
+
+  it('returns empty string when no patterns and no anti-patterns', async () => {
+    mockGetDb.mockReturnValue({ ref: makeRef(null, null) });
+    const result = await getGlobalInsights({ title: 'add login feature' });
+    expect(result).toBe('');
+  });
+
+  it('includes relevant patterns (keyword overlap with task title)', async () => {
+    const patterns = {
+      p1: { text: 'use async/await for async operations', universalityScore: 0.8, projectsSeenIn: {} },
+      p2: { text: 'use short variable names', universalityScore: 0.9, projectsSeenIn: {} },
+    };
+    mockGetDb.mockReturnValue({ ref: makeRef(patterns, null) });
+
+    const result = await getGlobalInsights({ title: 'async task processing' });
+    expect(result).toContain('async');
+    expect(result).not.toContain('short variable');
+  });
+
+  it('always includes anti-patterns regardless of relevance', async () => {
+    const antiPatterns = {
+      ap1: { text: 'SQL injection in raw queries', isCritical: true, projectsSeenIn: {} },
+    };
+    mockGetDb.mockReturnValue({ ref: makeRef(null, antiPatterns) });
+
+    const result = await getGlobalInsights({ title: 'add login feature' });
+    expect(result).toContain('SQL injection');
+  });
+
+  it('includes patterns matching acceptanceCriteria keywords', async () => {
+    const patterns = {
+      p1: { text: 'always validate input at boundaries', universalityScore: 0.7, projectsSeenIn: {} },
+    };
+    mockGetDb.mockReturnValue({ ref: makeRef(patterns, null) });
+
+    const result = await getGlobalInsights({
+      title: 'user registration',
+      acceptanceCriteria: ['validate email format', 'validate password length'],
+    });
+    expect(result).toContain('validate');
+  });
+
+  it('caps output at ~500 tokens (≈2000 characters)', async () => {
+    const longText = 'x'.repeat(400);
+    const patterns = Object.fromEntries(
+      Array.from({ length: 10 }, (_, i) => [
+        `p${i}`,
+        { text: `pattern ${longText} ${i}`, universalityScore: 0.9, projectsSeenIn: {} },
+      ]),
+    );
+    const antiPatterns = Object.fromEntries(
+      Array.from({ length: 5 }, (_, i) => [
+        `ap${i}`,
+        { text: `anti-pattern ${longText} ${i}`, isCritical: false, projectsSeenIn: {} },
+      ]),
+    );
+    mockGetDb.mockReturnValue({ ref: makeRef(patterns, antiPatterns) });
+
+    const result = await getGlobalInsights({ title: `pattern anti-pattern ${longText}` });
+    // 500 tokens * 4 chars/token = 2000 chars max
+    expect(result.length).toBeLessThanOrEqual(500 * 4);
+  });
+
+  it('returns empty string on Firebase error (non-blocking)', async () => {
+    mockGetDb.mockImplementation(() => { throw new Error('firebase down'); });
+    const result = await getGlobalInsights({ title: 'some task' });
+    expect(result).toBe('');
+  });
+
+  it('returns empty string when no keywords match any pattern', async () => {
+    const patterns = {
+      p1: { text: 'use memoization for expensive computations', universalityScore: 0.8, projectsSeenIn: {} },
+    };
+    mockGetDb.mockReturnValue({ ref: makeRef(patterns, null) });
+
+    const result = await getGlobalInsights({ title: 'add delete button' });
+    expect(result).toBe('');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getGlobalModelRecommendation
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('getGlobalModelRecommendation', () => {
+  it('returns null when Firebase has no data', async () => {
+    const mockRef = { once: vi.fn().mockResolvedValue({ val: () => null }) };
+    mockGetDb.mockReturnValue({ ref: vi.fn().mockReturnValue(mockRef) });
+    const result = await getGlobalModelRecommendation('coder', 'claude');
+    expect(result).toBeNull();
+  });
+
+  it('returns null for unknown CLI family', async () => {
+    const mockRef = { once: vi.fn().mockResolvedValue({ val: () => ({ 'some-model': {} }) }) };
+    mockGetDb.mockReturnValue({ ref: vi.fn().mockReturnValue(mockRef) });
+    const result = await getGlobalModelRecommendation('coder', 'unknown-cli');
+    expect(result).toBeNull();
+  });
+
+  it('returns null when model has fewer than 3 tasks', async () => {
+    const data = {
+      'claude-sonnet': { coder: { model: 'sonnet', avgSuccessRate: 0.9, taskCount: 2 } },
+    };
+    const mockRef = { once: vi.fn().mockResolvedValue({ val: () => data }) };
+    mockGetDb.mockReturnValue({ ref: vi.fn().mockReturnValue(mockRef) });
+    const result = await getGlobalModelRecommendation('coder', 'claude');
+    expect(result).toBeNull();
+  });
+
+  it('returns best model for CLI family with sufficient data', async () => {
+    const data = {
+      'claude-haiku': { coder: { model: 'haiku', avgSuccessRate: 0.7, taskCount: 5 } },
+      'claude-sonnet': { coder: { model: 'sonnet', avgSuccessRate: 0.95, taskCount: 10 } },
+    };
+    const mockRef = { once: vi.fn().mockResolvedValue({ val: () => data }) };
+    mockGetDb.mockReturnValue({ ref: vi.fn().mockReturnValue(mockRef) });
+    const result = await getGlobalModelRecommendation('coder', 'claude');
+    expect(result).toBe('sonnet');
+  });
+
+  it('returns null on Firebase error (non-blocking)', async () => {
+    mockGetDb.mockImplementation(() => { throw new Error('firebase down'); });
+    const result = await getGlobalModelRecommendation('coder', 'claude');
+    expect(result).toBeNull();
   });
 });
