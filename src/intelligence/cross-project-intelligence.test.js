@@ -176,7 +176,9 @@ describe('syncPatternsToGlobal', () => {
       once: vi.fn()
         // First call: meta/projectIds
         .mockResolvedValueOnce({ val: () => projectIds })
-        // Second call: read pattern after transaction
+        // Second call: pre-transaction read (no promotedAt yet)
+        .mockResolvedValueOnce({ val: () => null })
+        // Third call: read pattern after transaction
         .mockResolvedValueOnce({ val: () => promotedPattern }),
       transaction: vi.fn().mockImplementation(async (updater) => {
         updater(null);
@@ -302,7 +304,7 @@ describe('syncModelPerformanceToGlobal', () => {
     expect(created.role).toBe('planner');
     expect(created.taskCount).toBe(3);
     expect(created.avgSuccessRate).toBeCloseTo(0.7, 5);
-    expect(created.bestFor).toEqual([]);
+    expect(created.bestFor).toEqual(['simple']);
     expect(created.worstFor).toEqual([]);
   });
 });

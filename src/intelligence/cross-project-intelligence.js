@@ -89,11 +89,11 @@ export async function syncPatternsToGlobal(projectId) {
       const key = toFirebaseKey(text);
       const ref = db.ref(`${GLOBAL_ROOT}/patterns/${key}`);
 
-      // Track whether promotedAt was already set before this transaction
-      let wasAlreadyPromoted = false;
+      // Read promotedAt BEFORE the transaction to avoid side-effects from retries
+      const preSnap = await ref.once('value');
+      const wasAlreadyPromoted = !!(preSnap.val() && preSnap.val().promotedAt);
       await ref.transaction((current) => {
         const existing = current || { text, projectsSeenIn: {}, universalityScore: 0, embedding: null, promotedAt: null };
-        wasAlreadyPromoted = !!existing.promotedAt;
         existing.text = text;
         existing.projectsSeenIn = existing.projectsSeenIn || {};
         existing.projectsSeenIn[projectId] = true;
@@ -131,6 +131,10 @@ export async function syncPatternsToGlobal(projectId) {
       const ref = db.ref(`${GLOBAL_ROOT}/anti-patterns/${key}`);
       const isCritical = SECURITY_RE.test(text);
 
+      // Read propagatedAt BEFORE the transaction to avoid event spam on re-syncs
+      const preApSnap = await ref.once('value');
+      const wasAlreadyPropagated = !!(preApSnap.val() && preApSnap.val().propagatedAt);
+
       await ref.transaction((current) => {
         const existing = current || { text, projectsSeenIn: {}, isCritical: false, propagatedAt: null };
         existing.text = text;
@@ -146,7 +150,7 @@ export async function syncPatternsToGlobal(projectId) {
         return existing;
       });
 
-      if (isCritical) {
+      if (isCritical && !wasAlreadyPropagated) {
         antiPatternsPropagated++;
         eventBus.emitEvent(EVENT_TYPES.CROSS_PROJECT_ANTI_PATTERN_PROPAGATED, {
           metadata: { projectId, antiPattern: text, isCritical },
@@ -201,8 +205,8 @@ export async function syncModelPerformanceToGlobal(projectId) {
               role,
               taskCount: metrics.taskCount || 0,
               avgSuccessRate: metrics.avgScore != null ? metrics.avgScore / 10 : 0,
-              bestFor: [],
-              worstFor: [],
+              bestFor: metrics.bestFor || [],
+              worstFor: metrics.worstFor || [],
               lastUpdatedAt: new Date().toISOString(),
             };
           }

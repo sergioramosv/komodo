@@ -124,7 +124,8 @@ export async function implementTask(taskSpec, cwd, { model, codingGuidelines, ar
     .filter(Boolean)
     .join('');
 
-  const userPrompt = `${staticPrefix}${globalInsightsSection}${lessonsSection}
+  const userPrompt = `${staticPrefix}
+${lessonsSection}${globalInsightsSection}
 Implementa la siguiente tarea:
 
 ## Tarea
