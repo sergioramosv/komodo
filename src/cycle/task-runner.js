@@ -27,6 +27,7 @@ import { getHistoricalMultipliers } from '../estimation/estimation-tracker.js';
 import { recordModelPerformance } from '../metrics/model-performance-tracker.js';
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { saveSection, buildCoderContext, buildReviewerContext, buildTesterContext, loadModuleLessons, extractAndSaveLessons } from '../knowledge/knowledge-graph.js';
+import { updateLearning, buildLearningContext } from '../knowledge/codebase-learning.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
 import { runCanaryMerge } from '../canary/canary-merge.js';
@@ -618,8 +619,10 @@ export async function runTask(projectId, cwd) {
     try {
       const coderContext = buildCoderContext(projectId, taskSpec.taskId);
       const moduleLessons = loadModuleLessons(projectId, taskModule);
-      if (coderContext || moduleLessons) {
-        coderKnowledgeContext = { ...coderContext, moduleLessons };
+      const learningResult = buildLearningContext(projectId);
+      const learningContext = learningResult?.learningContext || null;
+      if (coderContext || moduleLessons || learningContext) {
+        coderKnowledgeContext = { ...coderContext, moduleLessons, learningContext };
       }
     } catch (err) {
       logger.warn(`KG buildCoderContext failed (non-blocking): ${err.message}`, 'KOMODO');
@@ -1361,6 +1364,18 @@ export async function runTask(projectId, cwd) {
     }
 
     if (!reviewResult.approved) {
+      // Update codebase learning with rejection issues
+      try {
+        updateLearning(projectId, taskSpec.taskId, {
+          approved: false,
+          issues: reviewResult.finalReview?.issues || [],
+          positives: reviewResult.finalReview?.positives || [],
+          error: reviewResult.error || '',
+        });
+      } catch (err) {
+        logger.warn(`updateLearning (rejected) failed (non-blocking): ${err.message}`, 'KOMODO');
+      }
+
       // Recovery: cerrar PR huérfana + devolver tarea a to-do
       closePR(repo, prNumber, reviewResult.error || 'Review no aprobada');
       await rollbackTask(taskSpec.taskId);
@@ -1386,6 +1401,18 @@ export async function runTask(projectId, cwd) {
       });
     }
     extractAndSaveLessons(projectId, taskSpec.taskId, taskModule);
+
+    // Update codebase learning with approval positives
+    try {
+      updateLearning(projectId, taskSpec.taskId, {
+        approved: true,
+        issues: reviewResult.finalReview?.issues || [],
+        positives: reviewResult.finalReview?.positives || [],
+      });
+    } catch (err) {
+      logger.warn(`updateLearning (approved) failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
     eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_LESSONS_EXTRACTED, {
       metadata: { taskId: taskSpec.taskId, module: taskModule },
     });
