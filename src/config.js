@@ -68,6 +68,8 @@ export const config = {
   apiPort: parseInt(process.env.API_PORT || '3002', 10),
   komodoApiKey: process.env.KOMODO_API_KEY || '',
   maxReviewCycles: _dashboardConfig?.maxReviewCycles || parseInt(process.env.MAX_REVIEW_CYCLES || '3', 10),
+  maxConcurrentAgents: parseInt(process.env.MAX_CONCURRENT_AGENTS || '1', 10),
+  pipelineScheduler: process.env.PIPELINE_SCHEDULER !== 'false',
   autoMerge: process.env.AUTO_MERGE !== 'false', // default: true
   defaultProjectId: process.env.DEFAULT_PROJECT_ID || '',
 
