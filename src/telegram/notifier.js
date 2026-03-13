@@ -22,6 +22,7 @@ import {
   formatReleaseGateBlocked,
   formatBudgetWarning,
   formatBudgetExceeded,
+  formatAnomalyAlert,
 } from './formatter.js';
 
 const AGENT = 'TELEGRAM';
@@ -45,6 +46,7 @@ const MINIMAL_EVENTS = new Set([
   EVENT_TYPES.RELEASE_GATE_BLOCKED,
   EVENT_TYPES.BUDGET_WARNING,
   EVENT_TYPES.BUDGET_EXCEEDED,
+  EVENT_TYPES.ANOMALY_ALERT,
   // Errors are handled separately via TASK_COMPLETED with success=false
 ]);
 
@@ -249,6 +251,14 @@ export function startNotifier() {
   };
   eventBus.on(EVENT_TYPES.BUDGET_EXCEEDED, onBudgetExceeded);
   unsubscribers.push(() => eventBus.off(EVENT_TYPES.BUDGET_EXCEEDED, onBudgetExceeded));
+
+  // --- ANOMALY_ALERT (token spike, review regression, model degradation) ---
+  const onAnomalyAlert = (payload) => {
+    if (!shouldNotify(EVENT_TYPES.ANOMALY_ALERT)) return;
+    sendNotification(formatAnomalyAlert(payload.metadata));
+  };
+  eventBus.on(EVENT_TYPES.ANOMALY_ALERT, onAnomalyAlert);
+  unsubscribers.push(() => eventBus.off(EVENT_TYPES.ANOMALY_ALERT, onAnomalyAlert));
 }
 
 /**

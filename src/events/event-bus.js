@@ -266,6 +266,9 @@ export const EVENT_TYPES = {
   // Observability replay system
   TASK_TIMELINE_QUERIED: 'observability:timeline:queried',
   DECISION_EXPLAINED: 'observability:decision:explained',
+
+  // Observability anomaly alerting
+  ANOMALY_ALERT: 'observability:anomaly:alert',
 };
 
 /**

@@ -11,6 +11,7 @@ import { checkSchedule, formatMinutes } from '../scheduler/scheduler.js';
 import { shutdownManager } from '../shutdown/shutdown-manager.js';
 import { runDependencyCheck } from '../auto-improve/dependency-checker.js';
 import { startWebhookOutgoing, stopWebhookOutgoing } from '../integrations/webhook-outgoing.js';
+import { startAnomalyDetector, stopAnomalyDetector } from '../observability/index.js';
 import { budgetManager } from '../cost/budget-manager.js';
 import { startApiServerIfEnabled } from '../server/api-server.js';
 
@@ -74,6 +75,9 @@ export async function watch(projectId, options = {}) {
 
   // Start webhook outgoing (forwards events to external URLs if configured)
   startWebhookOutgoing();
+
+  // Start anomaly detector (token spikes, review regression, model degradation)
+  startAnomalyDetector();
 
   // Start API server for external control (POST /api/run, /api/stop, /api/pause)
   const apiServer = await startApiServerIfEnabled({
@@ -220,6 +224,7 @@ export async function watch(projectId, options = {}) {
   }
 
   // Cleanup
+  stopAnomalyDetector();
   stopWebhookOutgoing();
   shutdownManager.unregister();
   checkpointManager.stop();
