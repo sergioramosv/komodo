@@ -95,10 +95,9 @@ export function updateLearning(projectId, taskId, reviewOutcome) {
     if (!projectId || !reviewOutcome) return;
 
     const store = loadLearningStore(projectId);
-    const { approved, issues = [], positives = [], error = '' } = reviewOutcome;
+    const { approved, issues = [], positives = [] } = reviewOutcome;
 
-    const mentionsConventions = typeof error === 'string' &&
-      /convenci[oó]n|estilo|naming|indent/i.test(error);
+    const CONVENTION_RE = /convenci[oó]n|estilo|naming|indent/i;
 
     if (approved) {
       // Merge reviewer positives as learned patterns
@@ -108,12 +107,12 @@ export function updateLearning(projectId, taskId, reviewOutcome) {
         }
       }
     } else {
-      // Merge issues as anti-patterns
+      // Merge issues as anti-patterns; tag convention-related issues individually
       for (const issue of issues) {
         const text = issue.description || issue.message || JSON.stringify(issue);
         if (!text) continue;
 
-        const prefix = mentionsConventions ? '[convention] ' : '';
+        const prefix = CONVENTION_RE.test(text) ? '[convention] ' : '';
         store.antiPatterns.push(`${prefix}${text.trim()}`);
       }
     }
