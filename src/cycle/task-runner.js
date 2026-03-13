@@ -38,6 +38,7 @@ import { autoVersionBump } from '../versioning/version-bumper.js';
 import { autoRelease } from '../versioning/release-manager.js';
 import { pluginLoader } from '../plugins/plugin-loader.js';
 import { shouldPause, GATE_STEPS, getActiveLevel, AUTONOMY_LEVELS } from '../autonomy/autonomy-engine.js';
+import { emitStructuredEvent } from '../events/structured-event-logger.js';
 import { waitForApproval } from '../autonomy/approval-gate.js';
 import { healingEngine } from '../self-healing/healing-engine.js';
 import { testFailureStrategy } from '../self-healing/strategies/test-failure.js';
@@ -353,6 +354,15 @@ export async function runTask(projectId, cwd) {
     repo = extractOwnerRepo(taskSpec.repoUrl);
     logger.info(`Tarea: "${taskSpec.title}" | Branch: ${taskSpec.branchName} | Repo: ${repo}`, 'KOMODO');
 
+    emitStructuredEvent(projectId, {
+      taskId: taskSpec.taskId,
+      phase: 'planning',
+      agent: 'PLANNER',
+      action: 'pick_task',
+      output: { title: taskSpec.title, branchName: taskSpec.branchName },
+      metrics: { tokensUsed: plannerResult.cost, turnsUsed: plannerResult.turns, durationMs: plannerResult.duration },
+    }).catch(() => {});
+
     // Autonomy gate A: after Planner selects task
     if (shouldPause(GATE_STEPS.AFTER_PLANNING)) {
       const gateA = await waitForApproval({
@@ -599,6 +609,14 @@ export async function runTask(projectId, cwd) {
       });
     }
 
+    emitStructuredEvent(projectId, {
+      taskId: taskSpec.taskId,
+      phase: 'architecting',
+      agent: 'ARCHITECT',
+      action: 'analyze_codebase',
+      metrics: { tokensUsed: architectResult.cost, turnsUsed: architectResult.turns, durationMs: architectResult.duration },
+    }).catch(() => {});
+
     if (architectResult.success && architectResult.plan) {
       architectPlan = architectResult.plan;
       const createCount = architectPlan.filesToCreate?.length ?? 0;
@@ -714,6 +732,14 @@ export async function runTask(projectId, cwd) {
       });
     }
 
+    emitStructuredEvent(projectId, {
+      taskId: taskSpec.taskId,
+      phase: 'coding',
+      agent: 'CODER',
+      action: 'implement_task',
+      metrics: { tokensUsed: coderResult.cost, turnsUsed: coderResult.turns, durationMs: coderResult.duration },
+    }).catch(() => {});
+
     eventBus.emitAgentEvent('CODER', 'done');
     komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('CODER', 'idle');
@@ -804,6 +830,14 @@ export async function runTask(projectId, cwd) {
           metadata: { cost: qaResult.cost },
         });
       }
+
+      emitStructuredEvent(projectId, {
+        taskId: taskSpec.taskId,
+        phase: 'testing',
+        agent: 'QA',
+        action: 'generate_tests',
+        metrics: { tokensUsed: qaResult.cost, turnsUsed: qaResult.turns, durationMs: qaResult.duration },
+      }).catch(() => {});
 
       eventBus.emitAgentEvent('QA', 'done');
       komodoState.updateAgent('QA', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
@@ -967,6 +1001,14 @@ export async function runTask(projectId, cwd) {
           });
         }
 
+        emitStructuredEvent(projectId, {
+          taskId: taskSpec.taskId,
+          phase: 'security',
+          agent: 'SECURITY',
+          action: 'security_scan',
+          metrics: { tokensUsed: securityResult?.cost ?? null, turnsUsed: securityResult?.turns ?? null, durationMs: securityResult?.duration ?? null },
+        }).catch(() => {});
+
         eventBus.emitAgentEvent('SECURITY', 'done');
 
         if (securityResult?.success) {
@@ -1065,6 +1107,14 @@ export async function runTask(projectId, cwd) {
               metadata: { cost: testerResult.cost },
             });
           }
+
+          emitStructuredEvent(projectId, {
+            taskId: taskSpec.taskId,
+            phase: 'testing',
+            agent: 'TESTER',
+            action: 'run_tests',
+            metrics: { tokensUsed: testerResult?.cost ?? null, turnsUsed: testerResult?.turns ?? null, durationMs: testerResult?.duration ?? null },
+          }).catch(() => {});
 
           eventBus.emitAgentEvent('TESTER', 'done');
           komodoState.updateAgent('TESTER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
@@ -1396,6 +1446,14 @@ export async function runTask(projectId, cwd) {
     if (reviewResult.cost) {
       taskCost += reviewResult.cost;
     }
+
+    emitStructuredEvent(projectId, {
+      taskId: taskSpec.taskId,
+      phase: 'reviewing',
+      agent: 'REVIEWER',
+      action: 'review_pr',
+      metrics: { tokensUsed: reviewResult.cost, turnsUsed: reviewResult.turns, durationMs: reviewResult.duration },
+    }).catch(() => {});
 
     // Update coderModel if it was escalated during review loop
     if (reviewResult.escalatedCoderModel) {

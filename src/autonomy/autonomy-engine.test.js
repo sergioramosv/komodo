@@ -6,6 +6,7 @@ vi.mock('../config.js', () => ({
     autonomyLevel: 'autonomous',
     minReviewScore: 7,
     guardianMaxDiffLines: 500,
+    guardianEnableLargeDiff: true,
   },
 }));
 
