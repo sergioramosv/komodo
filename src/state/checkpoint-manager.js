@@ -31,6 +31,8 @@ class CheckpointManager {
     this._flowContext = {};
     /** @type {Function|null} Bound handler for rate limit events */
     this._rateLimitHandler = null;
+    /** @type {Function|null} Unsubscribe function */
+    this._unsubscribe = null;
   }
 
   /**
@@ -42,7 +44,10 @@ class CheckpointManager {
     this._rateLimitHandler = (payload) => {
       return this._onRateLimitDetected(payload);
     };
-    eventBus.on(EVENT_TYPES.RATE_LIMIT_DETECTED, this._rateLimitHandler);
+    const result = eventBus.on(EVENT_TYPES.RATE_LIMIT_DETECTED, this._rateLimitHandler);
+    this._unsubscribe = typeof result === 'function'
+      ? result
+      : () => eventBus.off(EVENT_TYPES.RATE_LIMIT_DETECTED, this._rateLimitHandler);
   }
 
   /**
@@ -50,8 +55,9 @@ class CheckpointManager {
    */
   stop() {
     if (this._rateLimitHandler) {
-      eventBus.off(EVENT_TYPES.RATE_LIMIT_DETECTED, this._rateLimitHandler);
+      this._unsubscribe?.();
       this._rateLimitHandler = null;
+      this._unsubscribe = null;
     }
     this._flowContext = {};
   }
