@@ -514,7 +514,7 @@ export async function runTask(projectId, cwd) {
         estimatedTokens: tokenEstimation.total,
         tokenBreakdown: tokenEstimation.breakdown,
         taskDetails: {
-          id: taskSpec.taskId,
+          id: taskSpec.taskId || '',
           title: taskSpec.title,
           userStory: taskSpec.userStory?.description || null,
           sprint: taskSpec.sprintId || null,
