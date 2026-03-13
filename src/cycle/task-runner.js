@@ -28,7 +28,7 @@ import { recordModelPerformance } from '../metrics/model-performance-tracker.js'
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { saveSection, buildCoderContext, buildReviewerContext, buildTesterContext, loadModuleLessons, extractAndSaveLessons } from '../knowledge/knowledge-graph.js';
 import { updateLearning, buildLearningContext } from '../knowledge/codebase-learning.js';
-import { syncPatternsToGlobal, syncModelPerformanceToGlobal, applyGlobalAntiPatternsToProject } from '../intelligence/cross-project-intelligence.js';
+import { syncPatternsToGlobal, syncModelPerformanceToGlobal, applyGlobalAntiPatternsToProject, getGlobalInsights } from '../intelligence/cross-project-intelligence.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
 import { runCanaryMerge } from '../canary/canary-merge.js';
@@ -667,8 +667,12 @@ export async function runTask(projectId, cwd) {
       const moduleLessons = loadModuleLessons(projectId, taskModule);
       const learningResult = buildLearningContext(projectId);
       const learningContext = learningResult?.learningContext || null;
-      if (coderContext || moduleLessons || learningContext) {
-        coderKnowledgeContext = { ...coderContext, moduleLessons, learningContext };
+      const globalInsightsContext = await getGlobalInsights({
+        title: taskSpec.title,
+        acceptanceCriteria: taskSpec.acceptanceCriteria || [],
+      }).catch(() => null);
+      if (coderContext || moduleLessons || learningContext || globalInsightsContext) {
+        coderKnowledgeContext = { ...coderContext, moduleLessons, learningContext, globalInsightsContext };
       }
     } catch (err) {
       logger.warn(`KG buildCoderContext failed (non-blocking): ${err.message}`, 'KOMODO');

@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { selectModel } from './model-selector.js';
 import { getDb } from '../../skills/planning-task-mcp/src/firebase.js';
+import { getGlobalModelRecommendation } from '../intelligence/cross-project-intelligence.js';
 
 const AGENT_TAG = 'SMART-ROUTER';
 
@@ -104,6 +105,14 @@ export async function selectModelSmart({
   });
 
   if (!hasSufficientData) {
+    // Try global model recommendation as fallback for new projects
+    if (config.crossProjectIntelligence) {
+      const globalModel = await getGlobalModelRecommendation(agentRole.toLowerCase(), cli).catch(() => null);
+      if (globalModel) {
+        logger.info(`Smart routing: global fallback for ${role} → ${globalModel}`, AGENT_TAG);
+        return globalModel;
+      }
+    }
     logger.info(
       `Smart routing: insufficient data for ${role} (need ${MIN_TASKS} tasks/model) → static fallback`,
       AGENT_TAG,

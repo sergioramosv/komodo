@@ -237,6 +237,143 @@ export async function syncModelPerformanceToGlobal(projectId) {
 }
 
 /**
+ * Models that belong to each CLI type — used by getGlobalModelRecommendation
+ * to filter global performance data to the relevant CLI.
+ */
+const CLI_MODEL_KEYWORDS = {
+  claude: ['haiku', 'sonnet', 'opus'],
+  codex: ['codex-mini', 'o4-mini', 'o3'],
+  gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
+};
+
+/**
+ * Returns the globally best-performing model for a given role and CLI family.
+ * Used as a fallback for new projects that lack local routing data.
+ *
+ * Reads /global-intelligence/model-performance/ and picks the model with the
+ * highest avgSuccessRate that belongs to the given CLI and has at least 3 tasks.
+ *
+ * @param {string} role - lowercase role name (coder, reviewer, planner)
+ * @param {string} cli  - CLI family (claude, codex, gemini)
+ * @returns {Promise<string|null>} model name or null if not enough global data
+ */
+export async function getGlobalModelRecommendation(role, cli) {
+  try {
+    const db = getDb();
+    const snap = await db.ref(`${GLOBAL_ROOT}/model-performance`).once('value');
+    const data = snap.val();
+    if (!data) return null;
+
+    const cliLower = (cli || '').toLowerCase();
+    const allowedKeywords = CLI_MODEL_KEYWORDS[cliLower] || [];
+    if (allowedKeywords.length === 0) return null;
+
+    const roleLower = (role || '').toLowerCase();
+    let bestModel = null;
+    let bestRate = -1;
+
+    for (const [modelKey, roles] of Object.entries(data)) {
+      const isCliModel = allowedKeywords.some(
+        (kw) => modelKey.toLowerCase().replace(/_/g, '-').includes(kw),
+      );
+      if (!isCliModel) continue;
+
+      const roleData = roles[roleLower];
+      if (!roleData || (roleData.taskCount || 0) < 3) continue;
+
+      if ((roleData.avgSuccessRate ?? -1) > bestRate) {
+        bestRate = roleData.avgSuccessRate;
+        bestModel = roleData.model || modelKey.replace(/_/g, '.');
+      }
+    }
+
+    if (bestModel) {
+      logger.info(
+        `Global model recommendation for ${role} on ${cli}: ${bestModel} (rate=${bestRate.toFixed(2)})`,
+        AGENT_TAG,
+      );
+    }
+
+    return bestModel;
+  } catch (err) {
+    logger.warn(`getGlobalModelRecommendation failed: ${err.message}`, AGENT_TAG);
+    return null;
+  }
+}
+
+/**
+ * Builds a compact global-intelligence context string to inject into the Coder
+ * prompt for a specific task.
+ *
+ * Algorithm:
+ *  1. Fetches global patterns (filtered by minScore threshold).
+ *  2. Filters patterns by keyword overlap with the task context
+ *     (title + acceptanceCriteria). Irrelevant patterns are excluded.
+ *  3. Fetches ALL global anti-patterns — always included regardless of relevance.
+ *  4. Caps the resulting string at 2000 characters (~500 tokens).
+ *
+ * @param {{ title?: string, acceptanceCriteria?: string[] }} [taskContext]
+ * @param {{ minScore?: number }} [options]
+ * @returns {Promise<string>} Formatted markdown string, or '' if nothing relevant
+ */
+export async function getGlobalInsights(taskContext = {}, options = {}) {
+  try {
+    const threshold = options.minScore ?? config.crossProjectUniversalityThreshold ?? 0.5;
+
+    // Build keyword set from task context
+    const contextText = [
+      taskContext.title || '',
+      ...(taskContext.acceptanceCriteria || []),
+    ].join(' ').toLowerCase();
+    const keywords = [...new Set(contextText.split(/\W+/).filter((w) => w.length > 3))];
+
+    const [patterns, antiPatterns] = await Promise.all([
+      getGlobalPatterns({ minScore: threshold }),
+      getGlobalAntiPatterns(),
+    ]);
+
+    // Keep only patterns that share at least one keyword with the task
+    const relevantPatterns = keywords.length > 0
+      ? patterns.filter((p) => {
+          if (!p.text) return false;
+          const lower = p.text.toLowerCase();
+          return keywords.some((kw) => lower.includes(kw));
+        })
+      : [];
+
+    if (relevantPatterns.length === 0 && antiPatterns.length === 0) return '';
+
+    const lines = [];
+
+    if (relevantPatterns.length > 0) {
+      lines.push('### Universal Patterns (cross-project)');
+      for (const p of relevantPatterns) {
+        lines.push(`- ${p.text}`);
+      }
+    }
+
+    if (antiPatterns.length > 0) {
+      lines.push('### Global Anti-Patterns (always apply)');
+      for (const ap of antiPatterns) {
+        lines.push(`- ${ap.text}`);
+      }
+    }
+
+    let result = lines.join('\n');
+
+    // Cap at ~500 tokens (2000 chars)
+    if (result.length > 2000) {
+      result = result.slice(0, 1997) + '...';
+    }
+
+    return result;
+  } catch (err) {
+    logger.warn(`getGlobalInsights failed: ${err.message}`, AGENT_TAG);
+    return '';
+  }
+}
+
+/**
  * Retrieves global patterns from Firebase, optionally filtered by minimum
  * universality score.
  *

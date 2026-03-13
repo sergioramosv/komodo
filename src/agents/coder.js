@@ -111,10 +111,16 @@ export async function implementTask(taskSpec, cwd, { model, codingGuidelines, ar
     );
   }
 
+  // Build global intelligence section (cross-project patterns and anti-patterns)
+  let globalInsightsSection = '';
+  if (knowledgeContext?.globalInsightsContext) {
+    globalInsightsSection = `\n## Global Intelligence (cross-project patterns)\n${knowledgeContext.globalInsightsContext}\n`;
+  }
+
   // Prompt prefix sharing: static/reusable context sections go FIRST so they can be
   // cached across consecutive invocations. Dynamic task-specific content goes at the END.
   // Note: lessonsSection is task-specific (depends on taskModule) so it goes in the dynamic part.
-  const staticPrefix = [codebaseSection, styleSection, feedbackSection, guidelinesSection, learningSection]
+  const staticPrefix = [codebaseSection, styleSection, feedbackSection, guidelinesSection, learningSection, globalInsightsSection]
     .filter(Boolean)
     .join('');
 
