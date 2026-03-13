@@ -454,9 +454,9 @@ describe('Cost tracking E2E — full cycle', () => {
       expect(budgetManager.getStatus().dailySpent).toBe(0);
     });
 
-    it('recordCost(undefined) — undefined input does not crash and does not accumulate', () => {
+    it('recordCost(undefined) — undefined input does not crash and uses default cost', () => {
       expect(() => budgetManager.recordCost(undefined)).not.toThrow();
-      expect(budgetManager.getStatus().dailySpent).toBe(0);
+      expect(budgetManager.getStatus().dailySpent).toBe(config.estimatedCostPerInvocation);
     });
   });
 
