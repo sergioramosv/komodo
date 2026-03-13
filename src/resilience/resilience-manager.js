@@ -93,11 +93,15 @@ class ResilienceManager {
     if (circuit) {
       if (circuit.isAboutToOpen()) {
         logger.warn(`Circuit "${service}" about to open — attempting self-healing first`, 'RESILIENCE');
-        await healingEngine.handleFailure({
+        const healResult = await healingEngine.handleFailure({
           ...errorContext,
           errorMessage: error || `${service} service failure`,
           service,
         });
+        if (healResult.healed) {
+          errorBudget.record(true);
+          return;
+        }
       }
       circuit.recordFailure(error);
     }

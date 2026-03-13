@@ -882,13 +882,6 @@ export async function runTask(projectId, cwd) {
                 eventBus.emitAgentEvent('CODER', 'idle');
                 return { fixed: true };
               }
-              if (healResult.exhausted && getActiveLevel() === AUTONOMY_LEVELS.SUPERVISED) {
-                await waitForApproval({
-                  step: GATE_STEPS.BEFORE_MERGE,
-                  description: `Self-healing exhausted for task ${taskSpec.taskId} — manual intervention needed`,
-                  metadata: { taskId: taskSpec.taskId, reason: 'self-heal:exhausted', errorMessage: failureOutput.slice(0, 500) },
-                });
-              }
             }
 
             const fixResult = await fixReviewIssues(
@@ -1098,13 +1091,6 @@ export async function runTask(projectId, cwd) {
           if (healResult.healed) {
             return { fixed: true };
           }
-          if (healResult.exhausted && getActiveLevel() === AUTONOMY_LEVELS.SUPERVISED) {
-            await waitForApproval({
-              step: GATE_STEPS.BEFORE_MERGE,
-              description: `Self-healing exhausted for task ${taskSpec.taskId} — manual intervention needed`,
-              metadata: { taskId: taskSpec.taskId, reason: 'self-heal:exhausted', errorMessage: failureOutput.slice(0, 500) },
-            });
-          }
           // Self-healing failed — fall through to fixReviewIssues() below
         }
 
@@ -1249,13 +1235,6 @@ export async function runTask(projectId, cwd) {
         branchName: taskSpec.branchName,
         cwd,
       });
-      if (conflictHeal.exhausted && getActiveLevel() === AUTONOMY_LEVELS.SUPERVISED) {
-        await waitForApproval({
-          step: GATE_STEPS.BEFORE_MERGE,
-          description: `Self-healing exhausted for task ${taskSpec.taskId} — manual intervention needed`,
-          metadata: { taskId: taskSpec.taskId, reason: 'self-heal:exhausted', errorMessage: 'Merge conflicts detected' },
-        });
-      }
       if (!conflictHeal.healed) {
         logger.error(`PR #${prNumber} has merge conflicts. Cannot proceed with review.`, 'KOMODO');
         closePR(repo, prNumber, 'Merge conflicts detected. PR needs rebase before review.');
@@ -1450,13 +1429,6 @@ export async function runTask(projectId, cwd) {
         branchName: taskSpec.branchName,
         cwd,
       });
-      if (preMergeHeal.exhausted && getActiveLevel() === AUTONOMY_LEVELS.SUPERVISED) {
-        await waitForApproval({
-          step: GATE_STEPS.BEFORE_MERGE,
-          description: `Self-healing exhausted for task ${taskSpec.taskId} — manual intervention needed`,
-          metadata: { taskId: taskSpec.taskId, reason: 'self-heal:exhausted', errorMessage: 'Merge conflicts detected at merge time' },
-        });
-      }
       if (!preMergeHeal.healed) {
         logger.error(`PR #${prNumber} has merge conflicts. Cannot merge.`, 'KOMODO');
         closePR(repo, prNumber, 'Merge conflicts detected at merge time. PR needs rebase.');

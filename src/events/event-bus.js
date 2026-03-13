@@ -333,19 +333,6 @@ export class KomodoEventBus extends EventEmitter {
   }
 
   /**
-   * Suscribirse a un evento. Retorna `this` para permitir chaining,
-   * siguiendo el contrato de EventEmitter.
-   * Para desuscribirse usa `off(eventName, listener)`.
-   *
-   * @param {string} eventName
-   * @param {Function} listener
-   * @returns {this}
-   */
-  on(eventName, listener) {
-    return super.on(eventName, listener);
-  }
-
-  /**
    * Elimina todos los listeners, incluyendo los de onAny.
    */
   removeAllListeners(eventName) {
