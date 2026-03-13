@@ -145,6 +145,11 @@ export const EVENT_TYPES = {
   KNOWLEDGE_GRAPH_SAVED: 'knowledge:graph:saved',
   KNOWLEDGE_LESSONS_EXTRACTED: 'knowledge:lessons:extracted',
 
+  // Cross-project intelligence events
+  CROSS_PROJECT_PATTERN_PROMOTED: 'cross-project:pattern:promoted',
+  CROSS_PROJECT_ANTI_PATTERN_PROPAGATED: 'cross-project:anti-pattern:propagated',
+  GLOBAL_MODEL_PERF_UPDATED: 'cross-project:model-perf:updated',
+
   // Parallel execution events
   PARALLEL_RUN_START: 'parallel:run:start',
   PARALLEL_RUN_COMPLETE: 'parallel:run:complete',

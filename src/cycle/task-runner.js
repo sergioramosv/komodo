@@ -28,6 +28,7 @@ import { recordModelPerformance } from '../metrics/model-performance-tracker.js'
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { saveSection, buildCoderContext, buildReviewerContext, buildTesterContext, loadModuleLessons, extractAndSaveLessons } from '../knowledge/knowledge-graph.js';
 import { updateLearning, buildLearningContext } from '../knowledge/codebase-learning.js';
+import { syncPatternsToGlobal, syncModelPerformanceToGlobal } from '../intelligence/cross-project-intelligence.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
 import { runCanaryMerge } from '../canary/canary-merge.js';
@@ -1451,6 +1452,13 @@ export async function runTask(projectId, cwd) {
       logger.warn(`updateLearning (approved) failed (non-blocking): ${err.message}`, 'KOMODO');
     }
 
+    // Sync patterns to global intelligence (best effort)
+    try {
+      await syncPatternsToGlobal(projectId || config.defaultProjectId);
+    } catch (err) {
+      logger.warn(`syncPatternsToGlobal failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
     eventBus.emitEvent(EVENT_TYPES.KNOWLEDGE_LESSONS_EXTRACTED, {
       metadata: { taskId: taskSpec.taskId, module: taskModule },
     });
@@ -1791,6 +1799,13 @@ export async function runTask(projectId, cwd) {
       });
     } catch (err) {
       logger.warn(`Model performance tracking failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
+    // Sync model performance to global intelligence (best effort)
+    try {
+      await syncModelPerformanceToGlobal(projectId || config.defaultProjectId);
+    } catch (err) {
+      logger.warn(`syncModelPerformanceToGlobal failed (non-blocking): ${err.message}`, 'KOMODO');
     }
 
     // Record smart routing outcomes for future learning (best effort)

@@ -27,7 +27,7 @@ function learningPath(projectId) {
  * @param {string} projectId
  * @returns {{ patterns: string[], antiPatterns: string[], updatedAt: string|null }}
  */
-function loadLearningStore(projectId) {
+export function loadLearningStore(projectId) {
   try {
     const filePath = learningPath(projectId);
     if (!existsSync(filePath)) {
@@ -51,7 +51,7 @@ function loadLearningStore(projectId) {
  * @param {string} projectId
  * @param {{ patterns: string[], antiPatterns: string[] }} store
  */
-function saveLearningStore(projectId, store) {
+export function saveLearningStore(projectId, store) {
   const filePath = learningPath(projectId);
   mkdirSync(join(config.knowledgeDir, projectId), { recursive: true });
   writeFileSync(

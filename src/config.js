@@ -188,6 +188,10 @@ export const config = {
   codebaseLearningEnabled: process.env.CODEBASE_LEARNING_ENABLED !== 'false', // default: true
   codebaseLearningForceRefresh: process.env.CODEBASE_LEARNING_FORCE_REFRESH === 'true',
 
+  // Cross-Project Intelligence (sync patterns/anti-patterns/model-perf globally)
+  crossProjectIntelligence: process.env.CROSS_PROJECT_INTELLIGENCE !== 'false', // default: true
+  crossProjectUniversalityThreshold: parseFloat(process.env.CROSS_PROJECT_UNIVERSALITY_THRESHOLD || '0.6'),
+
   // Style Guide Detector (auto-detected conventions injected into Coder prompt)
   styleDetectorEnabled: process.env.STYLE_DETECTOR_ENABLED !== 'false', // default: true
 
