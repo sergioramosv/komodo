@@ -152,6 +152,12 @@ export const EVENT_TYPES = {
   PARALLEL_RATE_LIMIT_PAUSE: 'parallel:rate-limit:pause',
   PARALLEL_RATE_LIMIT_RESUME: 'parallel:rate-limit:resume',
 
+  // Intra-task parallel execution events (Security + Tester in parallel)
+  PARALLEL_INTRA_START: 'parallel:intra:start',
+  PARALLEL_INTRA_SECURITY_DONE: 'parallel:intra:security:done',
+  PARALLEL_INTRA_TESTER_CANCELLED: 'parallel:intra:tester:cancelled',
+  PARALLEL_INTRA_COMPLETE: 'parallel:intra:complete',
+
   // Smart batching events
   BATCH_PREPARED: 'batch:prepared',
   BATCH_TASK_COMPLETE: 'batch:task:complete',

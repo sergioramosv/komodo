@@ -32,7 +32,7 @@ function getTesterMcpServers() {
  * @param {string} [options.model] - Modelo a usar
  * @returns {Promise<{success: boolean, tester: Object|null, cost: number|null, duration: number, error?: string}>}
  */
-export async function runTesterAgent({ taskSpec, filesChanged, branchName, repo, prNumber, projectId, cwd, model }) {
+export async function runTesterAgent({ taskSpec, filesChanged, branchName, repo, prNumber, projectId, cwd, model, signal }) {
   logger.taskHeader(`TESTER - Generando tests quirúrgicos para: ${taskSpec.title}`);
 
   const systemPrompt = getTesterSystemPrompt();
@@ -90,6 +90,7 @@ Devuelve el resultado como JSON con: testsGenerated, testsPassed, testsFailed, c
     maxTurns: 30,
     totalTimeout: 600_000, // 10 min
     model: resolvedModel,
+    signal,
   });
 
   if (!result.success || !result.result) {
