@@ -40,6 +40,12 @@ describe('KomodoState', () => {
       expect(state.agents.REVIEWER.status).toBe('idle');
     });
 
+    it('inicializa el agente TESTER con estado idle', () => {
+      expect(state.agents.TESTER.name).toBe('TESTER');
+      expect(state.agents.TESTER.status).toBe('idle');
+      expect(state.agents.TESTER.currentTask).toBeNull();
+    });
+
     it('cada agente tiene todos los campos esperados', () => {
       const agent = state.agents.PLANNER;
       expect(agent).toMatchObject({
@@ -145,6 +151,18 @@ describe('KomodoState', () => {
         agentName: 'CODER',
         previousState: 'idle',
         newState: 'walking',
+        metadata: {},
+      });
+    });
+
+    it('emite evento AGENT_STATE_CHANGE con metadata cuando se provee', () => {
+      state.updateAgent('TESTER', { status: 'working' }, { phase: 'testing', taskId: 'task-1', taskTitle: 'My Task' });
+
+      expect(eventBus.emitEvent).toHaveBeenCalledWith(EVENT_TYPES.AGENT_STATE_CHANGE, {
+        agentName: 'TESTER',
+        previousState: 'idle',
+        newState: 'working',
+        metadata: { phase: 'testing', taskId: 'task-1', taskTitle: 'My Task' },
       });
     });
 

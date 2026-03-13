@@ -3,7 +3,7 @@ import { getTesterSystemPrompt } from '../prompts/tester-system.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
-import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
+import { eventBus, EVENT_TYPES, AGENT_STATES } from '../events/event-bus.js';
 import { buildTesterContext } from '../knowledge/knowledge-graph.js';
 
 /**
@@ -34,6 +34,13 @@ function getTesterMcpServers() {
  */
 export async function runTesterAgent({ taskSpec, filesChanged, branchName, repo, prNumber, projectId, cwd, model, signal }) {
   logger.taskHeader(`TESTER - Generando tests quirúrgicos para: ${taskSpec.title}`);
+
+  eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+    agentName: 'TESTER',
+    previousState: AGENT_STATES.IDLE,
+    newState: AGENT_STATES.WORKING,
+    metadata: { phase: 'testing', taskId: taskSpec.taskId, taskTitle: taskSpec.title },
+  });
 
   const systemPrompt = getTesterSystemPrompt();
 
@@ -94,6 +101,12 @@ Devuelve el resultado como JSON con: testsGenerated, testsPassed, testsFailed, c
   });
 
   if (!result.success || !result.result) {
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'TESTER',
+      previousState: AGENT_STATES.WORKING,
+      newState: AGENT_STATES.IDLE,
+      metadata: { phase: 'idle' },
+    });
     return {
       success: false,
       tester: null,
@@ -108,6 +121,12 @@ Devuelve el resultado como JSON con: testsGenerated, testsPassed, testsFailed, c
 
   if (!valid) {
     logger.warn(`Respuesta del Tester incompleta. Faltan: ${missing.join(', ')}`, 'TESTER');
+    eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+      agentName: 'TESTER',
+      previousState: AGENT_STATES.WORKING,
+      newState: AGENT_STATES.IDLE,
+      metadata: { phase: 'idle' },
+    });
     return {
       success: false,
       tester: null,
@@ -144,6 +163,13 @@ Devuelve el resultado como JSON con: testsGenerated, testsPassed, testsFailed, c
   } else {
     logger.success(`TESTER: ${total} tests quirúrgicos generados y pasados`, 'TESTER');
   }
+
+  eventBus.emitEvent(EVENT_TYPES.AGENT_STATE_CHANGE, {
+    agentName: 'TESTER',
+    previousState: AGENT_STATES.WORKING,
+    newState: AGENT_STATES.IDLE,
+    metadata: { phase: 'idle' },
+  });
 
   return {
     success: true,
