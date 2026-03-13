@@ -595,7 +595,6 @@ export async function runTask(projectId, cwd, options = {}) {
     // ═══════════════════════════════════════════
     logger.logStep(2, 7, 'Architect analizando codebase...', 'KOMODO');
 
-    const architectCli = config.cliArchitect;
     await slotManager?.acquire('architecting', architectCli, taskSpec.taskId);
 
     let architectPlan = null;
@@ -676,6 +675,16 @@ export async function runTask(projectId, cwd, options = {}) {
 
     await slotManager?.acquire('coding', coderCli, taskSpec.taskId);
 
+    // KG: derive module from task tags or subdirectory of most-modified file.
+    // Only use path segment [1] when the file is nested in a subdirectory (≥3 parts),
+    // e.g. src/agents/coder.js → 'agents'. Files directly in top-level dir like
+    // src/config.js (2 parts) fall through to 'general' to avoid using the filename as module.
+    const deriveModule = (p) => { const parts = p?.split('/'); return parts?.length >= 3 ? parts[1] : null; };
+    const taskModule = taskSpec.tags?.[0]
+      || deriveModule(architectPlan?.filesToModify?.[0]?.path)
+      || deriveModule(architectPlan?.filesToCreate?.[0]?.path)
+      || 'general';
+
     let coderResult;
     try {
       komodoState.updatePhase(PHASES.CODING, { currentTask: taskSpec.taskId });
@@ -688,16 +697,6 @@ export async function runTask(projectId, cwd, options = {}) {
       });
 
       eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
-
-      // KG: derive module from task tags or subdirectory of most-modified file.
-      // Only use path segment [1] when the file is nested in a subdirectory (≥3 parts),
-      // e.g. src/agents/coder.js → 'agents'. Files directly in top-level dir like
-      // src/config.js (2 parts) fall through to 'general' to avoid using the filename as module.
-      const deriveModule = (p) => { const parts = p?.split('/'); return parts?.length >= 3 ? parts[1] : null; };
-      const taskModule = taskSpec.tags?.[0]
-        || deriveModule(architectPlan?.filesToModify?.[0]?.path)
-        || deriveModule(architectPlan?.filesToCreate?.[0]?.path)
-        || 'general';
 
       // Apply global critical anti-patterns to local store so coder benefits from cross-project security lessons
       try {
