@@ -112,8 +112,12 @@ class BudgetManager {
    * @returns {{ allowed: boolean, dailySpent: number, weeklySpent: number, warning: boolean, exceeded: boolean }}
    */
   recordCost(cost, metadata = {}) {
-    // Reject null, undefined, zero, and negative amounts — these are no-ops
-    if (cost == null || typeof cost !== 'number' || !isFinite(cost) || cost <= 0) {
+    // undefined → fall back to configured default cost per invocation
+    if (cost === undefined) {
+      cost = config.estimatedCostPerInvocation;
+    }
+    // Reject null, zero, and negative amounts — these are no-ops
+    if (cost === null || typeof cost !== 'number' || !isFinite(cost) || cost <= 0) {
       return;
     }
     const amount = cost;

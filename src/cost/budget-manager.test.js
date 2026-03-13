@@ -95,11 +95,11 @@ describe('BudgetManager', () => {
       expect(result.exceeded).toBe(false);
     });
 
-    it('returns undefined and does not accumulate when no amount provided', () => {
+    it('uses estimatedCostPerInvocation when no amount provided', () => {
       const result = budgetManager.recordCost();
 
-      expect(result).toBeUndefined();
-      expect(budgetManager.getStatus().dailySpent).toBe(0);
+      expect(result).toBeDefined();
+      expect(budgetManager.getStatus().dailySpent).toBe(0.05);
     });
 
     it('accumulates multiple costs', () => {
