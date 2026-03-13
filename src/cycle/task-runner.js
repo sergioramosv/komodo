@@ -28,7 +28,7 @@ import { recordModelPerformance } from '../metrics/model-performance-tracker.js'
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { saveSection, buildCoderContext, buildReviewerContext, buildTesterContext, loadModuleLessons, extractAndSaveLessons } from '../knowledge/knowledge-graph.js';
 import { updateLearning, buildLearningContext } from '../knowledge/codebase-learning.js';
-import { syncPatternsToGlobal, syncModelPerformanceToGlobal, applyGlobalAntiPatternsToProject } from '../intelligence/cross-project-intelligence.js';
+import { syncPatternsToGlobal, syncModelPerformanceToGlobal, applyGlobalAntiPatternsToProject, applyGlobalPatternsToProject, getGlobalInsights } from '../intelligence/cross-project-intelligence.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
 import { runCanaryMerge } from '../canary/canary-merge.js';
@@ -42,6 +42,7 @@ import { waitForApproval } from '../autonomy/approval-gate.js';
 import { healingEngine } from '../self-healing/healing-engine.js';
 import { testFailureStrategy } from '../self-healing/strategies/test-failure.js';
 import { selectTaskStrategy, shouldPauseForForecast, isTaskAllowedByStrategy, applyForecastModelOverride } from '../estimation/budget-strategy.js';
+import { emitStructuredEvent, PHASES as STRUCTURED_PHASES, ACTIONS } from '../events/structured-event-logger.js';
 
 /**
  * Fetches the codingGuidelines field from a project.
@@ -308,6 +309,7 @@ export async function runTask(projectId, cwd) {
   let prNumber = null;
   let repo = '';
   let taskCost = 0;
+  let lastEventId = null;
 
   try {
     // ═══════════════════════════════════════════
@@ -338,6 +340,18 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('PLANNER', 'done');
     komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('PLANNER', 'idle');
+
+    const plannerEventId = (await emitStructuredEvent(projectId, {
+      taskId: plannerResult.task?.taskId || 'unknown',
+      phase: STRUCTURED_PHASES.PLANNING,
+      agent: 'PLANNER',
+      action: ACTIONS.PICK_TASK,
+      output: plannerResult.task ? { title: plannerResult.task.title, taskId: plannerResult.task.taskId } : {},
+      metrics: { durationMs: Date.now() - startTime },
+      context: { success: plannerResult.success },
+      parentEventId: null,
+    }).catch(() => null))?.id || null;
+    lastEventId = plannerEventId;
 
     if (!plannerResult.success) {
       return makeResult({ success: false, startTime, error: plannerResult.error });
@@ -576,6 +590,7 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('ARCHITECT', 'working', { taskId: taskSpec.taskId });
 
     let architectPlan = null;
+    const architectStartTs = Date.now();
     const architectResult = await withWatchdog(
       () => analyzeTask(taskSpec, cwd, { model: architectModel }),
       {
@@ -627,6 +642,21 @@ export async function runTask(projectId, cwd) {
       logger.warn(`Architect failed (${architectResult.error}), proceeding without plan`, 'KOMODO');
     }
 
+    const architectEventId = (await emitStructuredEvent(projectId, {
+      taskId: taskSpec.taskId,
+      phase: STRUCTURED_PHASES.ARCHITECTING,
+      agent: 'ARCHITECT',
+      action: ACTIONS.ANALYZE_CODEBASE,
+      output: architectResult.success && architectPlan ? {
+        filesToCreate: architectPlan.filesToCreate?.length ?? 0,
+        filesToModify: architectPlan.filesToModify?.length ?? 0,
+      } : { error: architectResult.error },
+      metrics: { durationMs: Date.now() - architectStartTs },
+      context: { success: architectResult.success },
+      parentEventId: lastEventId,
+    }).catch(() => null))?.id || null;
+    lastEventId = architectEventId;
+
     // ═══════════════════════════════════════════
     // PASO 3: CODER — Implementar
     // ═══════════════════════════════════════════
@@ -653,11 +683,24 @@ export async function runTask(projectId, cwd) {
       || deriveModule(architectPlan?.filesToCreate?.[0]?.path)
       || 'general';
 
-    // Apply global critical anti-patterns to local store so coder benefits from cross-project security lessons
+    // Apply global critical anti-patterns and promoted patterns so coder benefits from cross-project knowledge
     try {
       await applyGlobalAntiPatternsToProject(projectId || config.defaultProjectId);
     } catch (err) {
       logger.warn(`applyGlobalAntiPatternsToProject failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+    try {
+      await applyGlobalPatternsToProject(projectId || config.defaultProjectId);
+    } catch (err) {
+      logger.warn(`applyGlobalPatternsToProject failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
+
+    let globalInsightsContext = null;
+    try {
+      const insights = await getGlobalInsights({ title: taskSpec.title, acceptanceCriteria: taskSpec.acceptanceCriteria });
+      if (insights) globalInsightsContext = insights;
+    } catch (err) {
+      logger.warn(`getGlobalInsights failed (non-blocking): ${err.message}`, 'KOMODO');
     }
 
     // KG: build compact context for Coder and load cross-task lessons
@@ -667,13 +710,14 @@ export async function runTask(projectId, cwd) {
       const moduleLessons = loadModuleLessons(projectId, taskModule);
       const learningResult = buildLearningContext(projectId);
       const learningContext = learningResult?.learningContext || null;
-      if (coderContext || moduleLessons || learningContext) {
-        coderKnowledgeContext = { ...coderContext, moduleLessons, learningContext };
+      if (coderContext || moduleLessons || learningContext || globalInsightsContext) {
+        coderKnowledgeContext = { ...coderContext, moduleLessons, learningContext, globalInsights: globalInsightsContext };
       }
     } catch (err) {
       logger.warn(`KG buildCoderContext failed (non-blocking): ${err.message}`, 'KOMODO');
     }
 
+    const coderStartTs = Date.now();
     let coderResult = await withWatchdog(
       () => implementTask(taskSpec, cwd, { model: coderModel, codingGuidelines, architectPlan, knowledgeContext: coderKnowledgeContext }),
       {
@@ -717,6 +761,22 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('CODER', 'done');
     komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('CODER', 'idle');
+
+    const coderEventId = (await emitStructuredEvent(projectId, {
+      taskId: taskSpec.taskId,
+      phase: STRUCTURED_PHASES.CODING,
+      agent: 'CODER',
+      action: ACTIONS.IMPLEMENT_TASK,
+      output: coderResult.success ? {
+        prNumber: coderResult.pr?.prNumber,
+        filesChanged: coderResult.pr?.filesChanged || [],
+        summary: coderResult.pr?.summary || '',
+      } : { error: coderResult.error },
+      metrics: { durationMs: Date.now() - coderStartTs },
+      context: { success: coderResult.success, branchName: taskSpec.branchName },
+      parentEventId: lastEventId,
+    }).catch(() => null))?.id || null;
+    lastEventId = coderEventId;
 
     if (!coderResult.success) {
       // Cleanup: close any orphan PR the Coder may have created before timing out
@@ -785,6 +845,7 @@ export async function runTask(projectId, cwd) {
 
       const qaModel = selectModel(config.cliQA, 'QA', complexityLevel, taskModelOverride);
 
+      const qaStartTs = Date.now();
       const qaResult = await withWatchdog(
         () => runQAAgent({
           taskSpec,
@@ -830,6 +891,18 @@ export async function runTask(projectId, cwd) {
       } else {
         logger.warn(`QA agent failed: ${qaResult.error}`, 'KOMODO');
       }
+
+      const qaEventId = (await emitStructuredEvent(projectId, {
+        taskId: taskSpec.taskId,
+        phase: STRUCTURED_PHASES.TESTING,
+        agent: 'QA',
+        action: ACTIONS.GENERATE_TESTS,
+        output: qaResult.success ? { summary: qaResult.qa?.summary } : { error: qaResult.error },
+        metrics: { durationMs: Date.now() - qaStartTs },
+        context: { success: qaResult.success, prNumber },
+        parentEventId: lastEventId,
+      }).catch(() => null))?.id || null;
+      lastEventId = qaEventId;
 
       // Check for rate limit pause
       if (komodoState.isPauseRequested()) {
@@ -1047,6 +1120,23 @@ export async function runTask(projectId, cwd) {
           logger.warn(`Security agent failed: ${securitySettled.reason?.message || securityResult?.error || 'unknown'} — continuing without security report`, 'KOMODO');
           komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
         }
+
+        const securityResult2 = securitySettled.status === 'fulfilled' ? securitySettled.value : null;
+        const securityEventId = (await emitStructuredEvent(projectId, {
+          taskId: taskSpec.taskId,
+          phase: STRUCTURED_PHASES.SECURITY,
+          agent: 'SECURITY',
+          action: ACTIONS.SECURITY_SCAN,
+          output: securityResult2?.success ? {
+            verdict: securityResult2.security?.verdict,
+            criticalCount: securityResult2.security?.criticalCount,
+            highCount: securityResult2.security?.highCount,
+          } : { error: securitySettled.reason?.message || securityResult2?.error },
+          metrics: {},
+          context: { success: !!securityResult2?.success, prNumber },
+          parentEventId: lastEventId,
+        }).catch(() => null))?.id || null;
+        lastEventId = securityEventId;
       }
 
       // ── Procesar resultado de Tester ──
@@ -1157,6 +1247,18 @@ export async function runTask(projectId, cwd) {
           } else {
             logger.warn(`Tester agent failed: ${testerSettled.reason?.message || testerResult?.error || 'unknown'}`, 'KOMODO');
           }
+
+          const testerEventId = (await emitStructuredEvent(projectId, {
+            taskId: taskSpec.taskId,
+            phase: STRUCTURED_PHASES.TESTING,
+            agent: 'TESTER',
+            action: ACTIONS.RUN_TESTS,
+            output: testerResult?.success ? { summary: testerResult.tester?.summary } : { error: testerSettled.reason?.message || testerResult?.error },
+            metrics: {},
+            context: { success: !!testerResult?.success, prNumber },
+            parentEventId: lastEventId,
+          }).catch(() => null))?.id || null;
+          lastEventId = testerEventId;
         }
       }
 
@@ -1384,6 +1486,7 @@ export async function runTask(projectId, cwd) {
       logger.warn(`KG buildReviewerContext failed (non-blocking): ${err.message}`, 'KOMODO');
     }
 
+    const reviewerStartTs = Date.now();
     const reviewResult = await withWatchdog(
       () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, securityReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold: config.smartModelRoutingThreshold, coderCli, knowledgeContext: reviewerKnowledgeContext, filesChanged: coderResult.pr.filesChanged || [] }),
       { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
@@ -1392,6 +1495,22 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('REVIEWER', 'done');
     komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('REVIEWER', 'idle');
+
+    const reviewerEventId = (await emitStructuredEvent(projectId, {
+      taskId: taskSpec.taskId,
+      phase: STRUCTURED_PHASES.REVIEWING,
+      agent: 'REVIEWER',
+      action: ACTIONS.REVIEW_PR,
+      output: {
+        approved: reviewResult.approved,
+        cycles: reviewResult.cycles,
+        error: reviewResult.error || null,
+      },
+      metrics: { durationMs: Date.now() - reviewerStartTs },
+      context: { prNumber, success: !!reviewResult.approved },
+      parentEventId: lastEventId,
+    }).catch(() => null))?.id || null;
+    lastEventId = reviewerEventId;
 
     if (reviewResult.cost) {
       taskCost += reviewResult.cost;
