@@ -88,6 +88,8 @@ export async function emitStructuredEvent(projectId, params) {
 
   try {
     const db = getDb();
+    // Path uses 'structured-events/' (not '/events/' from AC#3) by intentional Architect decision
+    // to avoid collision with the existing EventBus event stream. See architect.json for rationale.
     await db.ref(`structured-events/${projectId}/${event.taskId}/${event.id}`).set(event);
   } catch (err) {
     console.warn(`structured-event-logger: failed to persist event (${err.message})`);
@@ -109,16 +111,17 @@ export async function emitStructuredEvent(projectId, params) {
     try {
       const db = getDb();
       const metricsRef = db.ref(`task-token-metrics/${projectId}/${event.taskId}`);
-      const snapshot = await metricsRef.once('value');
-      const current = snapshot.val() || { totalTokensUsed: 0, eventCount: 0 };
-
-      const updated = {
-        totalTokensUsed: current.totalTokensUsed + event.metrics.tokensUsed,
-        eventCount: current.eventCount + 1,
-        lastUpdated: new Date().toISOString(),
-      };
-
-      await metricsRef.set(updated);
+      // Use a Firebase transaction to avoid race conditions when multiple agents
+      // (e.g. SECURITY + TESTER running in parallel via Promise.allSettled) write concurrently.
+      const { snapshot: txSnapshot } = await metricsRef.transaction((current) => {
+        const prev = current || { totalTokensUsed: 0, eventCount: 0 };
+        return {
+          totalTokensUsed: prev.totalTokensUsed + event.metrics.tokensUsed,
+          eventCount: prev.eventCount + 1,
+          lastUpdated: new Date().toISOString(),
+        };
+      });
+      const updated = txSnapshot.val();
 
       eventBus.emitEvent(EVENT_TYPES.TASK_TOKEN_METRICS_UPDATED, {
         agentName: event.agent,
