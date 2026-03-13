@@ -99,10 +99,22 @@ export async function implementTask(taskSpec, cwd, { model, codingGuidelines, ar
     lessonsSection = `\n## Lessons from previous tasks\n${knowledgeContext.moduleLessons}\n`;
   }
 
+  // Build codebase learning section (incremental patterns/anti-patterns from past reviews)
+  let learningSection = '';
+  if (knowledgeContext?.learningContext) {
+    learningSection = `\n## Codebase Learning (from past reviews)\n${knowledgeContext.learningContext}\n`;
+    // Count entries for logging
+    const patternCount = (knowledgeContext.learningContext.match(/^- /gm) || []).length;
+    logger.info(
+      `[CODER] Learning context injected: ${patternCount} entries`,
+      'CODER',
+    );
+  }
+
   // Prompt prefix sharing: static/reusable context sections go FIRST so they can be
   // cached across consecutive invocations. Dynamic task-specific content goes at the END.
   // Note: lessonsSection is task-specific (depends on taskModule) so it goes in the dynamic part.
-  const staticPrefix = [codebaseSection, styleSection, feedbackSection, guidelinesSection]
+  const staticPrefix = [codebaseSection, styleSection, feedbackSection, guidelinesSection, learningSection]
     .filter(Boolean)
     .join('');
 
