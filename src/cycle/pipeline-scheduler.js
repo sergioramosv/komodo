@@ -76,8 +76,7 @@ export class CliSlotManager {
       slot.queue.push({ resolve, taskId });
     });
 
-    // We've been woken — take ownership
-    slot.owner = taskId;
+    // We've been woken — ownership already assigned by release()
     logger.debug(`[slot] acquired ${key} by task ${taskId} (from queue)`, AGENT);
     eventBus.emitEvent(EVENT_TYPES.PIPELINE_SCHEDULER_STAGE_ACQUIRED, {
       metadata: { stage, cli, taskId },
@@ -106,8 +105,8 @@ export class CliSlotManager {
 
     if (slot.queue.length > 0) {
       const next = slot.queue.shift();
-      // Wake the next waiter (it will set owner itself in acquire)
-      slot.owner = null;
+      // Assign ownership to next waiter BEFORE resolving to prevent race condition
+      slot.owner = next.taskId;
       next.resolve();
     } else {
       slot.owner = null;

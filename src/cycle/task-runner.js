@@ -330,10 +330,14 @@ export async function runTask(projectId, cwd, options = {}) {
       plannerResult = { success: true, task: preselectedTask, cost: 0, turns: 0, duration: 0 };
     } else {
       await slotManager?.acquire('planning', plannerCli, '?');
-      plannerResult = await withWatchdog(
-        () => pickNextTask(projectId, { model: plannerModel }),
-        { agentName: 'PLANNER', onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
-      );
+      try {
+        plannerResult = await withWatchdog(
+          () => pickNextTask(projectId, { model: plannerModel }),
+          { agentName: 'PLANNER', onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+        );
+      } finally {
+        slotManager?.release('planning', plannerCli, '?');
+      }
     }
 
     if (plannerResult.cost) {
@@ -347,7 +351,6 @@ export async function runTask(projectId, cwd, options = {}) {
     eventBus.emitAgentEvent('PLANNER', 'done');
     komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('PLANNER', 'idle');
-    if (!preselectedTask) slotManager?.release('planning', plannerCli, '?');
 
     if (!plannerResult.success) {
       return makeResult({ success: false, startTime, error: plannerResult.error });
@@ -595,26 +598,29 @@ export async function runTask(projectId, cwd, options = {}) {
     const architectCli = config.cliArchitect;
     await slotManager?.acquire('architecting', architectCli, taskSpec.taskId);
 
-    komodoState.updatePhase(PHASES.ARCHITECTING, { currentTask: taskSpec.taskId });
-    komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, { phase: 'architecting', taskId: taskSpec.taskId, taskTitle: taskSpec.title });
-    eventBus.emitAgentEvent('ARCHITECT', 'working', { taskId: taskSpec.taskId });
-
     let architectPlan = null;
-    const architectResult = await withWatchdog(
-      () => analyzeTask(taskSpec, cwd, { model: architectModel }),
-      {
-        agentName: 'ARCHITECT',
-        taskId: taskSpec.taskId,
-        onCheckpoint: () => {
-          komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
-        },
-      },
-    );
+    let architectResult;
+    try {
+      komodoState.updatePhase(PHASES.ARCHITECTING, { currentTask: taskSpec.taskId });
+      komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, { phase: 'architecting', taskId: taskSpec.taskId, taskTitle: taskSpec.title });
+      eventBus.emitAgentEvent('ARCHITECT', 'working', { taskId: taskSpec.taskId });
 
-    eventBus.emitAgentEvent('ARCHITECT', 'done');
-    komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
-    eventBus.emitAgentEvent('ARCHITECT', 'idle');
-    slotManager?.release('architecting', architectCli, taskSpec.taskId);
+      architectResult = await withWatchdog(
+        () => analyzeTask(taskSpec, cwd, { model: architectModel }),
+        {
+          agentName: 'ARCHITECT',
+          taskId: taskSpec.taskId,
+          onCheckpoint: () => {
+            komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
+          },
+        },
+      );
+    } finally {
+      eventBus.emitAgentEvent('ARCHITECT', 'done');
+      komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+      eventBus.emitAgentEvent('ARCHITECT', 'idle');
+      slotManager?.release('architecting', architectCli, taskSpec.taskId);
+    }
 
     if (architectResult.cost) {
       taskCost += architectResult.cost;
@@ -670,78 +676,86 @@ export async function runTask(projectId, cwd, options = {}) {
 
     await slotManager?.acquire('coding', coderCli, taskSpec.taskId);
 
-    komodoState.updatePhase(PHASES.CODING, { currentTask: taskSpec.taskId });
-    komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
-      phase: 'coding',
-      taskId: taskSpec.taskId,
-      taskTitle: taskSpec.title,
-      branchName: taskSpec.branchName,
-      devPoints: taskSpec.devPoints,
-    });
-
-    eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
-
-    // KG: derive module from task tags or subdirectory of most-modified file.
-    // Only use path segment [1] when the file is nested in a subdirectory (≥3 parts),
-    // e.g. src/agents/coder.js → 'agents'. Files directly in top-level dir like
-    // src/config.js (2 parts) fall through to 'general' to avoid using the filename as module.
-    const deriveModule = (p) => { const parts = p?.split('/'); return parts?.length >= 3 ? parts[1] : null; };
-    const taskModule = taskSpec.tags?.[0]
-      || deriveModule(architectPlan?.filesToModify?.[0]?.path)
-      || deriveModule(architectPlan?.filesToCreate?.[0]?.path)
-      || 'general';
-
-    // Apply global critical anti-patterns to local store so coder benefits from cross-project security lessons
+    let coderResult;
     try {
-      await applyGlobalAntiPatternsToProject(projectId || config.defaultProjectId);
-    } catch (err) {
-      logger.warn(`applyGlobalAntiPatternsToProject failed (non-blocking): ${err.message}`, 'KOMODO');
-    }
-
-    // KG: build compact context for Coder and load cross-task lessons
-    let coderKnowledgeContext = null;
-    try {
-      const coderContext = buildCoderContext(projectId, taskSpec.taskId);
-      const moduleLessons = loadModuleLessons(projectId, taskModule);
-      const learningResult = buildLearningContext(projectId);
-      const learningContext = learningResult?.learningContext || null;
-      if (coderContext || moduleLessons || learningContext) {
-        coderKnowledgeContext = { ...coderContext, moduleLessons, learningContext };
-      }
-    } catch (err) {
-      logger.warn(`KG buildCoderContext failed (non-blocking): ${err.message}`, 'KOMODO');
-    }
-
-    let coderResult = await withWatchdog(
-      () => implementTask(taskSpec, cwd, { model: coderModel, codingGuidelines, architectPlan, knowledgeContext: coderKnowledgeContext }),
-      {
-        agentName: 'CODER',
+      komodoState.updatePhase(PHASES.CODING, { currentTask: taskSpec.taskId });
+      komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
+        phase: 'coding',
         taskId: taskSpec.taskId,
-        onCheckpoint: () => {
-          komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
+        taskTitle: taskSpec.title,
+        branchName: taskSpec.branchName,
+        devPoints: taskSpec.devPoints,
+      });
+
+      eventBus.emitAgentEvent('CODER', 'working', { taskId: taskSpec.taskId });
+
+      // KG: derive module from task tags or subdirectory of most-modified file.
+      // Only use path segment [1] when the file is nested in a subdirectory (≥3 parts),
+      // e.g. src/agents/coder.js → 'agents'. Files directly in top-level dir like
+      // src/config.js (2 parts) fall through to 'general' to avoid using the filename as module.
+      const deriveModule = (p) => { const parts = p?.split('/'); return parts?.length >= 3 ? parts[1] : null; };
+      const taskModule = taskSpec.tags?.[0]
+        || deriveModule(architectPlan?.filesToModify?.[0]?.path)
+        || deriveModule(architectPlan?.filesToCreate?.[0]?.path)
+        || 'general';
+
+      // Apply global critical anti-patterns to local store so coder benefits from cross-project security lessons
+      try {
+        await applyGlobalAntiPatternsToProject(projectId || config.defaultProjectId);
+      } catch (err) {
+        logger.warn(`applyGlobalAntiPatternsToProject failed (non-blocking): ${err.message}`, 'KOMODO');
+      }
+
+      // KG: build compact context for Coder and load cross-task lessons
+      let coderKnowledgeContext = null;
+      try {
+        const coderContext = buildCoderContext(projectId, taskSpec.taskId);
+        const moduleLessons = loadModuleLessons(projectId, taskModule);
+        const learningResult = buildLearningContext(projectId);
+        const learningContext = learningResult?.learningContext || null;
+        if (coderContext || moduleLessons || learningContext) {
+          coderKnowledgeContext = { ...coderContext, moduleLessons, learningContext };
+        }
+      } catch (err) {
+        logger.warn(`KG buildCoderContext failed (non-blocking): ${err.message}`, 'KOMODO');
+      }
+
+      coderResult = await withWatchdog(
+        () => implementTask(taskSpec, cwd, { model: coderModel, codingGuidelines, architectPlan, knowledgeContext: coderKnowledgeContext }),
+        {
+          agentName: 'CODER',
+          taskId: taskSpec.taskId,
+          onCheckpoint: () => {
+            komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
+          },
         },
-      },
-    );
+      );
 
-    // Fallback retry: if Coder failed and a fallback CLI is available, retry once
-    if (!coderResult.success && fallbackManager.isEnabled()) {
-      const originalCli = config.cliCoder;
-      if (fallbackManager.isRateLimited(originalCli)) {
-        const fallbackCli = fallbackManager.getAvailableFallbackCli(originalCli);
-        if (fallbackCli) {
-          logger.info(`Coder failed due to rate limit on "${originalCli}". Retrying with fallback CLI "${fallbackCli}"...`, 'KOMODO');
+      // Fallback retry: if Coder failed and a fallback CLI is available, retry once
+      if (!coderResult.success && fallbackManager.isEnabled()) {
+        const originalCli = config.cliCoder;
+        if (fallbackManager.isRateLimited(originalCli)) {
+          const fallbackCli = fallbackManager.getAvailableFallbackCli(originalCli);
+          if (fallbackCli) {
+            logger.info(`Coder failed due to rate limit on "${originalCli}". Retrying with fallback CLI "${fallbackCli}"...`, 'KOMODO');
 
-          // AGENT_FALLBACK event is emitted by resolveEffectiveCli in base-agent.js
-          // when runAgent detects the rate-limited CLI and resolves to fallback.
-          const fallbackModel = selectModel(fallbackCli, 'CODER', complexityLevel, taskModelOverride);
-          coderResult = await implementTask(taskSpec, cwd, { model: fallbackModel, codingGuidelines, architectPlan, knowledgeContext: coderKnowledgeContext });
+            // AGENT_FALLBACK event is emitted by resolveEffectiveCli in base-agent.js
+            // when runAgent detects the rate-limited CLI and resolves to fallback.
+            const fallbackModel = selectModel(fallbackCli, 'CODER', complexityLevel, taskModelOverride);
+            coderResult = await implementTask(taskSpec, cwd, { model: fallbackModel, codingGuidelines, architectPlan, knowledgeContext: coderKnowledgeContext });
 
-          // If fallback also fails, mark it as rate-limited too
-          if (!coderResult.success && fallbackManager.isRateLimited(fallbackCli)) {
-            logger.warn(`Fallback CLI "${fallbackCli}" also hit rate limit. Checkpoint will be triggered via event flow.`, 'KOMODO');
+            // If fallback also fails, mark it as rate-limited too
+            if (!coderResult.success && fallbackManager.isRateLimited(fallbackCli)) {
+              logger.warn(`Fallback CLI "${fallbackCli}" also hit rate limit. Checkpoint will be triggered via event flow.`, 'KOMODO');
+            }
           }
         }
       }
+    } finally {
+      eventBus.emitAgentEvent('CODER', 'done');
+      komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+      eventBus.emitAgentEvent('CODER', 'idle');
+      slotManager?.release('coding', coderCli, taskSpec.taskId);
     }
 
     if (coderResult.cost) {
@@ -762,11 +776,6 @@ export async function runTask(projectId, cwd, options = {}) {
       metrics: { tokensUsed: coderResult.cost, turnsUsed: coderResult.turns, durationMs: coderResult.duration },
       context: { model: coderModel },
     }).catch(() => {});
-
-    eventBus.emitAgentEvent('CODER', 'done');
-    komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
-    eventBus.emitAgentEvent('CODER', 'idle');
-    slotManager?.release('coding', coderCli, taskSpec.taskId);
 
     if (!coderResult.success) {
       // Cleanup: close any orphan PR the Coder may have created before timing out
@@ -1449,35 +1458,38 @@ export async function runTask(projectId, cwd, options = {}) {
 
     await slotManager?.acquire('reviewing', reviewerCli, taskSpec.taskId);
 
-    komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
-    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING }, {
-      phase: 'reviewing',
-      taskId: taskSpec.taskId,
-      taskTitle: taskSpec.title,
-      prNumber,
-    });
-
-    eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
-
-    const pluginIssues = beforeReviewPluginResults.flatMap(r => r.issues || []);
-
-    // KG: build reviewer context from saved architect/coder/security sections
-    let reviewerKnowledgeContext = null;
+    let reviewResult;
     try {
-      reviewerKnowledgeContext = buildReviewerContext(projectId, taskSpec.taskId);
-    } catch (err) {
-      logger.warn(`KG buildReviewerContext failed (non-blocking): ${err.message}`, 'KOMODO');
+      komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
+      komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING }, {
+        phase: 'reviewing',
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
+        prNumber,
+      });
+
+      eventBus.emitAgentEvent('REVIEWER', 'working', { prNumber });
+
+      const pluginIssues = beforeReviewPluginResults.flatMap(r => r.issues || []);
+
+      // KG: build reviewer context from saved architect/coder/security sections
+      let reviewerKnowledgeContext = null;
+      try {
+        reviewerKnowledgeContext = buildReviewerContext(projectId, taskSpec.taskId);
+      } catch (err) {
+        logger.warn(`KG buildReviewerContext failed (non-blocking): ${err.message}`, 'KOMODO');
+      }
+
+      reviewResult = await withWatchdog(
+        () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, securityReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold: config.smartModelRoutingThreshold, coderCli, knowledgeContext: reviewerKnowledgeContext, filesChanged: coderResult.pr.filesChanged || [] }),
+        { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+      );
+    } finally {
+      eventBus.emitAgentEvent('REVIEWER', 'done');
+      komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+      eventBus.emitAgentEvent('REVIEWER', 'idle');
+      slotManager?.release('reviewing', reviewerCli, taskSpec.taskId);
     }
-
-    const reviewResult = await withWatchdog(
-      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, securityReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold: config.smartModelRoutingThreshold, coderCli, knowledgeContext: reviewerKnowledgeContext, filesChanged: coderResult.pr.filesChanged || [] }),
-      { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
-    );
-
-    eventBus.emitAgentEvent('REVIEWER', 'done');
-    komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
-    eventBus.emitAgentEvent('REVIEWER', 'idle');
-    slotManager?.release('reviewing', reviewerCli, taskSpec.taskId);
 
     if (reviewResult.cost) {
       taskCost += reviewResult.cost;

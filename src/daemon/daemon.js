@@ -207,7 +207,15 @@ export async function watch(projectId, options = {}) {
         const todoTasks = allTasks.filter(t => t.status === 'to-do');
         const { eligible } = filterBlockedTasks(todoTasks, allTasks);
 
-        if (eligible.length === 0) continue;
+        if (eligible.length === 0) {
+          // All to-do tasks are blocked — enter idle/polling instead of busy-waiting
+          komodoState.setExecutionState(EXECUTION_STATES.DAEMON_IDLE);
+          logger.info(`Todas las tareas to-do están bloqueadas. Idle — siguiente poll en ${pollInterval}s...`, AGENT);
+          const shouldContinue = await _pollUntilTaskOrStop(projectId, pollInterval);
+          if (!shouldContinue) break;
+          komodoState.setExecutionState(EXECUTION_STATES.DAEMON_RUNNING);
+          continue;
+        }
 
         const scheduler = new PipelineScheduler({ maxConcurrentAgents: config.maxConcurrentAgents });
         const batchResults = await scheduler.run(eligible, projectId, { cwd });

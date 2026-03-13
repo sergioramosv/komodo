@@ -58,6 +58,7 @@ vi.mock('../canary/conflict-detector.js', () => ({
 import { CliSlotManager, PipelineScheduler } from './pipeline-scheduler.js';
 import { runTask } from './task-runner.js';
 import { fallbackManager } from '../agents/fallback-manager.js';
+import { detectParallelConflicts } from '../canary/conflict-detector.js';
 
 // ═══════════════════════════════════════════
 // CliSlotManager
@@ -200,10 +201,10 @@ describe('PipelineScheduler', () => {
   });
 
   it('checkFileConflicts delegates to detectParallelConflicts', () => {
-    const { detectParallelConflicts } = require('../canary/conflict-detector.js');
     const scheduler = new PipelineScheduler();
     scheduler.checkFileConflicts('task-1', ['src/foo.js']);
     // Just verifies the delegation without import cycle issues
     expect(scheduler.checkFileConflicts('task-1', [])).toEqual({ conflicts: [] });
+    expect(vi.mocked(detectParallelConflicts)).toHaveBeenCalled();
   });
 });
