@@ -1,31 +1,18 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { KomodoState, DASHBOARD_AGENT_STATES, PHASES } from './komodo-state.js';
-import { EVENT_TYPES } from '../events/event-bus.js';
-
-// Mock del eventBus para no depender del singleton real
-vi.mock('../events/event-bus.js', () => ({
-  eventBus: {
-    emitEvent: vi.fn(),
-  },
-  EVENT_TYPES: {
-    AGENT_STATE_CHANGE: 'agent:state-change',
-    TASK_STARTED: 'task:started',
-    TASK_COMPLETED: 'task:completed',
-    REVIEW_CYCLE: 'review:cycle',
-    PR_CREATED: 'pr:created',
-    PR_MERGED: 'pr:merged',
-    COST_UPDATED: 'cost:updated',
-  },
-}));
-
-import { eventBus } from '../events/event-bus.js';
+import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 
 describe('KomodoState', () => {
   let state;
 
   beforeEach(() => {
     state = new KomodoState();
-    vi.clearAllMocks();
+    // Spy on the real singleton so the mock works regardless of isolate:false
+    vi.spyOn(eventBus, 'emitEvent').mockReturnValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   // ── constructor ────────────────────────────────────────
