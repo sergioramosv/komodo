@@ -112,8 +112,7 @@ class BudgetManager {
    * @returns {{ allowed: boolean, dailySpent: number, weeklySpent: number, warning: boolean, exceeded: boolean }}
    */
   recordCost(cost, metadata = {}) {
-    const amount = cost === undefined ? config.estimatedCostPerInvocation : cost;
-    if (typeof amount !== 'number' || amount <= 0) return;
+    const amount = cost ?? config.estimatedCostPerInvocation;
     this._checkReset();
 
     this._dailySpent += amount;

@@ -11,7 +11,7 @@ let pipelineInstance = null;
  */
 async function getEmbeddingPipeline() {
       if (!pipelineInstance) {
-            pipelineInstance = await pipeline('feature-extraction', MODEL_NAME, { revision: 'main' });
+            pipelineInstance = pipeline('feature-extraction', MODEL_NAME, { revision: 'main' });
       }
       return pipelineInstance;
 }
@@ -23,6 +23,9 @@ async function getEmbeddingPipeline() {
  * @returns {Promise<number[]>}
  */
 async function embed(text) {
+      if (text == null || typeof text !== 'string') {
+            throw new Error(`embed() requires a string, got ${text === null ? 'null' : typeof text}`);
+      }
       const extractor = await getEmbeddingPipeline();
       const output = await extractor(text, { pooling: 'mean', normalize: true });
       return Array.from(output.data);
