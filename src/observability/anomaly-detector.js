@@ -30,6 +30,10 @@ const _modelResults = new Map();
 const _recentAlerts = [];
 const MAX_ALERTS_IN_MEMORY = 100;
 
+/** Cooldown tracking: alertKey → timestamp of last alert emitted. */
+const _alertCooldowns = new Map();
+const ALERT_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour between repeated alerts of the same type
+
 /**
  * Checks if a task used 2x the expected (average) tokens.
  *
@@ -112,6 +116,21 @@ export function checkModelDegradation(model, results) {
 }
 
 /**
+ * Returns true if enough time has passed since the last alert of this key.
+ * Sets the cooldown timestamp if off-cooldown.
+ *
+ * @param {string} alertKey - Unique key for the alert type (e.g. 'review-regression')
+ * @returns {boolean}
+ */
+function _isAlertOffCooldown(alertKey) {
+  const now = Date.now();
+  const last = _alertCooldowns.get(alertKey);
+  if (last != null && now - last < ALERT_COOLDOWN_MS) return false;
+  _alertCooldowns.set(alertKey, now);
+  return true;
+}
+
+/**
  * Persists an alert to Firebase and emits ANOMALY_ALERT on the EventBus.
  *
  * @param {string} projectId
@@ -183,19 +202,18 @@ async function _onModelPerformanceRecorded(payload) {
       _recentScores.shift();
     }
     const alert = checkReviewRegression(_recentScores);
-    if (alert) {
+    if (alert && _isAlertOffCooldown('review-regression')) {
       await _emitAlert(projectId, alert);
     }
   }
 
   // --- Rule 3: Model degradation ---
-  const modelsToCheck = [
-    { model: coderModel, role: 'coder' },
-    { model: plannerModel, role: 'planner' },
-    { model: reviewerModel, role: 'reviewer' },
-  ].filter(m => !!m.model);
+  // Deduplicate models: if multiple roles share the same model, record the result only once.
+  const uniqueModels = [...new Set(
+    [coderModel, plannerModel, reviewerModel].filter(Boolean),
+  )];
 
-  for (const { model } of modelsToCheck) {
+  for (const model of uniqueModels) {
     if (!_modelResults.has(model)) {
       _modelResults.set(model, []);
     }
@@ -205,7 +223,7 @@ async function _onModelPerformanceRecorded(payload) {
       results.shift();
     }
     const alert = checkModelDegradation(model, results);
-    if (alert) {
+    if (alert && _isAlertOffCooldown(`model-degradation:${model}`)) {
       await _emitAlert(projectId, alert);
     }
   }
@@ -262,6 +280,7 @@ export function stopAnomalyDetector() {
   _recentScores.length = 0;
   _modelResults.clear();
   _recentAlerts.length = 0;
+  _alertCooldowns.clear();
 
   logger.info('Anomaly detector stopped', AGENT_TAG);
 }

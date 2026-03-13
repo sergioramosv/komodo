@@ -22,7 +22,7 @@ describe('checkTokenSpike', () => {
     expect(checkTokenSpike('task1', 9999, baseline)).toBeNull();
   });
 
-  it('returns null when tokens are exactly 2x average (boundary: < 2 means no alert)', () => {
+  it('returns alert when tokens are exactly 2x average (boundary: ratio >= 2 triggers alert)', () => {
     const baseline = [5000, 5000, 5000]; // avg = 5000, threshold = 10000
     // 10000 / 5000 = 2.0 — should trigger alert (ratio >= 2)
     const result = checkTokenSpike('task1', 10000, baseline);
