@@ -847,7 +847,7 @@ export async function runTask(projectId, cwd) {
 
             eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_FAILED, {
               agentName: 'TESTER',
-              metadata: { attempt, output: failureOutput.slice(0, 2000) },
+              metadata: { attempt, type: 'attempt', output: failureOutput.slice(0, 2000) },
             });
 
             komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
@@ -856,46 +856,53 @@ export async function runTask(projectId, cwd) {
             });
             eventBus.emitAgentEvent('CODER', 'working', { reason: 'tester-failures', attempt });
 
-            if (testFailureStrategy.detect({ errorMessage: failureOutput })) {
-              const healResult = await healingEngine.attemptHealing({
-                type: 'test-failure',
-                errorMessage: failureOutput,
-                runTests: null,
-                fixCode: async () => {
-                  const fixResult = await fixReviewIssues(
-                    taskSpec,
-                    prNumber,
-                    {
-                      summary: 'Tester agent found failing tests. Fix the implementation so all tests pass.',
-                      issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
-                    },
-                    cwd,
-                    { model: coderModel, codingGuidelines },
-                  );
-                  return { success: fixResult.success };
-                },
-              });
-              if (healResult.healed) {
-                komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
-                eventBus.emitAgentEvent('CODER', 'idle');
-                return { fixed: true };
+            try {
+              if (testFailureStrategy.detect({ errorMessage: failureOutput })) {
+                const healResult = await healingEngine.attemptHealing({
+                  type: 'test-failure',
+                  errorMessage: failureOutput,
+                  runTests: null,
+                  fixCode: async () => {
+                    const fixResult = await fixReviewIssues(
+                      taskSpec,
+                      prNumber,
+                      {
+                        summary: 'Tester agent found failing tests. Fix the implementation so all tests pass.',
+                        issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
+                      },
+                      cwd,
+                      { model: coderModel, codingGuidelines },
+                    );
+                    return { success: fixResult.success };
+                  },
+                });
+                if (healResult.healed) {
+                  komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+                  eventBus.emitAgentEvent('CODER', 'idle');
+                  return { fixed: true };
+                }
               }
+
+              const fixResult = await fixReviewIssues(
+                taskSpec,
+                prNumber,
+                {
+                  summary: 'Tester agent found failing tests. Fix the implementation so all tests pass.',
+                  issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
+                },
+                cwd,
+                { model: coderModel, codingGuidelines },
+              );
+
+              komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+              eventBus.emitAgentEvent('CODER', 'idle');
+              return { fixed: fixResult.success };
+            } catch (err) {
+              logger.error(`onFixAttempt failed (attempt ${attempt}): ${err.message}`, 'KOMODO');
+              komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+              eventBus.emitAgentEvent('CODER', 'idle');
+              return { fixed: false };
             }
-
-            const fixResult = await fixReviewIssues(
-              taskSpec,
-              prNumber,
-              {
-                summary: 'Tester agent found failing tests. Fix the implementation so all tests pass.',
-                issues: [`Test output:\n${failureOutput.slice(0, 3000)}`],
-              },
-              cwd,
-              { model: coderModel, codingGuidelines },
-            );
-
-            komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
-            eventBus.emitAgentEvent('CODER', 'idle');
-            return { fixed: fixResult.success };
           },
         });
 
@@ -910,7 +917,7 @@ export async function runTask(projectId, cwd) {
             logger.warn(`Tester: tests still failing after ${testerTestReport.attempts} attempts — continuing to Security`, 'KOMODO');
             eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_FAILED, {
               agentName: 'TESTER',
-              metadata: { attempts: testerTestReport.attempts, output: testerTestReport.output?.slice(0, 2000) },
+              metadata: { attempt: testerTestReport.attempts, type: 'final', output: testerTestReport.output?.slice(0, 2000) },
             });
           }
         }
