@@ -262,6 +262,10 @@ export const EVENT_TYPES = {
   // Structured event log
   STRUCTURED_EVENT_LOGGED: 'structured-event:logged',
   TASK_TOKEN_METRICS_UPDATED: 'task:token-metrics:updated',
+
+  // Observability replay system
+  TASK_TIMELINE_QUERIED: 'observability:timeline:queried',
+  DECISION_EXPLAINED: 'observability:decision:explained',
 };
 
 /**

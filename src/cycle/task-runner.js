@@ -359,8 +359,10 @@ export async function runTask(projectId, cwd) {
       phase: 'planning',
       agent: 'PLANNER',
       action: 'pick_task',
+      input: { projectId },
       output: { title: taskSpec.title, branchName: taskSpec.branchName },
       metrics: { tokensUsed: plannerResult.cost, turnsUsed: plannerResult.turns, durationMs: plannerResult.duration },
+      context: { model: plannerModel },
     }).catch(() => {});
 
     // Autonomy gate A: after Planner selects task
@@ -614,7 +616,10 @@ export async function runTask(projectId, cwd) {
       phase: 'architecting',
       agent: 'ARCHITECT',
       action: 'analyze_codebase',
+      input: { title: taskSpec.title, userStory: taskSpec.userStory, acceptanceCriteria: taskSpec.acceptanceCriteria },
+      output: architectResult.plan ? { filesToCreate: architectResult.plan.filesToCreate, filesToModify: architectResult.plan.filesToModify } : {},
       metrics: { tokensUsed: architectResult.cost, turnsUsed: architectResult.turns, durationMs: architectResult.duration },
+      context: { model: architectModel },
     }).catch(() => {});
 
     if (architectResult.success && architectResult.plan) {
@@ -737,7 +742,10 @@ export async function runTask(projectId, cwd) {
       phase: 'coding',
       agent: 'CODER',
       action: 'implement_task',
+      input: { title: taskSpec.title, userStory: taskSpec.userStory, acceptanceCriteria: taskSpec.acceptanceCriteria },
+      output: coderResult.success ? { prNumber: coderResult.pr?.prNumber, filesChanged: coderResult.pr?.filesChanged, summary: coderResult.pr?.summary } : { error: coderResult.error },
       metrics: { tokensUsed: coderResult.cost, turnsUsed: coderResult.turns, durationMs: coderResult.duration },
+      context: { model: coderModel },
     }).catch(() => {});
 
     eventBus.emitAgentEvent('CODER', 'done');
@@ -836,7 +844,10 @@ export async function runTask(projectId, cwd) {
         phase: 'testing',
         agent: 'QA',
         action: 'generate_tests',
+        input: { prNumber, title: taskSpec.title },
+        output: qaResult.success ? { summary: qaResult.qa?.summary, failedTests: qaResult.qa?.failedTests } : { error: qaResult.error },
         metrics: { tokensUsed: qaResult.cost, turnsUsed: qaResult.turns, durationMs: qaResult.duration },
+        context: { model: qaModel },
       }).catch(() => {});
 
       eventBus.emitAgentEvent('QA', 'done');
@@ -1006,7 +1017,10 @@ export async function runTask(projectId, cwd) {
           phase: 'security',
           agent: 'SECURITY',
           action: 'security_scan',
+          input: { prNumber, filesChanged: coderResult.pr.filesChanged || [] },
+          output: securityResult?.success ? { verdict: securityResult.security?.verdict, criticalCount: securityResult.security?.criticalCount, highCount: securityResult.security?.highCount, summary: securityResult.security?.summary } : { error: securityResult?.error },
           metrics: { tokensUsed: securityResult?.cost ?? null, turnsUsed: securityResult?.turns ?? null, durationMs: securityResult?.duration ?? null },
+          context: { model: config.forceModel_SECURITY || null },
         }).catch(() => {});
 
         eventBus.emitAgentEvent('SECURITY', 'done');
@@ -1113,7 +1127,10 @@ export async function runTask(projectId, cwd) {
             phase: 'testing',
             agent: 'TESTER',
             action: 'run_tests',
+            input: { prNumber, title: taskSpec.title },
+            output: testerResult?.success ? { summary: testerResult.tester?.summary } : { error: testerResult?.error },
             metrics: { tokensUsed: testerResult?.cost ?? null, turnsUsed: testerResult?.turns ?? null, durationMs: testerResult?.duration ?? null },
+            context: { model: testerModel },
           }).catch(() => {});
 
           eventBus.emitAgentEvent('TESTER', 'done');
@@ -1452,7 +1469,10 @@ export async function runTask(projectId, cwd) {
       phase: 'reviewing',
       agent: 'REVIEWER',
       action: 'review_pr',
+      input: { prNumber, title: taskSpec.title },
+      output: { approved: reviewResult.approved, cycles: reviewResult.cycles, score: reviewResult.finalScore ?? null, finalReview: reviewResult.finalReview ?? null },
       metrics: { tokensUsed: reviewResult.cost, turnsUsed: reviewResult.turns, durationMs: reviewResult.duration },
+      context: { model: reviewerModel },
     }).catch(() => {});
 
     // Update coderModel if it was escalated during review loop
