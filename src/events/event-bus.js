@@ -223,11 +223,6 @@ export const EVENT_TYPES = {
   AGENT_ARCHITECT_DONE: 'agent:architect:done',
   AGENT_ARCHITECT_IDLE: 'agent:architect:idle',
 
-  // Security agent events
-  SECURITY_SCAN_START: 'security:scan:start',
-  SECURITY_SCAN_COMPLETE: 'security:scan:complete',
-  SECURITY_SCAN_BLOCKED: 'security:scan:blocked',
-
   // Autonomy level events
   GUARDIAN_GATE_TRIGGERED: 'guardian:gate:triggered',
   AUTONOMY_APPROVAL_REQUESTED: 'autonomy:approval:requested',
