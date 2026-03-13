@@ -160,6 +160,44 @@ describe('syncPatternsToGlobal', () => {
       expect.objectContaining({ metadata: expect.objectContaining({ isCritical: true }) }),
     );
   });
+
+  it('promotes pattern and increments patternsPromoted when threshold is reached', async () => {
+    // Pattern seen in 3 out of 4 projects → universalityScore = 0.75 >= 0.6 threshold
+    const promotedPattern = {
+      text: 'use async/await',
+      projectsSeenIn: { 'proj-a': true, 'proj-b': true, 'proj-1': true },
+      universalityScore: 0.75,
+      embedding: null,
+      promotedAt: new Date().toISOString(),
+    };
+    const projectIds = { 'proj-a': true, 'proj-b': true, 'proj-1': true, 'proj-c': true };
+
+    const mockRef = {
+      once: vi.fn()
+        // First call: meta/projectIds
+        .mockResolvedValueOnce({ val: () => projectIds })
+        // Second call: read pattern after transaction
+        .mockResolvedValueOnce({ val: () => promotedPattern }),
+      transaction: vi.fn().mockImplementation(async (updater) => {
+        updater(null);
+        return {};
+      }),
+      set: vi.fn().mockResolvedValue(undefined),
+    };
+    mockGetDb.mockReturnValue({ ref: vi.fn().mockReturnValue(mockRef) });
+    mockLoadLearningStore.mockReturnValue({
+      patterns: ['use async/await'],
+      antiPatterns: [],
+    });
+
+    const result = await syncPatternsToGlobal('proj-1');
+
+    expect(result.patternsPromoted).toBe(1);
+    expect(mockEmitEvent).toHaveBeenCalledWith(
+      'cross-project:pattern:promoted',
+      expect.objectContaining({ metadata: expect.objectContaining({ pattern: 'use async/await' }) }),
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,6 +230,80 @@ describe('syncModelPerformanceToGlobal', () => {
     mockGetDb.mockImplementation(() => { throw new Error('firebase down'); });
     const result = await syncModelPerformanceToGlobal('proj-1');
     expect(result).toEqual({ updated: 0 });
+  });
+
+  it('merges with weighted average and emits GLOBAL_MODEL_PERF_UPDATED', async () => {
+    const byModel = {
+      'claude-opus-4': {
+        coder: { model: 'claude-opus-4', taskCount: 4, avgScore: 8, bestFor: ['refactor'], worstFor: ['greenfield'] },
+      },
+    };
+    // existing global entry: 6 tasks, avgSuccessRate 0.5
+    const existing = {
+      model: 'claude-opus-4',
+      role: 'coder',
+      taskCount: 6,
+      avgSuccessRate: 0.5,
+      bestFor: ['bugfix'],
+      worstFor: ['docs'],
+      lastUpdatedAt: '2026-01-01T00:00:00Z',
+    };
+
+    const mockRef = {
+      once: vi.fn().mockResolvedValue({ val: () => byModel }),
+      transaction: vi.fn().mockImplementation(async (updater) => {
+        updater(existing);
+        return {};
+      }),
+    };
+    mockGetDb.mockReturnValue({ ref: vi.fn().mockReturnValue(mockRef) });
+
+    const result = await syncModelPerformanceToGlobal('proj-1');
+
+    expect(result.updated).toBe(1);
+
+    // Verify transaction updater produced the correct weighted average
+    const updaterArg = mockRef.transaction.mock.calls[0][0];
+    const merged = updaterArg(existing);
+    // existingCount=6 rate=0.5, incoming count=4 rate=0.8 → (6*0.5 + 4*0.8)/10 = (3+3.2)/10 = 0.62
+    expect(merged.taskCount).toBe(10);
+    expect(merged.avgSuccessRate).toBeCloseTo(0.62, 5);
+    expect(merged.bestFor).toEqual(expect.arrayContaining(['bugfix', 'refactor']));
+    expect(merged.worstFor).toEqual(expect.arrayContaining(['docs', 'greenfield']));
+
+    expect(mockEmitEvent).toHaveBeenCalledWith(
+      'cross-project:model-perf:updated',
+      expect.objectContaining({ metadata: expect.objectContaining({ modelKey: 'claude-opus-4', role: 'coder' }) }),
+    );
+  });
+
+  it('creates new entry with correct fields when no existing data', async () => {
+    const byModel = {
+      'claude-haiku': {
+        planner: { model: 'claude-haiku', taskCount: 3, avgScore: 7, bestFor: ['simple'], worstFor: [] },
+      },
+    };
+
+    const mockRef = {
+      once: vi.fn().mockResolvedValue({ val: () => byModel }),
+      transaction: vi.fn().mockImplementation(async (updater) => {
+        updater(null); // no existing entry
+        return {};
+      }),
+    };
+    mockGetDb.mockReturnValue({ ref: vi.fn().mockReturnValue(mockRef) });
+
+    const result = await syncModelPerformanceToGlobal('proj-1');
+    expect(result.updated).toBe(1);
+
+    const updaterArg = mockRef.transaction.mock.calls[0][0];
+    const created = updaterArg(null);
+    expect(created.model).toBe('claude-haiku');
+    expect(created.role).toBe('planner');
+    expect(created.taskCount).toBe(3);
+    expect(created.avgSuccessRate).toBeCloseTo(0.7, 5);
+    expect(created.bestFor).toEqual([]);
+    expect(created.worstFor).toEqual([]);
   });
 });
 

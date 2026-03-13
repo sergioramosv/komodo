@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
@@ -16,6 +17,16 @@ const GLOBAL_ROOT = 'global-intelligence';
  */
 function toFirebaseKey(text) {
   return text.replace(/[.\\/[\]#$]/g, '_').slice(0, 200);
+}
+
+/**
+ * Generates a deterministic SHA-256 hex fingerprint for a pattern text.
+ * Used as the embedding field for identity and deduplication.
+ * @param {string} text
+ * @returns {string}
+ */
+function generateTextEmbedding(text) {
+  return createHash('sha256').update(text).digest('hex');
 }
 
 /**
@@ -78,10 +89,11 @@ export async function syncPatternsToGlobal(projectId) {
       const ref = db.ref(`${GLOBAL_ROOT}/patterns/${key}`);
 
       await ref.transaction((current) => {
-        const existing = current || { text, projectsSeenIn: {}, universalityScore: 0, promotedAt: null };
+        const existing = current || { text, projectsSeenIn: {}, universalityScore: 0, embedding: null, promotedAt: null };
         existing.text = text;
         existing.projectsSeenIn = existing.projectsSeenIn || {};
         existing.projectsSeenIn[projectId] = true;
+        existing.embedding = generateTextEmbedding(text);
 
         const seenList = Object.keys(existing.projectsSeenIn);
         existing.universalityScore = evaluatePatternUniversality(seenList, totalProjects);
@@ -203,6 +215,8 @@ export async function syncModelPerformanceToGlobal(projectId) {
             ...current,
             taskCount: totalCount,
             avgSuccessRate: newAvgSuccessRate,
+            bestFor: [...new Set([...(current.bestFor || []), ...(metrics.bestFor || [])])],
+            worstFor: [...new Set([...(current.worstFor || []), ...(metrics.worstFor || [])])],
             lastUpdatedAt: new Date().toISOString(),
           };
         });

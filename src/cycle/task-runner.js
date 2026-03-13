@@ -28,7 +28,7 @@ import { recordModelPerformance } from '../metrics/model-performance-tracker.js'
 import { extractTaskKeywords } from '../smart-ordering/context-affinity.js';
 import { saveSection, buildCoderContext, buildReviewerContext, buildTesterContext, loadModuleLessons, extractAndSaveLessons } from '../knowledge/knowledge-graph.js';
 import { updateLearning, buildLearningContext } from '../knowledge/codebase-learning.js';
-import { syncPatternsToGlobal, syncModelPerformanceToGlobal } from '../intelligence/cross-project-intelligence.js';
+import { syncPatternsToGlobal, syncModelPerformanceToGlobal, applyGlobalAntiPatternsToProject } from '../intelligence/cross-project-intelligence.js';
 import { getById } from '../../skills/planning-task-mcp/src/firebase.js';
 import { monitorCi } from '../ci-monitor/ci-monitor.js';
 import { runCanaryMerge } from '../canary/canary-merge.js';
@@ -652,6 +652,13 @@ export async function runTask(projectId, cwd) {
       || deriveModule(architectPlan?.filesToModify?.[0]?.path)
       || deriveModule(architectPlan?.filesToCreate?.[0]?.path)
       || 'general';
+
+    // Apply global critical anti-patterns to local store so coder benefits from cross-project security lessons
+    try {
+      await applyGlobalAntiPatternsToProject(projectId || config.defaultProjectId);
+    } catch (err) {
+      logger.warn(`applyGlobalAntiPatternsToProject failed (non-blocking): ${err.message}`, 'KOMODO');
+    }
 
     // KG: build compact context for Coder and load cross-task lessons
     let coderKnowledgeContext = null;
