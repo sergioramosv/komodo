@@ -847,7 +847,7 @@ export async function runTask(projectId, cwd) {
 
             eventBus.emitEvent(EVENT_TYPES.TESTER_TESTS_FAILED, {
               agentName: 'TESTER',
-              metadata: { attempt, type: 'attempt', output: failureOutput.slice(0, 2000) },
+              metadata: { attempt, type: 'attempt', output: failureOutput.slice(0, 3000) },
             });
 
             komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
@@ -881,6 +881,10 @@ export async function runTask(projectId, cwd) {
                   eventBus.emitAgentEvent('CODER', 'idle');
                   return { fixed: true };
                 }
+                // Healing failed — return false to avoid falling through to a second fixReviewIssues call
+                komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+                eventBus.emitAgentEvent('CODER', 'idle');
+                return { fixed: false };
               }
 
               const fixResult = await fixReviewIssues(
