@@ -6,6 +6,7 @@ import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
 import { healingEngine } from '../self-healing/healing-engine.js';
+import { escalationHandler } from '../self-healing/escalation-handler.js';
 
 /**
  * Resilience Manager — unified facade for circuit breakers, error budget,
@@ -37,6 +38,7 @@ class ResilienceManager {
       komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
     };
     eventBus.on(EVENT_TYPES.ERROR_BUDGET_EXHAUSTED, this._handler);
+    escalationHandler.start();
 
     logger.info('Resilience manager started', 'RESILIENCE');
   }
@@ -49,6 +51,7 @@ class ResilienceManager {
       eventBus.removeListener(EVENT_TYPES.ERROR_BUDGET_EXHAUSTED, this._handler);
       this._handler = null;
     }
+    escalationHandler.stop();
   }
 
   /**
