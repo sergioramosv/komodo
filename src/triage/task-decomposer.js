@@ -96,9 +96,16 @@ export async function decomposeTask(task, projectId, { architectPlan } = {}) {
 
   const systemPrompt = buildDecompositionPrompt(task, projectId, parentDevPoints, parentBizPoints, effectivePlan);
 
+  // Calculate real complexity if plan data is available, for context in the user prompt
+  const taskForComplexity = effectivePlan ? { ...task, architectPlan: effectivePlan } : task;
+  const realComplexity = calculateRealComplexity(taskForComplexity);
+  const complexityLine = realComplexity.signals.noPlanData
+    ? ''
+    : `\nComplejidad real calculada: ${realComplexity.score}/10 (${realComplexity.reasoning})`;
+
   const userPrompt = `Descompone la tarea "${task.title}" (ID: ${task.taskId}) en subtareas más pequeñas.
 
-La tarea tiene ${parentDevPoints} devPoints y ${getAcceptanceCriteriaCount(task.acceptanceCriteria)} criterios de aceptación.
+La tarea tiene ${parentDevPoints} devPoints y ${getAcceptanceCriteriaCount(task.acceptanceCriteria)} criterios de aceptación.${complexityLine}
 
 Genera entre ${MIN_SUBTASKS} y ${MAX_SUBTASKS} subtareas. Los devPoints de las subtareas deben sumar aproximadamente ${parentDevPoints}.
 
