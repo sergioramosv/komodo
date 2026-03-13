@@ -120,11 +120,11 @@ export async function implementTask(taskSpec, cwd, { model, codingGuidelines, ar
   // Prompt prefix sharing: static/reusable context sections go FIRST so they can be
   // cached across consecutive invocations. Dynamic task-specific content goes at the END.
   // Note: lessonsSection is task-specific (depends on taskModule) so it goes in the dynamic part.
-  const staticPrefix = [codebaseSection, styleSection, feedbackSection, guidelinesSection, learningSection, globalInsightsSection]
+  const staticPrefix = [codebaseSection, styleSection, feedbackSection, guidelinesSection, learningSection]
     .filter(Boolean)
     .join('');
 
-  const userPrompt = `${staticPrefix}${lessonsSection}
+  const userPrompt = `${staticPrefix}${globalInsightsSection}${lessonsSection}
 Implementa la siguiente tarea:
 
 ## Tarea

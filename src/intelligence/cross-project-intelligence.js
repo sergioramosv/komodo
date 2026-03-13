@@ -4,6 +4,7 @@ import { logger } from '../utils/logger.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { getDb } from '../../skills/planning-task-mcp/src/firebase.js';
 import { loadLearningStore, saveLearningStore } from '../knowledge/codebase-learning.js';
+import { MODEL_TIERS } from '../triage/model-tiers.js';
 
 const AGENT_TAG = 'CROSS-PROJECT';
 
@@ -88,8 +89,11 @@ export async function syncPatternsToGlobal(projectId) {
       const key = toFirebaseKey(text);
       const ref = db.ref(`${GLOBAL_ROOT}/patterns/${key}`);
 
+      // Track whether promotedAt was already set before this transaction
+      let wasAlreadyPromoted = false;
       await ref.transaction((current) => {
         const existing = current || { text, projectsSeenIn: {}, universalityScore: 0, embedding: null, promotedAt: null };
+        wasAlreadyPromoted = !!existing.promotedAt;
         existing.text = text;
         existing.projectsSeenIn = existing.projectsSeenIn || {};
         existing.projectsSeenIn[projectId] = true;
@@ -105,14 +109,16 @@ export async function syncPatternsToGlobal(projectId) {
         return existing;
       });
 
-      // Check if promoted after transaction
-      const snap = await ref.once('value');
-      const val = snap.val();
-      if (val && val.promotedAt && val.universalityScore >= threshold) {
-        patternsPromoted++;
-        eventBus.emitEvent(EVENT_TYPES.CROSS_PROJECT_PATTERN_PROMOTED, {
-          metadata: { projectId, pattern: text, score: val.universalityScore },
-        });
+      // Only emit for patterns NEWLY promoted in this transaction
+      if (!wasAlreadyPromoted) {
+        const snap = await ref.once('value');
+        const val = snap.val();
+        if (val && val.promotedAt && val.universalityScore >= threshold) {
+          patternsPromoted++;
+          eventBus.emitEvent(EVENT_TYPES.CROSS_PROJECT_PATTERN_PROMOTED, {
+            metadata: { projectId, pattern: text, score: val.universalityScore },
+          });
+        }
       }
     }
 
@@ -236,15 +242,8 @@ export async function syncModelPerformanceToGlobal(projectId) {
   }
 }
 
-/**
- * Models that belong to each CLI type — used by getGlobalModelRecommendation
- * to filter global performance data to the relevant CLI.
- */
-const CLI_MODEL_KEYWORDS = {
-  claude: ['haiku', 'sonnet', 'opus'],
-  codex: ['codex-mini', 'o4-mini', 'o3'],
-  gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-};
+/** Alias for backward-compat — MODEL_TIERS imported from shared module. */
+const CLI_MODEL_KEYWORDS = MODEL_TIERS;
 
 /**
  * Returns the globally best-performing model for a given role and CLI family.
@@ -325,7 +324,7 @@ export async function getGlobalInsights(taskContext = {}, options = {}) {
       taskContext.title || '',
       ...(taskContext.acceptanceCriteria || []),
     ].join(' ').toLowerCase();
-    const keywords = [...new Set(contextText.split(/\W+/).filter((w) => w.length > 3))];
+    const keywords = [...new Set(contextText.split(/\W+/).filter((w) => w.length >= 3))];
 
     const [patterns, antiPatterns] = await Promise.all([
       getGlobalPatterns({ minScore: threshold }),
@@ -442,7 +441,8 @@ export async function applyGlobalAntiPatternsToProject(projectId) {
     if (!criticalAntiPatterns.length) return { applied: 0 };
 
     const store = loadLearningStore(projectId);
-    const existingSet = new Set(store.antiPatterns.map((s) => s.trim().toLowerCase()));
+    const GLOBAL_PREFIX_RE = /^\[global\]\s*/i;
+    const existingSet = new Set(store.antiPatterns.map((s) => s.trim().toLowerCase().replace(GLOBAL_PREFIX_RE, '')));
 
     let applied = 0;
     for (const { text } of criticalAntiPatterns) {

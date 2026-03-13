@@ -4,20 +4,11 @@ import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { selectModel } from './model-selector.js';
 import { getDb } from '../../skills/planning-task-mcp/src/firebase.js';
 import { getGlobalModelRecommendation } from '../intelligence/cross-project-intelligence.js';
+import { MODEL_TIERS } from './model-tiers.js';
 
 const AGENT_TAG = 'SMART-ROUTER';
 
 const MIN_TASKS = config.smartModelRoutingMinTasks;
-
-/**
- * Ordered model tiers per CLI (lightest → most powerful).
- * Used by escalateModel() to find the next tier up.
- */
-const MODEL_TIERS = {
-  claude: ['haiku', 'sonnet', 'opus'],
-  codex: ['codex-mini', 'o4-mini', 'o3'],
-  gemini: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-};
 
 /**
  * Converts a model name to a Firebase-safe key (dots → underscores).
