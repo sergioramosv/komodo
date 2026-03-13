@@ -3,7 +3,6 @@ import { getSecuritySystemPrompt } from '../prompts/security-system.js';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { validateAgentResponse } from '../utils/parser.js';
-import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { runAllExternalTools } from '../security/external-tools.js';
 
 /**
@@ -24,11 +23,6 @@ import { runAllExternalTools } from '../security/external-tools.js';
  */
 export async function runSecurityAgent({ taskSpec, filesChanged, branchName, repo, prNumber, cwd, model }) {
   logger.taskHeader(`SECURITY - Escaneando PR #${prNumber}: ${taskSpec.title}`);
-
-  eventBus.emitEvent(EVENT_TYPES.SECURITY_SCAN_START, {
-    agentName: 'SECURITY',
-    metadata: { prNumber, branchName, filesChanged },
-  });
 
   const systemPrompt = getSecuritySystemPrompt();
 
@@ -122,31 +116,7 @@ ${externalFindingsSummary}
 
   const verdict = computedVerdict;
 
-  eventBus.emitEvent(EVENT_TYPES.SECURITY_SCAN_COMPLETE, {
-    agentName: 'SECURITY',
-    metadata: {
-      verdict,
-      findingsCount: findings.length,
-      criticalCount,
-      highCount,
-      mediumCount,
-      lowCount,
-      prNumber,
-      branchName,
-    },
-  });
-
   if (verdict === 'BLOCK') {
-    eventBus.emitEvent(EVENT_TYPES.SECURITY_SCAN_BLOCKED, {
-      agentName: 'SECURITY',
-      metadata: {
-        prNumber,
-        branchName,
-        criticalCount,
-        highCount,
-        findings: findings.filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH'),
-      },
-    });
     logger.warn(
       `SECURITY BLOCK: ${criticalCount} CRITICAL, ${highCount} HIGH findings en PR #${prNumber}`,
       'SECURITY'
