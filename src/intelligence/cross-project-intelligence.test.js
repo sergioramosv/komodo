@@ -608,4 +608,11 @@ describe('getGlobalModelRecommendation', () => {
     const result = await getGlobalModelRecommendation('coder', 'claude');
     expect(result).toBeNull();
   });
+
+  it('returns null when crossProjectIntelligence is disabled', async () => {
+    mockConfig.crossProjectIntelligence = false;
+    const result = await getGlobalModelRecommendation('coder', 'claude');
+    expect(result).toBeNull();
+    expect(mockGetDb).not.toHaveBeenCalled();
+  });
 });

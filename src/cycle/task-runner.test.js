@@ -145,6 +145,18 @@ vi.mock('../agents/fallback-manager.js', () => ({
   },
 }));
 
+vi.mock('../estimation/budget-strategy.js', () => ({
+  selectTaskStrategy: vi.fn().mockReturnValue({ recommendation: 'green', maxDevPoints: Infinity, modelTier: null }),
+  shouldPauseForForecast: vi.fn().mockReturnValue(false),
+  isTaskAllowedByStrategy: vi.fn().mockReturnValue(true),
+  applyForecastModelOverride: vi.fn((_forecast, { coderModel, reviewerModel }) => ({ coderModel, reviewerModel })),
+}));
+
+vi.mock('../intelligence/cross-project-intelligence.js', () => ({
+  applyGlobalAntiPatternsToProject: vi.fn().mockResolvedValue({ applied: 0 }),
+  getGlobalInsights: vi.fn().mockResolvedValue(''),
+}));
+
 import { runTask } from './task-runner.js';
 import { pickNextTask } from '../agents/planner.js';
 import { implementTask } from '../agents/coder.js';
@@ -153,6 +165,7 @@ import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { komodoState } from '../state/komodo-state.js';
 import { fallbackManager } from '../agents/fallback-manager.js';
 import { config } from '../config.js';
+import { applyGlobalAntiPatternsToProject, getGlobalInsights } from '../intelligence/cross-project-intelligence.js';
 
 describe('task-runner events', () => {
   beforeEach(() => {
@@ -353,5 +366,57 @@ describe('task-runner fallback retry', () => {
       ([type]) => type === EVENT_TYPES.AGENT_FALLBACK
     );
     expect(fallbackCalls).toHaveLength(0);
+  });
+});
+
+describe('task-runner cross-project intelligence', () => {
+  const taskSpec = {
+    taskId: 'task-cpi',
+    title: 'Cross-project test task',
+    branchName: 'feature/cpi',
+    repoUrl: 'https://github.com/owner/repo',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    pickNextTask.mockResolvedValue({ success: true, task: taskSpec });
+    implementTask.mockResolvedValue({ success: true, pr: { prNumber: 77 } });
+    reviewLoop.mockResolvedValue({ approved: true, cycles: 1, finalReview: { verdict: 'APPROVED' } });
+  });
+
+  it('calls applyGlobalAntiPatternsToProject with projectId on each task run', async () => {
+    await runTask('proj-cpi');
+    expect(applyGlobalAntiPatternsToProject).toHaveBeenCalledWith('proj-cpi');
+  });
+
+  it('calls getGlobalInsights with task title and acceptanceCriteria', async () => {
+    pickNextTask.mockResolvedValue({
+      success: true,
+      task: {
+        ...taskSpec,
+        acceptanceCriteria: ['validate input', 'return 200 on success'],
+      },
+    });
+
+    await runTask('proj-cpi');
+
+    expect(getGlobalInsights).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Cross-project test task',
+        acceptanceCriteria: ['validate input', 'return 200 on success'],
+      }),
+    );
+  });
+
+  it('completes task successfully even when applyGlobalAntiPatternsToProject resolves with applied: 0', async () => {
+    applyGlobalAntiPatternsToProject.mockResolvedValue({ applied: 0 });
+    const result = await runTask('proj-cpi');
+    expect(result.success).toBe(true);
+  });
+
+  it('completes task successfully even when getGlobalInsights returns empty string', async () => {
+    getGlobalInsights.mockResolvedValue('');
+    const result = await runTask('proj-cpi');
+    expect(result.success).toBe(true);
   });
 });

@@ -261,6 +261,7 @@ const CLI_MODEL_KEYWORDS = MODEL_TIERS;
  * @returns {Promise<string|null>} model name or null if not enough global data
  */
 export async function getGlobalModelRecommendation(role, cli) {
+  if (!config.crossProjectIntelligence) return null;
   try {
     const db = getDb();
     const snap = await db.ref(`${GLOBAL_ROOT}/model-performance`).once('value');

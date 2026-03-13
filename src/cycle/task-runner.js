@@ -654,11 +654,7 @@ export async function runTask(projectId, cwd) {
       || 'general';
 
     // Apply global critical anti-patterns to local store so coder benefits from cross-project security lessons
-    try {
-      await applyGlobalAntiPatternsToProject(projectId || config.defaultProjectId);
-    } catch (err) {
-      logger.warn(`applyGlobalAntiPatternsToProject failed (non-blocking): ${err.message}`, 'KOMODO');
-    }
+    await applyGlobalAntiPatternsToProject(projectId || config.defaultProjectId);
 
     // KG: build compact context for Coder and load cross-task lessons
     let coderKnowledgeContext = null;
