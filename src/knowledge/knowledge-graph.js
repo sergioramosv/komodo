@@ -333,6 +333,59 @@ export function extractAndSaveLessons(projectId, taskId, module = 'general') {
 }
 
 /**
+ * Saves a healing attempt record for a task.
+ * Appends to knowledge/{projectId}/{taskId}/healing.json, keeping max 50 entries.
+ *
+ * @param {string} projectId
+ * @param {string} taskId
+ * @param {{ strategy: string|null, errorMessage: string, healed: boolean, action?: string, timestamp: string }} attempt
+ */
+export function saveHealingAttempt(projectId, taskId, attempt) {
+  try {
+    const dir = taskDir(projectId, taskId);
+    mkdirSync(dir, { recursive: true });
+    const filePath = join(dir, 'healing.json');
+
+    let existing = { attempts: [] };
+    if (existsSync(filePath)) {
+      try {
+        existing = JSON.parse(readFileSync(filePath, 'utf-8'));
+      } catch {
+        // Ignore parse errors — start fresh
+      }
+    }
+
+    const attempts = [...(existing.attempts || []), attempt];
+    const trimmed = attempts.slice(-50);
+
+    writeFileSync(filePath, JSON.stringify({ taskId, attempts: trimmed }, null, 2), 'utf-8');
+    logger.debug(`KG saved healing attempt for task ${taskId}`, AGENT_TAG);
+  } catch (err) {
+    logger.warn(`KG saveHealingAttempt failed (${taskId}): ${err.message}`, AGENT_TAG);
+  }
+}
+
+/**
+ * Loads the healing attempt history for a task.
+ * Returns an empty array if none exist.
+ *
+ * @param {string} projectId
+ * @param {string} taskId
+ * @returns {Array<{ strategy: string|null, errorMessage: string, healed: boolean, action?: string, timestamp: string }>}
+ */
+export function loadHealingHistory(projectId, taskId) {
+  try {
+    const filePath = join(taskDir(projectId, taskId), 'healing.json');
+    if (!existsSync(filePath)) return [];
+    const data = JSON.parse(readFileSync(filePath, 'utf-8'));
+    return data.attempts || [];
+  } catch (err) {
+    logger.warn(`KG loadHealingHistory failed (${taskId}): ${err.message}`, AGENT_TAG);
+    return [];
+  }
+}
+
+/**
  * Loads lessons for a module and formats them as a concise string for prompt injection.
  * Returns an empty string if no lessons exist (graceful fallback for first task).
  *

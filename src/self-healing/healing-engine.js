@@ -1,11 +1,15 @@
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { logger } from '../utils/logger.js';
+import { saveHealingAttempt } from '../knowledge/knowledge-graph.js';
 import { testFailureStrategy } from './strategies/test-failure.js';
 import { mergeConflictStrategy } from './strategies/merge-conflict.js';
 import { rateLimitStrategy } from './strategies/rate-limit.js';
 import { githubApiErrorStrategy } from './strategies/github-api-error.js';
 import { agentTimeoutStrategy } from './strategies/agent-timeout.js';
 import { firebaseDownStrategy } from './strategies/firebase-down.js';
+
+/** Maximum healing attempts per unique (taskId, errorMessage) key before escalating. */
+const MAX_HEALING_ATTEMPTS = 2;
 
 /**
  * Named strategy identifiers for external reference.
@@ -40,6 +44,65 @@ const STRATEGIES = [
  * runs detect() → diagnose() → heal(), and emits lifecycle events.
  */
 export const healingEngine = {
+  /** Tracks attempt counts per (taskId:errorMessage) key. */
+  _attemptCounts: new Map(),
+
+  /**
+   * Pipeline entry point: enforces MAX_HEALING_ATTEMPTS per failure key,
+   * calls attemptHealing(), persists the result to the Knowledge Graph,
+   * and emits SELF_HEAL_RECOVERED or SELF_HEAL_EXHAUSTED.
+   *
+   * @param {{ taskId?: string, projectId?: string, errorMessage: string, [key: string]: any }} errorContext
+   * @returns {Promise<{ healed: boolean, exhausted: boolean, strategy: string|null }>}
+   */
+  async handleFailure(errorContext) {
+    const { taskId, projectId, errorMessage = '' } = errorContext;
+    const key = `${taskId || 'unknown'}:${errorMessage.slice(0, 80)}`;
+    const count = this._attemptCounts.get(key) || 0;
+
+    if (count >= MAX_HEALING_ATTEMPTS) {
+      logger.warn(`Self-healing: max attempts (${MAX_HEALING_ATTEMPTS}) reached for key "${key}"`, 'SELF-HEALING');
+      eventBus.emitEvent(EVENT_TYPES.SELF_HEAL_EXHAUSTED, {
+        metadata: { taskId, errorMessage: errorMessage.slice(0, 200), attempts: count },
+      });
+      return { healed: false, exhausted: true, strategy: null };
+    }
+
+    this._attemptCounts.set(key, count + 1);
+
+    const result = await this.attemptHealing(errorContext);
+
+    // Persist attempt to Knowledge Graph
+    if (taskId && projectId) {
+      saveHealingAttempt(projectId, taskId, {
+        strategy: result.strategy,
+        errorMessage: errorMessage.slice(0, 200),
+        healed: result.healed,
+        action: result.result?.action ?? null,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (result.healed) {
+      this._attemptCounts.delete(key);
+      eventBus.emitEvent(EVENT_TYPES.SELF_HEAL_RECOVERED, {
+        metadata: { taskId, strategy: result.strategy, action: result.result?.action },
+      });
+      return { healed: true, exhausted: false, strategy: result.strategy };
+    }
+
+    const newCount = this._attemptCounts.get(key) || 0;
+    if (newCount >= MAX_HEALING_ATTEMPTS) {
+      logger.warn(`Self-healing: all attempts exhausted for key "${key}"`, 'SELF-HEALING');
+      eventBus.emitEvent(EVENT_TYPES.SELF_HEAL_EXHAUSTED, {
+        metadata: { taskId, errorMessage: errorMessage.slice(0, 200), attempts: newCount },
+      });
+      return { healed: false, exhausted: true, strategy: result.strategy };
+    }
+
+    return { healed: false, exhausted: false, strategy: result.strategy };
+  },
+
   /**
    * Attempt to heal the given error context.
    *

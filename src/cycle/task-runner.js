@@ -35,7 +35,7 @@ import { analyzeCoverage, updateBaselineAfterMerge, recordCoverageHistory } from
 import { autoVersionBump } from '../versioning/version-bumper.js';
 import { autoRelease } from '../versioning/release-manager.js';
 import { pluginLoader } from '../plugins/plugin-loader.js';
-import { shouldPause, GATE_STEPS } from '../autonomy/autonomy-engine.js';
+import { shouldPause, GATE_STEPS, getActiveLevel, AUTONOMY_LEVELS } from '../autonomy/autonomy-engine.js';
 import { waitForApproval } from '../autonomy/approval-gate.js';
 import { healingEngine } from '../self-healing/healing-engine.js';
 import { testFailureStrategy } from '../self-healing/strategies/test-failure.js';
@@ -857,8 +857,10 @@ export async function runTask(projectId, cwd) {
             eventBus.emitAgentEvent('CODER', 'working', { reason: 'tester-failures', attempt });
 
             if (testFailureStrategy.detect({ errorMessage: failureOutput })) {
-              const healResult = await healingEngine.attemptHealing({
+              const healResult = await healingEngine.handleFailure({
                 type: 'test-failure',
+                taskId: taskSpec.taskId,
+                projectId,
                 errorMessage: failureOutput,
                 runTests: null,
                 fixCode: async () => {
@@ -879,6 +881,13 @@ export async function runTask(projectId, cwd) {
                 komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
                 eventBus.emitAgentEvent('CODER', 'idle');
                 return { fixed: true };
+              }
+              if (healResult.exhausted && getActiveLevel() === AUTONOMY_LEVELS.SUPERVISED) {
+                await waitForApproval({
+                  step: GATE_STEPS.BEFORE_MERGE,
+                  description: `Self-healing exhausted for task ${taskSpec.taskId} — manual intervention needed`,
+                  metadata: { taskId: taskSpec.taskId, reason: 'self-heal:exhausted', errorMessage: failureOutput.slice(0, 500) },
+                });
               }
             }
 
@@ -1066,8 +1075,10 @@ export async function runTask(projectId, cwd) {
 
         // Self-healing: classify failure type before attempting fix
         if (testFailureStrategy.detect({ errorMessage: failureOutput })) {
-          const healResult = await healingEngine.attemptHealing({
+          const healResult = await healingEngine.handleFailure({
             type: 'test-failure',
+            taskId: taskSpec.taskId,
+            projectId,
             errorMessage: failureOutput,
             runTests: null, // re-run handled by executePrePRTests
             fixCode: async () => {
@@ -1086,6 +1097,13 @@ export async function runTask(projectId, cwd) {
           });
           if (healResult.healed) {
             return { fixed: true };
+          }
+          if (healResult.exhausted && getActiveLevel() === AUTONOMY_LEVELS.SUPERVISED) {
+            await waitForApproval({
+              step: GATE_STEPS.BEFORE_MERGE,
+              description: `Self-healing exhausted for task ${taskSpec.taskId} — manual intervention needed`,
+              metadata: { taskId: taskSpec.taskId, reason: 'self-heal:exhausted', errorMessage: failureOutput.slice(0, 500) },
+            });
           }
           // Self-healing failed — fall through to fixReviewIssues() below
         }
@@ -1223,12 +1241,21 @@ export async function runTask(projectId, cwd) {
     const conflictCheck = checkMergeConflicts(repo, prNumber);
     if (conflictCheck.conflicting) {
       logger.warn(`PR #${prNumber} has merge conflicts — attempting self-healing rebase`, 'KOMODO');
-      const conflictHeal = await healingEngine.attemptHealing({
+      const conflictHeal = await healingEngine.handleFailure({
         type: 'merge-conflict',
+        taskId: taskSpec.taskId,
+        projectId,
         errorMessage: 'Merge conflicts detected',
         branchName: taskSpec.branchName,
         cwd,
       });
+      if (conflictHeal.exhausted && getActiveLevel() === AUTONOMY_LEVELS.SUPERVISED) {
+        await waitForApproval({
+          step: GATE_STEPS.BEFORE_MERGE,
+          description: `Self-healing exhausted for task ${taskSpec.taskId} — manual intervention needed`,
+          metadata: { taskId: taskSpec.taskId, reason: 'self-heal:exhausted', errorMessage: 'Merge conflicts detected' },
+        });
+      }
       if (!conflictHeal.healed) {
         logger.error(`PR #${prNumber} has merge conflicts. Cannot proceed with review.`, 'KOMODO');
         closePR(repo, prNumber, 'Merge conflicts detected. PR needs rebase before review.');
@@ -1415,12 +1442,21 @@ export async function runTask(projectId, cwd) {
     const preMergeConflictCheck = checkMergeConflicts(repo, prNumber);
     if (preMergeConflictCheck.conflicting) {
       logger.warn(`PR #${prNumber} has merge conflicts at merge time — attempting self-healing rebase`, 'KOMODO');
-      const preMergeHeal = await healingEngine.attemptHealing({
+      const preMergeHeal = await healingEngine.handleFailure({
         type: 'merge-conflict',
+        taskId: taskSpec.taskId,
+        projectId,
         errorMessage: 'Merge conflicts detected at merge time',
         branchName: taskSpec.branchName,
         cwd,
       });
+      if (preMergeHeal.exhausted && getActiveLevel() === AUTONOMY_LEVELS.SUPERVISED) {
+        await waitForApproval({
+          step: GATE_STEPS.BEFORE_MERGE,
+          description: `Self-healing exhausted for task ${taskSpec.taskId} — manual intervention needed`,
+          metadata: { taskId: taskSpec.taskId, reason: 'self-heal:exhausted', errorMessage: 'Merge conflicts detected at merge time' },
+        });
+      }
       if (!preMergeHeal.healed) {
         logger.error(`PR #${prNumber} has merge conflicts. Cannot merge.`, 'KOMODO');
         closePR(repo, prNumber, 'Merge conflicts detected at merge time. PR needs rebase.');
