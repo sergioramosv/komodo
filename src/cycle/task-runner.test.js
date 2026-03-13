@@ -28,6 +28,7 @@ vi.mock('../config.js', () => ({
     cliPlanner: 'claude',
     cliCoder: 'claude',
     cliReviewer: 'claude',
+    securityAgent: false,
   },
 }));
 
@@ -143,6 +144,52 @@ vi.mock('../agents/fallback-manager.js', () => ({
     markRateLimited: vi.fn(),
     clear: vi.fn(),
   },
+}));
+
+vi.mock('../agents/architect.js', () => ({
+  analyzeTask: vi.fn().mockResolvedValue({
+    success: true,
+    plan: { filesToCreate: [], filesToModify: [] },
+    cost: 0,
+    turns: 0,
+    duration: 0,
+  }),
+}));
+
+vi.mock('../estimation/budget-strategy.js', () => ({
+  shouldPauseForForecast: vi.fn().mockReturnValue(false),
+  isTaskAllowedByStrategy: vi.fn().mockReturnValue(true),
+  selectTaskStrategy: vi.fn().mockReturnValue({ modelTier: null, recommendation: 'green' }),
+  applyForecastModelOverride: vi.fn().mockImplementation(({ coderModel, reviewerModel }) => ({ coderModel, reviewerModel })),
+}));
+
+vi.mock('../canary/conflict-detector.js', () => ({
+  registerActiveTaskFiles: vi.fn(),
+  unregisterActiveTaskFiles: vi.fn(),
+  detectParallelConflicts: vi.fn(),
+}));
+
+vi.mock('../coverage/coverage-analyzer.js', () => ({
+  analyzeCoverage: vi.fn().mockReturnValue({ skipped: true }),
+  updateBaselineAfterMerge: vi.fn(),
+  recordCoverageHistory: vi.fn().mockResolvedValue({}),
+}));
+
+vi.mock('../knowledge/knowledge-graph.js', () => ({
+  saveSection: vi.fn(),
+  buildCoderContext: vi.fn().mockReturnValue(null),
+  buildReviewerContext: vi.fn().mockReturnValue(null),
+  buildTesterContext: vi.fn().mockReturnValue(null),
+  loadModuleLessons: vi.fn().mockReturnValue(null),
+  extractAndSaveLessons: vi.fn(),
+}));
+
+vi.mock('../smart-ordering/context-affinity.js', () => ({
+  extractTaskKeywords: vi.fn().mockReturnValue([]),
+}));
+
+vi.mock('../events/structured-event-logger.js', () => ({
+  emitStructuredEvent: vi.fn().mockResolvedValue({}),
 }));
 
 import { runTask } from './task-runner.js';
