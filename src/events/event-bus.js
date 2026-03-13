@@ -239,6 +239,8 @@ export const EVENT_TYPES = {
   SELF_HEALING_FAILED: 'self-healing:failed',
   SELF_HEALING_OFFLINE_MODE: 'self-healing:offline-mode',
   SELF_HEALING_SYNC_COMPLETED: 'self-healing:sync-completed',
+  SELF_HEAL_RECOVERED: 'self-heal:recovered',
+  SELF_HEAL_EXHAUSTED: 'self-heal:exhausted',
 
   // Codebase learning events
   CODEBASE_LEARNING_STARTED: 'codebase-learning:started',

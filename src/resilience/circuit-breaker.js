@@ -101,6 +101,16 @@ export class CircuitBreaker {
   }
 
   /**
+   * Returns true if the next call to recordFailure() would open the circuit.
+   * Used by the resilience manager to trigger self-healing before the circuit opens.
+   *
+   * @returns {boolean}
+   */
+  isAboutToOpen() {
+    return this.state === CB_STATES.CLOSED && (this.failureCount + 1) >= this.threshold;
+  }
+
+  /**
    * Get a snapshot of the current circuit state.
    *
    * @returns {{ name: string, state: string, failureCount: number, openedAt: number|null }}

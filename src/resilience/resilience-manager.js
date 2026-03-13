@@ -5,6 +5,8 @@ import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
 import { logger } from '../utils/logger.js';
 import { config } from '../config.js';
+import { healingEngine } from '../self-healing/healing-engine.js';
+import { escalationHandler } from '../self-healing/escalation-handler.js';
 
 /**
  * Resilience Manager — unified facade for circuit breakers, error budget,
@@ -36,6 +38,7 @@ class ResilienceManager {
       komodoState.setExecutionState(EXECUTION_STATES.PAUSED);
     };
     eventBus.on(EVENT_TYPES.ERROR_BUDGET_EXHAUSTED, this._handler);
+    escalationHandler.start();
 
     logger.info('Resilience manager started', 'RESILIENCE');
   }
@@ -48,6 +51,7 @@ class ResilienceManager {
       eventBus.removeListener(EVENT_TYPES.ERROR_BUDGET_EXHAUSTED, this._handler);
       this._handler = null;
     }
+    escalationHandler.stop();
   }
 
   /**
@@ -77,14 +81,30 @@ class ResilienceManager {
 
   /**
    * Record a failed operation for a service.
+   * If the circuit is about to open, attempts self-healing first.
    *
    * @param {'firebase'|'github'|'cli'} service
    * @param {string} [error] - Error message
+   * @param {Object} [errorContext] - Optional context for self-healing (taskId, projectId, etc.)
    */
-  recordFailure(service, error) {
+  async recordFailure(service, error, errorContext = {}) {
     if (!config.circuitBreakerEnabled) return;
     const circuit = circuits[service];
-    if (circuit) circuit.recordFailure(error);
+    if (circuit) {
+      if (circuit.isAboutToOpen()) {
+        logger.warn(`Circuit "${service}" about to open — attempting self-healing first`, 'RESILIENCE');
+        const healResult = await healingEngine.handleFailure({
+          ...errorContext,
+          errorMessage: error || `${service} service failure`,
+          service,
+        });
+        if (healResult.healed) {
+          errorBudget.record(true);
+          return;
+        }
+      }
+      circuit.recordFailure(error);
+    }
     errorBudget.record(false);
   }
 

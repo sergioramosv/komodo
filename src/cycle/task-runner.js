@@ -35,7 +35,7 @@ import { analyzeCoverage, updateBaselineAfterMerge, recordCoverageHistory } from
 import { autoVersionBump } from '../versioning/version-bumper.js';
 import { autoRelease } from '../versioning/release-manager.js';
 import { pluginLoader } from '../plugins/plugin-loader.js';
-import { shouldPause, GATE_STEPS } from '../autonomy/autonomy-engine.js';
+import { shouldPause, GATE_STEPS, getActiveLevel, AUTONOMY_LEVELS } from '../autonomy/autonomy-engine.js';
 import { waitForApproval } from '../autonomy/approval-gate.js';
 import { healingEngine } from '../self-healing/healing-engine.js';
 import { testFailureStrategy } from '../self-healing/strategies/test-failure.js';
@@ -857,8 +857,10 @@ export async function runTask(projectId, cwd) {
             eventBus.emitAgentEvent('CODER', 'working', { reason: 'tester-failures', attempt });
 
             if (testFailureStrategy.detect({ errorMessage: failureOutput })) {
-              const healResult = await healingEngine.attemptHealing({
+              const healResult = await healingEngine.handleFailure({
                 type: 'test-failure',
+                taskId: taskSpec.taskId,
+                projectId,
                 errorMessage: failureOutput,
                 runTests: null,
                 fixCode: async () => {
@@ -1066,8 +1068,10 @@ export async function runTask(projectId, cwd) {
 
         // Self-healing: classify failure type before attempting fix
         if (testFailureStrategy.detect({ errorMessage: failureOutput })) {
-          const healResult = await healingEngine.attemptHealing({
+          const healResult = await healingEngine.handleFailure({
             type: 'test-failure',
+            taskId: taskSpec.taskId,
+            projectId,
             errorMessage: failureOutput,
             runTests: null, // re-run handled by executePrePRTests
             fixCode: async () => {
@@ -1223,8 +1227,10 @@ export async function runTask(projectId, cwd) {
     const conflictCheck = checkMergeConflicts(repo, prNumber);
     if (conflictCheck.conflicting) {
       logger.warn(`PR #${prNumber} has merge conflicts — attempting self-healing rebase`, 'KOMODO');
-      const conflictHeal = await healingEngine.attemptHealing({
+      const conflictHeal = await healingEngine.handleFailure({
         type: 'merge-conflict',
+        taskId: taskSpec.taskId,
+        projectId,
         errorMessage: 'Merge conflicts detected',
         branchName: taskSpec.branchName,
         cwd,
@@ -1415,8 +1421,10 @@ export async function runTask(projectId, cwd) {
     const preMergeConflictCheck = checkMergeConflicts(repo, prNumber);
     if (preMergeConflictCheck.conflicting) {
       logger.warn(`PR #${prNumber} has merge conflicts at merge time — attempting self-healing rebase`, 'KOMODO');
-      const preMergeHeal = await healingEngine.attemptHealing({
+      const preMergeHeal = await healingEngine.handleFailure({
         type: 'merge-conflict',
+        taskId: taskSpec.taskId,
+        projectId,
         errorMessage: 'Merge conflicts detected at merge time',
         branchName: taskSpec.branchName,
         cwd,
