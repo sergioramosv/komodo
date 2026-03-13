@@ -303,7 +303,8 @@ Si no hay tareas: { "taskId": null, "message": "No hay tareas pendientes" }`;
  *   error?: string
  * }>}
  */
-export async function runTask(projectId, cwd) {
+export async function runTask(projectId, cwd, options = {}) {
+  const { slotManager = null, preselectedTask = null } = options;
   const startTime = Date.now();
   let taskSpec = null;
   let prNumber = null;
@@ -323,10 +324,17 @@ export async function runTask(projectId, cwd) {
     const plannerCli = config.cliPlanner;
     const plannerModel = selectModel(plannerCli, 'PLANNER', 'standard');
 
-    const plannerResult = await withWatchdog(
-      () => pickNextTask(projectId, { model: plannerModel }),
-      { agentName: 'PLANNER', onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
-    );
+    // When a task is preselected (parallel pipeline), skip the Planner LLM call.
+    let plannerResult;
+    if (preselectedTask) {
+      plannerResult = { success: true, task: preselectedTask, cost: 0, turns: 0, duration: 0 };
+    } else {
+      await slotManager?.acquire('planning', plannerCli, '?');
+      plannerResult = await withWatchdog(
+        () => pickNextTask(projectId, { model: plannerModel }),
+        { agentName: 'PLANNER', onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+      );
+    }
 
     if (plannerResult.cost) {
       taskCost += plannerResult.cost;
@@ -339,6 +347,7 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('PLANNER', 'done');
     komodoState.updateAgent('PLANNER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('PLANNER', 'idle');
+    if (!preselectedTask) slotManager?.release('planning', plannerCli, '?');
 
     if (!plannerResult.success) {
       return makeResult({ success: false, startTime, error: plannerResult.error });
@@ -583,6 +592,9 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     logger.logStep(2, 7, 'Architect analizando codebase...', 'KOMODO');
 
+    const architectCli = config.cliArchitect;
+    await slotManager?.acquire('architecting', architectCli, taskSpec.taskId);
+
     komodoState.updatePhase(PHASES.ARCHITECTING, { currentTask: taskSpec.taskId });
     komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, { phase: 'architecting', taskId: taskSpec.taskId, taskTitle: taskSpec.title });
     eventBus.emitAgentEvent('ARCHITECT', 'working', { taskId: taskSpec.taskId });
@@ -602,6 +614,7 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('ARCHITECT', 'done');
     komodoState.updateAgent('ARCHITECT', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('ARCHITECT', 'idle');
+    slotManager?.release('architecting', architectCli, taskSpec.taskId);
 
     if (architectResult.cost) {
       taskCost += architectResult.cost;
@@ -654,6 +667,8 @@ export async function runTask(projectId, cwd) {
     // PASO 3: CODER — Implementar
     // ═══════════════════════════════════════════
     logger.logStep(3, 7, 'Coder implementando...', 'KOMODO');
+
+    await slotManager?.acquire('coding', coderCli, taskSpec.taskId);
 
     komodoState.updatePhase(PHASES.CODING, { currentTask: taskSpec.taskId });
     komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.taskId }, {
@@ -751,6 +766,7 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('CODER', 'done');
     komodoState.updateAgent('CODER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('CODER', 'idle');
+    slotManager?.release('coding', coderCli, taskSpec.taskId);
 
     if (!coderResult.success) {
       // Cleanup: close any orphan PR the Coder may have created before timing out
@@ -1431,6 +1447,8 @@ export async function runTask(projectId, cwd) {
       }
     }
 
+    await slotManager?.acquire('reviewing', reviewerCli, taskSpec.taskId);
+
     komodoState.updatePhase(PHASES.REVIEWING, { currentPR: prNumber, reviewCycle: 0 });
     komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.WORKING }, {
       phase: 'reviewing',
@@ -1459,6 +1477,7 @@ export async function runTask(projectId, cwd) {
     eventBus.emitAgentEvent('REVIEWER', 'done');
     komodoState.updateAgent('REVIEWER', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
     eventBus.emitAgentEvent('REVIEWER', 'idle');
+    slotManager?.release('reviewing', reviewerCli, taskSpec.taskId);
 
     if (reviewResult.cost) {
       taskCost += reviewResult.cost;

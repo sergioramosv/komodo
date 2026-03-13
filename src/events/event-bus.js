@@ -269,6 +269,18 @@ export const EVENT_TYPES = {
 
   // Observability anomaly alerting
   ANOMALY_ALERT: 'observability:anomaly:alert',
+
+  // Pipeline Scheduler events
+  PIPELINE_SCHEDULER_STARTED: 'pipeline-scheduler:started',
+  PIPELINE_SCHEDULER_COMPLETE: 'pipeline-scheduler:complete',
+  PIPELINE_SCHEDULER_TASK_QUEUED: 'pipeline-scheduler:task:queued',
+  PIPELINE_SCHEDULER_STAGE_WAITING: 'pipeline-scheduler:stage:waiting',
+  PIPELINE_SCHEDULER_STAGE_ACQUIRED: 'pipeline-scheduler:stage:acquired',
+  PIPELINE_SCHEDULER_TASK_COMPLETE: 'pipeline-scheduler:task:complete',
+  PIPELINE_SCHEDULER_TASK_FAILED: 'pipeline-scheduler:task:failed',
+  CLI_SLOT_ACQUIRED: 'pipeline-scheduler:cli-slot:acquired',
+  CLI_SLOT_RELEASED: 'pipeline-scheduler:cli-slot:released',
+  CLI_SLOT_RATE_LIMITED: 'pipeline-scheduler:cli-slot:rate-limited',
 };
 
 /**

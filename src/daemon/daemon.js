@@ -1,4 +1,5 @@
 import { runTask } from '../cycle/task-runner.js';
+import { PipelineScheduler } from '../cycle/pipeline-scheduler.js';
 import { fetchProjectTasks, filterBlockedTasks } from '../agents/planner.js';
 import { validateConfig, config } from '../config.js';
 import { logger } from '../utils/logger.js';
@@ -196,25 +197,52 @@ export async function watch(projectId, options = {}) {
       logger.info('Tarea detectada en backlog. Ejecutando...', AGENT);
     }
 
-    // Execute a task
+    // Execute a task (or a parallel batch via PipelineScheduler)
     try {
       komodoState.setExecutionState(EXECUTION_STATES.DAEMON_RUNNING);
-      const result = await runTask(projectId, cwd);
-      results.push(result);
 
-      if (!result.taskId) {
-        // Backlog empty (planner returned no tasks) — go to idle
-        continue;
-      }
+      if (config.maxConcurrentAgents > 1 && config.pipelineScheduler) {
+        // Parallel pipeline: fetch eligible tasks and run them concurrently
+        const allTasks = await fetchProjectTasks(projectId);
+        const todoTasks = allTasks.filter(t => t.status === 'to-do');
+        const { eligible } = filterBlockedTasks(todoTasks, allTasks);
 
-      if (result.success) {
-        tasksCompleted++;
+        if (eligible.length === 0) continue;
+
+        const scheduler = new PipelineScheduler({ maxConcurrentAgents: config.maxConcurrentAgents });
+        const batchResults = await scheduler.run(eligible, projectId, { cwd });
+
+        for (const result of batchResults) {
+          results.push(result);
+          if (!result.taskId) continue;
+          if (result.success) {
+            tasksCompleted++;
+            logger.success(`Tarea "${result.taskTitle}" completada (total: ${tasksCompleted})`, AGENT);
+          } else {
+            tasksFailed++;
+            logger.error(`Tarea "${result.taskTitle}" falló: ${result.error}`, AGENT);
+          }
+        }
         komodoState.updatePhase(PHASES.IDLE, { tasksCompleted });
-        logger.success(`Tarea "${result.taskTitle}" completada (total: ${tasksCompleted})`, AGENT);
       } else {
-        tasksFailed++;
-        komodoState.updatePhase(PHASES.IDLE);
-        logger.error(`Tarea "${result.taskTitle}" falló: ${result.error}`, AGENT);
+        // Sequential pipeline (default)
+        const result = await runTask(projectId, cwd);
+        results.push(result);
+
+        if (!result.taskId) {
+          // Backlog empty (planner returned no tasks) — go to idle
+          continue;
+        }
+
+        if (result.success) {
+          tasksCompleted++;
+          komodoState.updatePhase(PHASES.IDLE, { tasksCompleted });
+          logger.success(`Tarea "${result.taskTitle}" completada (total: ${tasksCompleted})`, AGENT);
+        } else {
+          tasksFailed++;
+          komodoState.updatePhase(PHASES.IDLE);
+          logger.error(`Tarea "${result.taskTitle}" falló: ${result.error}`, AGENT);
+        }
       }
     } catch (err) {
       tasksFailed++;
