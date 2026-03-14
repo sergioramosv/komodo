@@ -58,52 +58,63 @@ export const searchTools = {
       required: ['query'],
     },
     handler: async ({ query, module: queryModule, topK = 5, projectId = 'default' }) => {
-      const queryEmbedding = await embed(query);
+      try {
+        const safeTopK = Math.max(0, topK);
 
-      const isZeroVector = queryEmbedding.every(v => v === 0);
-      if (isZeroVector) {
+        const queryEmbedding = await embed(query);
+
+        const isZeroVector = queryEmbedding.every(v => v === 0);
+        if (isZeroVector) {
+          return {
+            results: [],
+            total: 0,
+            message: 'No se pudo generar embedding para la consulta (Vertex AI no disponible).',
+          };
+        }
+
+        const entries = await getEntriesForSearch(projectId);
+
+        const scored = [];
+        for (const entry of entries) {
+          if (!Array.isArray(entry.embedding) || entry.embedding.length !== EMBEDDING_DIM) {
+            continue;
+          }
+
+          const isEntryZero = entry.embedding.every(v => v === 0);
+          if (isEntryZero) continue;
+
+          let score = cosineSimilarity(queryEmbedding, entry.embedding);
+
+          // Boost de 30% para entries del mismo módulo
+          if (sameModule(queryModule, entry.module)) {
+            score = Math.min(1, score * 1.3);
+          }
+
+          scored.push({ ...entry, score });
+        }
+
+        // Ordenar por score descendente y tomar top K
+        scored.sort((a, b) => b.score - a.score);
+        const results = scored.slice(0, safeTopK).map(({ id, description, module, score }) => ({
+          id,
+          description,
+          module: module || null,
+          score: Math.round(score * 10000) / 10000,
+        }));
+
+        return {
+          results,
+          total: results.length,
+          totalSearched: entries.length,
+        };
+      } catch (err) {
+        console.error('[get_relevant_memory] Error inesperado:', err.message);
         return {
           results: [],
           total: 0,
-          message: 'No se pudo generar embedding para la consulta (Vertex AI no disponible).',
+          error: `Error interno al buscar en memoria: ${err.message}`,
         };
       }
-
-      const entries = await getEntriesForSearch(projectId);
-
-      const scored = [];
-      for (const entry of entries) {
-        if (!Array.isArray(entry.embedding) || entry.embedding.length !== EMBEDDING_DIM) {
-          continue;
-        }
-
-        const isEntryZero = entry.embedding.every(v => v === 0);
-        if (isEntryZero) continue;
-
-        let score = cosineSimilarity(queryEmbedding, entry.embedding);
-
-        // Boost de 30% para entries del mismo módulo
-        if (sameModule(queryModule, entry.module)) {
-          score = Math.min(1, score * 1.3);
-        }
-
-        scored.push({ ...entry, score });
-      }
-
-      // Ordenar por score descendente y tomar top K
-      scored.sort((a, b) => b.score - a.score);
-      const results = scored.slice(0, topK).map(({ id, description, module, score }) => ({
-        id,
-        description,
-        module: module || null,
-        score: Math.round(score * 10000) / 10000,
-      }));
-
-      return {
-        results,
-        total: results.length,
-        totalSearched: entries.length,
-      };
     },
   },
 };

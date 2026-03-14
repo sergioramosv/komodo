@@ -36,6 +36,10 @@ export async function embed(text) {
     const client = await auth.getClient();
     const token = await client.getAccessToken();
 
+    if (!token.token) {
+      throw new Error('No se pudo obtener access token de Google Auth (token es null)');
+    }
+
     const url = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:predict`;
 
     const response = await fetch(url, {
@@ -67,7 +71,7 @@ export async function embed(text) {
   } catch (err) {
     console.error('[vertex-embeddings] Error generando embedding, usando fallback:', err.message);
     const fallback = new Array(EMBEDDING_DIM).fill(0);
-    cache.set(hash, fallback);
+    // No cachear el fallback de ceros: si el fallo es temporal, el próximo intento debe reintentar
     return fallback;
   }
 }
