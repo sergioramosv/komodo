@@ -267,6 +267,25 @@ function applyEvent(
       }
       break;
     }
+    case 'agent:tester:working': {
+      if (next.agents['TESTER']) {
+        next.agents['TESTER'] = { ...next.agents['TESTER'], status: 'working' };
+      }
+      next.phase = 'testing';
+      break;
+    }
+    case 'agent:tester:done': {
+      if (next.agents['TESTER']) {
+        next.agents['TESTER'] = { ...next.agents['TESTER'], status: 'done' };
+      }
+      break;
+    }
+    case 'agent:tester:idle': {
+      if (next.agents['TESTER']) {
+        next.agents['TESTER'] = { ...next.agents['TESTER'], status: 'idle', currentTask: null };
+      }
+      break;
+    }
     case 'browser:check': {
       const agent = event.agentName as keyof typeof next.agents | null;
       if (agent && next.agents[agent]) {
@@ -449,6 +468,22 @@ function formatEvent(event: WsEventMessage['data']): DashboardEvent | null {
       break;
     case 'multi-project:all-backlogs-empty':
       message = `All project backlogs are empty`;
+      break;
+    case 'tester:tests-generated': {
+      const count = (meta.count as number) ?? 0;
+      const passed = (meta.passed as number) ?? 0;
+      const failed = (meta.failed as number) ?? 0;
+      message = `TESTER: ${count} tests — ${passed} passed, ${failed} failed`;
+      break;
+    }
+    case 'agent:tester:working':
+      message = `TESTER started testing`;
+      break;
+    case 'agent:tester:done':
+      message = `TESTER finished testing`;
+      break;
+    case 'agent:tester:idle':
+      message = `TESTER is idle`;
       break;
     default:
       message = event.type;
