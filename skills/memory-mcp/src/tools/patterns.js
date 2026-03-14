@@ -96,11 +96,8 @@ export const patternTools = {
         prNumber: prNumber || null,
       };
 
-      store.patterns.push(newPattern);
-      writeStore(store);
-
       if (projectId) {
-        // Generar embedding y guardar en Firebase (await para asegurar persistencia)
+        // Guardar SOLO en Firebase; si falla, guardar localmente como fallback
         try {
           const embedding = await embed(description);
           await createMemoryEntry(projectId, 'patterns', {
@@ -113,10 +110,14 @@ export const patternTools = {
             type,
           });
         } catch (err) {
-          console.error('[patterns] Error guardando en Firebase:', err.message);
+          console.error('[patterns] Error guardando en Firebase, usando store local:', err.message);
+          store.patterns.push(newPattern);
+          writeStore(store);
         }
       } else {
-        // Generar embedding en background para el store local
+        // Guardar localmente y generar embedding en background
+        store.patterns.push(newPattern);
+        writeStore(store);
         embed(description).then(embedding => {
           return addOrUpdateEntryEmbedding(newPattern.id, embedding);
         }).catch(err => {

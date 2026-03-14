@@ -43,6 +43,10 @@ function sameModule(a, b) {
  * @returns {Promise<{ results: object[], total: number, totalSearched?: number, message?: string }>}
  */
 export async function semanticSearch({ query, currentFile, topK = 5, projectId = 'default', type } = {}) {
+  if (!query || typeof query !== 'string' || query.trim() === '') {
+    return { results: [], total: 0, message: 'Query vacío o inválido.' };
+  }
+
   const safeTopK = Math.max(0, topK);
 
   const queryEmbedding = await embed(query);
@@ -84,10 +88,13 @@ export async function semanticSearch({ query, currentFile, topK = 5, projectId =
 
   // Ordenar por score descendente y tomar top K
   scored.sort((a, b) => b.score - a.score);
-  const results = scored.slice(0, safeTopK).map(({ id, description, module, score }) => ({
+  const results = scored.slice(0, safeTopK).map(({ id, description, module, type, severity, frequency, score }) => ({
     id,
     description,
     module: module || null,
+    type: type || null,
+    severity: severity || null,
+    frequency: frequency || null,
     score: Math.round(score * 10000) / 10000,
   }));
 
