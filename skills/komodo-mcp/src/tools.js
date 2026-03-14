@@ -42,6 +42,7 @@ const { selectModel } = await import('../../../src/triage/model-selector.js');
 const { startEventPersistence } = await import('../../../src/events/event-persistence.js');
 const { pluginLoader } = await import('../../../src/plugins/plugin-loader.js');
 const { DASHBOARD_AGENT_STATES } = await import('../../../src/state/komodo-state.js');
+const { logger } = await import('../../../src/utils/logger.js');
 
 // Start event persistence so MCP events get saved to Firebase
 const _projectId = config.defaultProjectId;
@@ -492,8 +493,8 @@ export const tools = {
           try {
             const prJson = await runGh(['pr', 'view', String(params.prNumber), '--json', 'headRefName', '--repo', params.repo]);
             branchName = JSON.parse(prJson).headRefName || '';
-          } catch {
-            // non-blocking
+          } catch (branchErr) {
+            logger.warn(`Could not resolve branchName for security plugin context (non-blocking): ${branchErr?.message || branchErr}`, 'KOMODO');
           }
         }
 
@@ -506,7 +507,7 @@ export const tools = {
           changedFiles: params.changedFiles || [],
         });
       } catch (err) {
-        // non-blocking
+        logger.warn(`Plugin before-review error (non-blocking): ${err?.message || err}`, 'KOMODO');
       }
 
       const securityBlocked = beforeReviewPluginResults.some(r => r.blocked === true);
