@@ -157,7 +157,7 @@ async function _recordFinalizationMetrics(params, approved, merged) {
       model: config.forceModel_CODER || config.cliCoder || '',
     });
   } catch (err) {
-    // Non-blocking
+    logger.warn(`Estimation tracking failed (non-blocking): ${err?.message || err}`, 'KOMODO');
   }
 
   try {
@@ -174,7 +174,7 @@ async function _recordFinalizationMetrics(params, approved, merged) {
       approved,
     });
   } catch (err) {
-    // Non-blocking
+    logger.warn(`Model performance tracking failed (non-blocking): ${err?.message || err}`, 'KOMODO');
   }
 }
 
@@ -639,8 +639,8 @@ export const tools = {
             issues: sonarReport.issues,
           };
         }
-      } catch {
-        // Non-blocking: continue even if Sonar fails
+      } catch (err) {
+        logger.warn(`Sonar analysis failed (non-blocking): ${err?.message || err}`, 'KOMODO');
       }
 
       return {
@@ -734,8 +734,8 @@ export const tools = {
           branch = prData.headRefName || null;
         }
         finalSonarReport = await analyzeSonar({ branch, prNumber, repo });
-      } catch {
-        // Non-blocking: if Sonar fails to run, don't block merge
+      } catch (err) {
+        logger.warn(`Sonar pre-merge analysis failed (non-blocking): ${err?.message || err}`, 'KOMODO');
       }
 
       if (finalSonarReport?.success && finalSonarReport.qualityGate === 'ERROR') {
