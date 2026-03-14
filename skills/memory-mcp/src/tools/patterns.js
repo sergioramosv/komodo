@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { readStore, writeStore, findSimilarPattern, addOrUpdateEntryEmbedding } from '../store.js';
 import { embed } from '../vertex-embeddings.js';
+import { semanticSearch } from './search.js';
+import { createMemoryEntry } from '../firebase-memory.js';
 
 export const patternTools = {
   record_pattern: {
@@ -39,10 +41,14 @@ export const patternTools = {
           type: 'number',
           description: 'Número de la PR donde se encontró (opcional)',
         },
+        projectId: {
+          type: 'string',
+          description: 'Project ID para guardar en Firebase con embedding (opcional)',
+        },
       },
       required: ['type', 'description', 'severity'],
     },
-    handler: async ({ type, description, tags = [], severity, resolution = '', taskId, prNumber }) => {
+    handler: async ({ type, description, tags = [], severity, resolution = '', taskId, prNumber, projectId }) => {
       const store = readStore();
       const today = new Date().toISOString().split('T')[0];
 
@@ -90,15 +96,34 @@ export const patternTools = {
         prNumber: prNumber || null,
       };
 
-      store.patterns.push(newPattern);
-      writeStore(store);
-
-      // Generar embedding en background (fire-and-forget)
-      embed(description).then(embedding => {
-        return addOrUpdateEntryEmbedding(newPattern.id, embedding);
-      }).catch(err => {
-        console.error('[patterns] Error generando embedding en background:', err.message);
-      });
+      if (projectId) {
+        // Guardar SOLO en Firebase; si falla, guardar localmente como fallback
+        try {
+          const embedding = await embed(description);
+          await createMemoryEntry(projectId, 'patterns', {
+            text: description,
+            embedding,
+            severity,
+            frequency: 1,
+            relatedFiles: [],
+            lastSeen: today,
+            type,
+          });
+        } catch (err) {
+          console.error('[patterns] Error guardando en Firebase, usando store local:', err.message);
+          store.patterns.push(newPattern);
+          writeStore(store);
+        }
+      } else {
+        // Guardar localmente y generar embedding en background
+        store.patterns.push(newPattern);
+        writeStore(store);
+        embed(description).then(embedding => {
+          return addOrUpdateEntryEmbedding(newPattern.id, embedding);
+        }).catch(err => {
+          console.error('[patterns] Error generando embedding en background:', err.message);
+        });
+      }
 
       return {
         action: 'created',
@@ -109,7 +134,7 @@ export const patternTools = {
   },
 
   query_patterns: {
-    description: 'Busca patrones por tags, tipo, severidad o texto libre. Los resultados se devuelven ordenados por frecuencia (más frecuentes primero).',
+    description: 'Busca patrones por tags, tipo, severidad o texto libre. Los resultados se devuelven ordenados por frecuencia (más frecuentes primero). Si se proporcionan projectId y semanticQuery, usa búsqueda semántica por embeddings.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -136,10 +161,48 @@ export const patternTools = {
           type: 'number',
           description: 'Máximo de resultados. Default: 20',
         },
+        projectId: {
+          type: 'string',
+          description: 'Project ID para búsqueda semántica en Firebase (requiere semanticQuery)',
+        },
+        semanticQuery: {
+          type: 'string',
+          description: 'Texto para búsqueda semántica por embeddings (requiere projectId)',
+        },
       },
       required: [],
     },
-    handler: async ({ type, severity, tags = [], query, limit = 20 }) => {
+    handler: async ({ type, severity, tags = [], query, limit = 20, projectId, semanticQuery }) => {
+      // Búsqueda semántica cuando se proporcionan projectId y semanticQuery
+      if (projectId && semanticQuery) {
+        try {
+          const searchResult = await semanticSearch({
+            query: semanticQuery,
+            topK: limit,
+            projectId,
+            type,
+          });
+
+          if (searchResult.message) {
+            return {
+              patterns: [],
+              total: 0,
+              message: searchResult.message,
+            };
+          }
+
+          return {
+            patterns: searchResult.results,
+            total: searchResult.total,
+            totalSearched: searchResult.totalSearched,
+            searchMode: 'semantic',
+          };
+        } catch (err) {
+          console.error('[query_patterns] Error en búsqueda semántica:', err.message);
+          // Fallback a búsqueda por texto
+        }
+      }
+
       const store = readStore();
       let results = [...store.patterns];
 
@@ -179,6 +242,7 @@ export const patternTools = {
         patterns: results,
         total: results.length,
         totalInStore: store.patterns.length,
+        searchMode: 'text',
       };
     },
   },

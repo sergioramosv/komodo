@@ -92,6 +92,7 @@ export async function createMemoryEntry(projectId, collection, data) {
     frequency: data.frequency ?? 0,
     relatedFiles: data.relatedFiles ?? [],
     lastSeen: data.lastSeen ?? new Date().toISOString(),
+    type: data.type ?? null,
   });
   await ref.set(entry);
   return { id: ref.key };

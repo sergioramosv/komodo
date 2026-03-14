@@ -75,6 +75,9 @@ export async function getEntriesForSearch(projectId = 'default') {
         description: e.text || e.description || '',
         embedding: Array.isArray(e.embedding) ? e.embedding : null,
         module: e.module || null,
+        type: e.type || null,
+        severity: e.severity || null,
+        frequency: e.frequency || null,
       }));
     } catch (err) {
       console.error('[store] Error leyendo Firebase para search, fallback a file store:', err.message);
@@ -87,6 +90,9 @@ export async function getEntriesForSearch(projectId = 'default') {
     description: p.description,
     embedding: Array.isArray(p.embedding) ? p.embedding : null,
     module: p.module || null,
+    type: p.type || null,
+    severity: p.severity || null,
+    frequency: p.frequency || null,
   }));
 }
 
