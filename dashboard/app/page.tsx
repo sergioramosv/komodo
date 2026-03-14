@@ -75,6 +75,10 @@ const EVENT_COLORS: Record<string, string> = {
   'multi-project:project-switch': 'text-violet-400',
   'multi-project:run-completed': 'text-green-400',
   'multi-project:all-backlogs-empty': 'text-neutral-400',
+  'tester:tests-generated': 'text-teal-400',
+  'agent:tester:working': 'text-teal-400',
+  'agent:tester:done': 'text-teal-400',
+  'agent:tester:idle': 'text-teal-400',
 };
 
 /* ── Page ── */

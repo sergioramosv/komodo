@@ -21,6 +21,7 @@ export const DEFAULT_AGENTS: Record<AgentName, AgentVisualState> = {
   REVIEWER: { name: 'REVIEWER', status: 'idle', currentTask: null, startedAt: null, avatar: '', activity: null, reviewCycle: 0 },
   ARCHITECT: { name: 'ARCHITECT', status: 'idle', currentTask: null, startedAt: null, avatar: '', activity: null, reviewCycle: 0 },
   SECURITY: { name: 'SECURITY', status: 'idle', currentTask: null, startedAt: null, avatar: '', activity: null, reviewCycle: 0 },
+  TESTER: { name: 'TESTER', status: 'idle', currentTask: null, startedAt: null, avatar: '', activity: null, reviewCycle: 0 },
 };
 
 export function getAgentActivity(agent: AgentState, phase: Phase): string | null {
@@ -45,6 +46,8 @@ export function getAgentActivity(agent: AgentState, phase: Phase): string | null
       return phase === 'architecting' ? 'Designing architecture...' : null;
     case 'SECURITY':
       return phase === 'reviewing' ? 'Security scan...' : null;
+    case 'TESTER':
+      return phase === 'testing' ? 'Running tests...' : null;
     default:
       return null;
   }
@@ -64,7 +67,7 @@ export function useAgentStates(
   }
 
   const agents = {} as Record<AgentName, AgentVisualState>;
-  for (const name of ['PLANNER', 'CODER', 'REVIEWER', 'ARCHITECT', 'SECURITY'] as AgentName[]) {
+  for (const name of ['PLANNER', 'CODER', 'REVIEWER', 'ARCHITECT', 'SECURITY', 'TESTER'] as AgentName[]) {
     const agent = snapshot.agents[name] ?? DEFAULT_AGENTS[name];
     agents[name] = {
       ...agent,
