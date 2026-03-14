@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
-import { readStore, writeStore, findSimilarPattern } from '../store.js';
+import { readStore, writeStore, findSimilarPattern, addOrUpdateEntryEmbedding } from '../store.js';
+import { embed } from '../vertex-embeddings.js';
 
 export const patternTools = {
   record_pattern: {
@@ -91,6 +92,13 @@ export const patternTools = {
 
       store.patterns.push(newPattern);
       writeStore(store);
+
+      // Generar embedding en background (fire-and-forget)
+      embed(description).then(embedding => {
+        return addOrUpdateEntryEmbedding(newPattern.id, embedding);
+      }).catch(err => {
+        console.error('[patterns] Error generando embedding en background:', err.message);
+      });
 
       return {
         action: 'created',
