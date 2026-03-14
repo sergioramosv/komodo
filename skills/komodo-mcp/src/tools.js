@@ -59,7 +59,8 @@ let runGh;
 try {
   const ghCli = await import('../../github-mcp/src/gh-cli.js');
   runGh = ghCli.runGh;
-} catch {
+} catch (err) {
+  logger.warn('github-mcp not available (non-blocking): ' + (err?.message || err), 'KOMODO');
   runGh = null;
 }
 
