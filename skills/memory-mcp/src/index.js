@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { validateConfig } from './config.js';
 import { patternTools } from './tools/patterns.js';
 import { statsTools } from './tools/stats.js';
+import { searchTools } from './tools/search.js';
 
 // Validate configuration before starting
 const errors = validateConfig();
@@ -26,6 +27,7 @@ const server = new McpServer({
 const allTools = {
   ...patternTools,
   ...statsTools,
+  ...searchTools,
 };
 
 // Convert JSON Schema properties to Zod schemas

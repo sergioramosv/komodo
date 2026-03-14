@@ -14,6 +14,13 @@ export const firebaseConfig = {
   useFirebaseMemory: process.env.USE_FIREBASE_MEMORY === 'true',
 };
 
+export const vertexConfig = {
+  project: process.env.GOOGLE_CLOUD_PROJECT || null,
+  location: process.env.VERTEX_LOCATION || 'us-central1',
+  model: 'text-embedding-004',
+  embeddingDim: 768,
+};
+
 /**
  * Valida que el directorio de memoria exista (lo crea si no).
  * Si USE_FIREBASE_MEMORY=true, advierte si faltan variables Firebase (no fatal).

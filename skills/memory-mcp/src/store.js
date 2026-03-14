@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, existsSync, renameSync } from 'fs';
-import { PATTERNS_FILE } from './config.js';
+import { PATTERNS_FILE, firebaseConfig } from './config.js';
+import { getMemoryEntries, createMemoryEntry, updateMemoryEntry } from './firebase-memory.js';
 
 /**
  * Motor de almacenamiento para memory/patterns.json
@@ -56,6 +57,63 @@ export function findSimilarPattern(patterns, description) {
     const pLower = p.description.toLowerCase();
     return pLower === descLower || pLower.includes(descLower) || descLower.includes(pLower);
   }) || null;
+}
+
+/**
+ * Devuelve todas las entries disponibles para búsqueda semántica.
+ * Si USE_FIREBASE_MEMORY=true, lee desde Firebase. Si no, lee desde file store.
+ * Cada entry debe tener al menos: { id, description, embedding, module? }
+ * @param {string} [projectId]
+ * @returns {Promise<Array<{id: string, description: string, embedding: number[]|null, module?: string}>>}
+ */
+export async function getEntriesForSearch(projectId = 'default') {
+  if (firebaseConfig.useFirebaseMemory && firebaseConfig.serviceAccountPath && firebaseConfig.databaseURL) {
+    try {
+      const entries = await getMemoryEntries(projectId, 'patterns');
+      return entries.map(e => ({
+        id: e.id,
+        description: e.text || e.description || '',
+        embedding: Array.isArray(e.embedding) ? e.embedding : null,
+        module: e.module || null,
+      }));
+    } catch (err) {
+      console.error('[store] Error leyendo Firebase para search, fallback a file store:', err.message);
+    }
+  }
+
+  const store = readStore();
+  return store.patterns.map(p => ({
+    id: p.id,
+    description: p.description,
+    embedding: Array.isArray(p.embedding) ? p.embedding : null,
+    module: p.module || null,
+  }));
+}
+
+/**
+ * Añade o actualiza el embedding de una entry existente.
+ * Si USE_FIREBASE_MEMORY=true, actualiza en Firebase. Si no, actualiza en file store.
+ * @param {string} entryId
+ * @param {number[]} embedding
+ * @param {string} [projectId]
+ * @returns {Promise<void>}
+ */
+export async function addOrUpdateEntryEmbedding(entryId, embedding, projectId = 'default') {
+  if (firebaseConfig.useFirebaseMemory && firebaseConfig.serviceAccountPath && firebaseConfig.databaseURL) {
+    try {
+      await updateMemoryEntry(projectId, 'patterns', entryId, { embedding });
+      return;
+    } catch (err) {
+      console.error('[store] Error actualizando embedding en Firebase, fallback a file store:', err.message);
+    }
+  }
+
+  const store = readStore();
+  const pattern = store.patterns.find(p => p.id === entryId);
+  if (pattern) {
+    pattern.embedding = embedding;
+    writeStore(store);
+  }
 }
 
 /**
