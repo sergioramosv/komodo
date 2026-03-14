@@ -51,7 +51,7 @@ if (_projectId) {
   try {
     _eventPersistenceUnsubscribe = startEventPersistence(_projectId);
   } catch (err) {
-    // Non-fatal: if Firebase fails, don't crash the MCP server
+    logger.warn(`Event persistence failed (non-blocking): ${err?.message || err}`, 'KOMODO');
   }
 }
 
@@ -98,7 +98,7 @@ async function handleRateLimitIfNeeded(result, { taskId, title, branchName, repo
     // the user cannot see or interact with. Instead, return control
     // to the MCP caller so they can invoke komodo_resume manually.
   } catch (err) {
-    // Best effort — checkpoint save failed but we still report the rate limit
+    logger.warn(`Checkpoint save failed (non-blocking): ${err?.message || err}`, 'KOMODO');
   }
 
   return {
@@ -344,8 +344,7 @@ export const tools = {
           architectPlan = architectResult.plan;
         }
       } catch (err) {
-        // Non-blocking: if ARCHITECT fails, proceed without plan
-        console.error('[ARCHITECT] analyzeTask failed:', err?.message || err);
+        logger.warn(`ARCHITECT analyzeTask failed (non-blocking): ${err?.message || err}`, 'KOMODO');
         komodoState.updateAgent('ARCHITECT', { status: 'idle', currentTask: null }, { phase: 'idle' });
       }
 
@@ -476,7 +475,7 @@ export const tools = {
             baseBranch: 'main',
           });
         } catch (err) {
-          // Graceful degradation — continue review without sonar if it fails
+          logger.warn(`Sonar review analysis failed (non-blocking): ${err?.message || err}`, 'KOMODO');
           sonarReport = null;
         }
       }
@@ -696,7 +695,7 @@ export const tools = {
               '--delete-branch',
             ]);
           } catch (err) {
-            // Non-fatal: PR might already be closed
+            logger.warn(`PR close failed (non-blocking): ${err?.message || err}`, 'KOMODO');
           }
         }
 
@@ -788,7 +787,7 @@ export const tools = {
         try {
           await changeTaskStatus(taskId, 'to-validate');
         } catch (err) {
-          // Non-fatal: PR merged but task status might not update
+          logger.warn(`Task status update failed after merge (non-blocking): ${err?.message || err}`, 'KOMODO');
         }
 
         // Emit PR_MERGED and TASK_COMPLETED events
@@ -828,7 +827,7 @@ export const tools = {
       try {
         await changeTaskStatus(taskId, 'to-validate');
       } catch (err) {
-        // Non-fatal
+        logger.warn(`Task status update failed in manual-merge path (non-blocking): ${err?.message || err}`, 'KOMODO');
       }
 
       komodoState.tasksCompleted = (komodoState.tasksCompleted || 0) + 1;
