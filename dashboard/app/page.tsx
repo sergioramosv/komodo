@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useViewPreference } from '@/context/view-preference-context';
 import { useKomodoSocket } from '@/hooks/useKomodoSocket';
 import { useAgentStates } from '@/hooks/useAgentStates';
 import { useOfficeFeedback } from '@/hooks/useOfficeFeedback';
@@ -94,7 +95,23 @@ export default function DashboardPage() {
   const feedback = useOfficeFeedback(events, snapshot);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [officeView, setOfficeView] = useState<'3d' | 'pixel'>('3d');
+  const { view } = useViewPreference();
+  const [displayView, setDisplayView] = useState<'3d' | 'pixel'>(view);
+  const [opacity, setOpacity] = useState(1);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (view === displayView) return;
+    if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    setOpacity(0);
+    fadeTimer.current = setTimeout(() => {
+      setDisplayView(view);
+      setOpacity(1);
+    }, 200);
+    return () => {
+      if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    };
+  }, [view]);
 
   return (
     <div className="space-y-6">
@@ -315,28 +332,14 @@ export default function DashboardPage() {
               )}
             </section>
 
-            {/* Office View Toggle */}
-            <div className="flex items-center gap-1 px-4 py-2 border-b border-neutral-800">
-              <button
-                onClick={() => setOfficeView('3d')}
-                className={`rounded px-3 py-1 text-xs font-medium transition-colors ${officeView === '3d' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
-              >
-                3D Office
-              </button>
-              <button
-                onClick={() => setOfficeView('pixel')}
-                className={`rounded px-3 py-1 text-xs font-medium transition-colors ${officeView === 'pixel' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
-              >
-                Pixel Office
-              </button>
-            </div>
-
             {/* Office Scene — real-time agent visualization */}
-            {officeView === '3d' ? (
-              <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
-            ) : (
-              <PixelOfficeCanvas agents={agentStates.agents} />
-            )}
+            <div style={{ opacity, transition: 'opacity 200ms ease', flex: 1, display: 'flex', flexDirection: 'column' }}>
+              {displayView === '3d' ? (
+                <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
+              ) : (
+                <PixelOfficeCanvas agents={agentStates.agents} />
+              )}
+            </div>
           </div>
         </div>
       )}
