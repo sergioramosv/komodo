@@ -236,6 +236,9 @@ export default function DashboardPage() {
               })}
             </section>
 
+            {/* Agent Cost & Turns Breakdown */}
+            <AgentCostBreakdown agents={snapshot.agents} totalCost={snapshot.totalCost} />
+
             {/* Tasks */}
             <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
               <h3 className="mb-1 text-sm font-medium text-neutral-400">Tasks</h3>
@@ -326,6 +329,80 @@ export default function DashboardPage() {
         />
       )}
     </div>
+  );
+}
+
+/* ── Agent Cost Breakdown Component ── */
+
+const AGENT_COLORS: Record<string, string> = {
+  PLANNER: 'bg-violet-500',
+  ARCHITECT: 'bg-cyan-500',
+  CODER: 'bg-blue-500',
+  TESTER: 'bg-orange-500',
+  SECURITY: 'bg-green-500',
+  REVIEWER: 'bg-amber-500',
+};
+
+function AgentCostBreakdown({ agents, totalCost }: { agents: Record<string, { name: string; totalCost?: number; totalTurns?: number; completedTasks?: number }>; totalCost: number }) {
+  const agentList = Object.values(agents).filter(a => (a.totalCost ?? 0) > 0 || (a.totalTurns ?? 0) > 0);
+  const totalTurns = Object.values(agents).reduce((sum, a) => sum + (a.totalTurns ?? 0), 0);
+
+  if (agentList.length === 0 && totalCost === 0) return null;
+
+  return (
+    <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+      <h2 className="mb-3 text-sm font-medium text-neutral-400">Agent Cost & Turns</h2>
+
+      {/* Totals row */}
+      <div className="flex gap-4 mb-4">
+        <div>
+          <p className="text-xs text-neutral-500">Total Cost</p>
+          <p className="text-lg font-bold tabular-nums">${totalCost.toFixed(2)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-neutral-500">Total Turns</p>
+          <p className="text-lg font-bold tabular-nums">{totalTurns}</p>
+        </div>
+      </div>
+
+      {/* Cost bar */}
+      {totalCost > 0 && (
+        <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-neutral-800 mb-3">
+          {Object.values(agents).map((agent) => {
+            const pct = totalCost > 0 ? ((agent.totalCost ?? 0) / totalCost) * 100 : 0;
+            if (pct < 0.5) return null;
+            return (
+              <div
+                key={agent.name}
+                className={`${AGENT_COLORS[agent.name] ?? 'bg-neutral-500'} transition-all`}
+                style={{ width: `${pct}%` }}
+                title={`${agent.name}: $${(agent.totalCost ?? 0).toFixed(2)} (${pct.toFixed(0)}%)`}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      {/* Per-agent breakdown */}
+      <div className="space-y-1.5">
+        {Object.values(agents).map((agent) => {
+          const cost = agent.totalCost ?? 0;
+          const turns = agent.totalTurns ?? 0;
+          if (cost === 0 && turns === 0) return null;
+          const pct = totalCost > 0 ? ((cost / totalCost) * 100).toFixed(0) : '0';
+
+          return (
+            <div key={agent.name} className="flex items-center gap-2 text-xs">
+              <span className={`inline-block h-2 w-2 rounded-full ${AGENT_COLORS[agent.name] ?? 'bg-neutral-500'}`} />
+              <span className="w-20 font-medium text-neutral-300">{agent.name}</span>
+              <span className="tabular-nums text-neutral-400">${cost.toFixed(2)}</span>
+              <span className="text-neutral-600">({pct}%)</span>
+              <span className="ml-auto tabular-nums text-neutral-500">{turns} turns</span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
