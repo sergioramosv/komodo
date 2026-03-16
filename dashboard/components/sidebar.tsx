@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useNotifications } from '@/hooks/useNotifications';
+import { ViewToggle } from '@/components/view-toggle';
+import { useViewPreference } from '@/context/view-preference-context';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: '▣' },
@@ -18,6 +20,7 @@ const NAV_ITEMS = [
 export function Sidebar() {
   const pathname = usePathname();
   const { unreadCount } = useNotifications();
+  const { view, setView } = useViewPreference();
 
   return (
     <aside className="flex h-screen w-56 flex-col border-r border-neutral-800 bg-neutral-950 text-neutral-300">
@@ -51,6 +54,11 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      <div className="border-t border-neutral-800 p-3">
+        <p className="mb-2 px-1 text-xs font-medium text-neutral-600">Office View</p>
+        <ViewToggle view={view} onToggle={setView} />
+      </div>
     </aside>
   );
 }
