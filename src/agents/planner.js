@@ -7,6 +7,7 @@ import { getAll } from '../../skills/planning-task-mcp/src/firebase.js';
 import { komodoState } from '../state/komodo-state.js';
 import { rankWithContextAffinity, buildAffinityHint } from '../smart-ordering/context-affinity.js';
 import { estimateTaskTokens } from '../estimation/token-estimator.js';
+import { getUnresolvedPreviousParts } from './multi-part-filter.js';
 import { classifyAndEmit } from '../triage/complexity-classifier.js';
 
 /**
@@ -48,12 +49,15 @@ export function filterBlockedTasks(todoTasks, allTasks) {
   for (const task of todoTasks) {
     const blockers = Array.isArray(task.blockedBy) ? task.blockedBy : [];
 
-    if (blockers.length === 0) {
+    // Check implicit multi-part ordering (e.g. "Task (2/4)" needs "Task (1/4)" done first)
+    const multiPartBlockers = getUnresolvedPreviousParts(task, allTasks);
+
+    if (blockers.length === 0 && multiPartBlockers.length === 0) {
       eligible.push(task);
       continue;
     }
 
-    const unresolvedBlockers = [];
+    const unresolvedBlockers = [...multiPartBlockers];
     for (const blockerId of blockers) {
       const blocker = taskMap.get(blockerId);
       if (!blocker || blocker.status !== 'done') {
