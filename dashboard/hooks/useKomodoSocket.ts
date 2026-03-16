@@ -28,7 +28,7 @@ let eventCounter = 0;
 let logCounter = 0;
 
 const VALID_PHASES = new Set<KomodoSnapshot['phase']>([
-  'idle', 'planning', 'architecting', 'coding', 'testing', 'analyzing', 'reviewing', 'merging',
+  'idle', 'planning', 'architecting', 'coding', 'testing', 'security', 'analyzing', 'reviewing', 'merging',
 ]);
 
 function loadStoredEvents(): DashboardEvent[] {

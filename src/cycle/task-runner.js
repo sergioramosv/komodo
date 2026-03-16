@@ -869,8 +869,9 @@ export async function runTask(projectId, cwd) {
     if (config.securityAgent) {
       logger.logStep(3, 7, 'Security Agent escaneando vulnerabilidades...', 'KOMODO');
 
+      komodoState.updatePhase(PHASES.SECURITY, { currentPR: prNumber });
       komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.title }, {
-        phase: 'security-scan',
+        phase: 'security',
         taskId: taskSpec.taskId,
         taskTitle: taskSpec.title,
       });

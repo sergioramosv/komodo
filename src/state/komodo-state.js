@@ -19,6 +19,7 @@ export const PHASES = {
   ARCHITECTING: 'architecting',
   CODING: 'coding',
   TESTING: 'testing',
+  SECURITY: 'security',
   ANALYZING: 'analyzing',
   REVIEWING: 'reviewing',
   MERGING: 'merging',

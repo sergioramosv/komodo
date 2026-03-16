@@ -25,12 +25,13 @@ const PHASE_CONFIG: Record<Phase, { icon: string; label: string; color: string }
   architecting: { icon: '◈', label: 'Architecting', color: 'text-cyan-400' },
   coding: { icon: '⌨', label: 'Coding', color: 'text-blue-400' },
   testing: { icon: '⚙', label: 'Testing', color: 'text-teal-400' },
+  security: { icon: '⛨', label: 'Security', color: 'text-green-400' },
   analyzing: { icon: '◉', label: 'SonarQube', color: 'text-cyan-400' },
   reviewing: { icon: '⊘', label: 'Reviewing', color: 'text-amber-400' },
   merging: { icon: '⇢', label: 'Merging', color: 'text-green-400' },
 };
 
-const PHASE_ORDER: Phase[] = ['planning', 'architecting', 'coding', 'testing', 'analyzing', 'reviewing', 'merging'];
+const PHASE_ORDER: Phase[] = ['planning', 'architecting', 'coding', 'testing', 'security', 'analyzing', 'reviewing', 'merging'];
 
 /* ── Agent status colors ── */
 

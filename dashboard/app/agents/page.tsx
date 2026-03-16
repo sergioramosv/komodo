@@ -49,6 +49,7 @@ const PHASE_TO_AGENT: Record<Phase, AgentName | null> = {
   architecting: 'ARCHITECT',
   coding: 'CODER',
   testing: 'TESTER',
+  security: 'SECURITY',
   analyzing: null,
   reviewing: 'REVIEWER',
   merging: null,

@@ -45,7 +45,7 @@ export function getAgentActivity(agent: AgentState, phase: Phase): string | null
     case 'ARCHITECT':
       return phase === 'architecting' ? 'Designing architecture...' : null;
     case 'SECURITY':
-      return phase === 'reviewing' ? 'Security scan...' : null;
+      return phase === 'security' ? 'Security scan...' : null;
     case 'TESTER':
       return phase === 'testing' ? 'Running tests...' : null;
     default:
