@@ -1,5 +1,5 @@
 import type { Point } from './office-map';
-import { TILE_SIZE } from './office-map';
+import { TILE_SIZE, COFFEE_ZONE, WHITEBOARD_POS } from './office-map';
 import { bfs } from './pathfinding';
 
 export type PixelAgentFSMState = 'IDLE' | 'WALK' | 'SIT' | 'TYPE' | 'READ' | 'COFFEE';
@@ -45,6 +45,14 @@ export class PixelAgent {
   private onArrival: (() => void) | null = null;
   private moveProgress: number = 0;
   private colors: { body: string; hair: string; accent: string };
+  private homePos: Point = { x: 0, y: 0 };
+  private idleMode: boolean = false;
+  private wanderTimer: number = 0;
+  private wanderInterval: number = 0;
+  private isWandering: boolean = false;
+  private isDwelling: boolean = false;
+  private dwellTimer: number = 0;
+  private dwellDuration: number = 0;
 
   constructor(id: string, startPos: Point) {
     this.id = id;
@@ -52,7 +60,43 @@ export class PixelAgent {
     this.tileY = startPos.y;
     this.pixelX = startPos.x * TILE_SIZE;
     this.pixelY = startPos.y * TILE_SIZE;
+    this.homePos = { ...startPos };
     this.colors = AGENT_COLORS[id] ?? { body: '#6b7280', hair: '#374151', accent: '#d1d5db' };
+  }
+
+  /** Enable idle wandering — agent will periodically walk to coffee or whiteboard */
+  enableIdleWander(): void {
+    this.idleMode = true;
+    this.isWandering = false;
+    this.isDwelling = false;
+    this.scheduleNextWander();
+  }
+
+  /** Disable idle wandering — call when agent gets a real task */
+  disableIdleWander(): void {
+    this.idleMode = false;
+    this.isWandering = false;
+    this.isDwelling = false;
+  }
+
+  private scheduleNextWander(): void {
+    this.wanderTimer = 0;
+    // 5–10 seconds between wanders
+    this.wanderInterval = 5000 + Math.random() * 5000;
+  }
+
+  private triggerWander(): void {
+    this.isWandering = true;
+    const goToCoffee = Math.random() < 0.5;
+    const waypoint = goToCoffee ? COFFEE_ZONE : WHITEBOARD_POS;
+    const arrivalState: PixelAgentFSMState = goToCoffee ? 'COFFEE' : 'READ';
+    this.dwellDuration = 3000 + Math.random() * 2000; // 3–5 seconds at waypoint
+    this.setTarget(waypoint, () => {
+      this.state = arrivalState;
+      this.frame = 0;
+      this.isDwelling = true;
+      this.dwellTimer = 0;
+    });
   }
 
   /** Set a target tile. Agent will BFS pathfind and walk there. */
@@ -143,6 +187,27 @@ export class PixelAgent {
       // Snap to tile when not walking
       this.pixelX = this.tileX * TILE_SIZE;
       this.pixelY = this.tileY * TILE_SIZE;
+    }
+
+    // Idle wander logic
+    if (this.idleMode) {
+      if (this.isDwelling) {
+        this.dwellTimer += deltaMs;
+        if (this.dwellTimer >= this.dwellDuration) {
+          this.isDwelling = false;
+          this.setTarget(this.homePos, () => {
+            this.state = 'IDLE';
+            this.frame = 0;
+            this.isWandering = false;
+            this.scheduleNextWander();
+          });
+        }
+      } else if (!this.isWandering) {
+        this.wanderTimer += deltaMs;
+        if (this.wanderTimer >= this.wanderInterval) {
+          this.triggerWander();
+        }
+      }
     }
   }
 

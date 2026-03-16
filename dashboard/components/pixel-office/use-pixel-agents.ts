@@ -39,6 +39,7 @@ export function usePixelAgents(agents: Record<AgentName, AgentVisualState>) {
 
       if (status === 'working' || status === 'walking') {
         // Walk to desk, then start typing
+        agent.disableIdleWander();
         const desk = AGENT_DESKS[name];
         if (agent.state !== 'WALK' || agent.tileX !== desk.x || agent.tileY !== desk.y) {
           agent.setTarget(desk, () => {
@@ -47,14 +48,16 @@ export function usePixelAgents(agents: Record<AgentName, AgentVisualState>) {
           });
         }
       } else if (status === 'idle') {
-        // Walk to idle zone
+        // Walk to idle zone, then enable wandering
         const idleZone = AGENT_IDLE_ZONES[name];
         agent.setTarget(idleZone, () => {
           agent.state = 'IDLE';
           agent.frame = 0;
+          agent.enableIdleWander();
         });
       } else if (status === 'done') {
         // Stay at desk but stop typing
+        agent.disableIdleWander();
         agent.state = 'SIT';
         agent.frame = 0;
       }
