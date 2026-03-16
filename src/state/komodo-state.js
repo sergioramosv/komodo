@@ -1,4 +1,11 @@
+import { existsSync, writeFileSync, unlinkSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const STOP_FILE_DIR = join(__dirname, '..', '..', '.komodo');
+const STOP_FILE = join(STOP_FILE_DIR, 'stop');
 
 /**
  * Estados posibles de un agente en el dashboard.
@@ -269,9 +276,32 @@ export class KomodoState {
     if (previous === newState) return;
 
     this.executionState = newState;
+
+    // Cross-process stop signal via file
+    try {
+      if (newState === EXECUTION_STATES.STOPPED) {
+        mkdirSync(STOP_FILE_DIR, { recursive: true });
+        writeFileSync(STOP_FILE, Date.now().toString(), 'utf-8');
+      } else if (previous === EXECUTION_STATES.STOPPED && existsSync(STOP_FILE)) {
+        unlinkSync(STOP_FILE);
+      }
+    } catch { /* best effort */ }
+
     eventBus.emitEvent(EVENT_TYPES.EXECUTION_STATE_CHANGE, {
       metadata: { previous, current: newState },
     });
+  }
+
+  /**
+   * Clears the stop file so a fresh run can start.
+   */
+  clearStopSignal() {
+    try {
+      if (existsSync(STOP_FILE)) unlinkSync(STOP_FILE);
+    } catch { /* best effort */ }
+    if (this.executionState === EXECUTION_STATES.STOPPED) {
+      this.executionState = EXECUTION_STATES.RUNNING;
+    }
   }
 
   /**
@@ -283,9 +313,17 @@ export class KomodoState {
 
   /**
    * @returns {boolean} True if the orchestrator should stop immediately.
+   * Checks both in-memory state AND cross-process stop file.
    */
   isStopRequested() {
-    return this.executionState === EXECUTION_STATES.STOPPED;
+    if (this.executionState === EXECUTION_STATES.STOPPED) return true;
+    try {
+      if (existsSync(STOP_FILE)) {
+        this.executionState = EXECUTION_STATES.STOPPED;
+        return true;
+      }
+    } catch { /* best effort */ }
+    return false;
   }
 }
 

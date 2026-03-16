@@ -713,7 +713,7 @@ export async function runTask(projectId, cwd) {
     registerActiveTaskFiles(taskSpec.taskId, coderResult.pr.filesChanged || []);
 
     // Check for rate limit pause before next step
-    if (komodoState.isPauseRequested()) {
+    if (komodoState.isStopRequested() || komodoState.isPauseRequested()) {
       logger.warn('Execution paused by rate limit after Coder step.', 'KOMODO');
       return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
     }
@@ -783,7 +783,7 @@ export async function runTask(projectId, cwd) {
       }
 
       // Check for rate limit pause
-      if (komodoState.isPauseRequested()) {
+      if (komodoState.isStopRequested() || komodoState.isPauseRequested()) {
         logger.warn('Execution paused by rate limit after QA step.', 'KOMODO');
         return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
       }
@@ -855,7 +855,7 @@ export async function runTask(projectId, cwd) {
       }
 
       // Check for rate limit pause
-      if (komodoState.isPauseRequested()) {
+      if (komodoState.isStopRequested() || komodoState.isPauseRequested()) {
         logger.warn('Execution paused by rate limit after Tester step.', 'KOMODO');
         return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
       }
@@ -940,7 +940,7 @@ export async function runTask(projectId, cwd) {
       }
 
       // Check for rate limit pause
-      if (komodoState.isPauseRequested()) {
+      if (komodoState.isStopRequested() || komodoState.isPauseRequested()) {
         logger.warn('Execution paused by rate limit after Security step.', 'KOMODO');
         return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
       }
@@ -1060,7 +1060,7 @@ export async function runTask(projectId, cwd) {
     }
 
     // Check for rate limit pause before next step
-    if (komodoState.isPauseRequested()) {
+    if (komodoState.isStopRequested() || komodoState.isPauseRequested()) {
       logger.warn('Execution paused by rate limit after analysis step.', 'KOMODO');
       return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
     }
@@ -1225,7 +1225,7 @@ export async function runTask(projectId, cwd) {
     }
 
     // Check for rate limit pause before next step
-    if (komodoState.isPauseRequested()) {
+    if (komodoState.isStopRequested() || komodoState.isPauseRequested()) {
       logger.warn('Execution paused by rate limit after review step.', 'KOMODO');
       return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
     }
@@ -1813,7 +1813,7 @@ async function _continueFromAnalysis(taskSpec, prNumber, repo, startTime, cwd) {
     komodoState.sonarAnalysis = { status: 'error', qualityGate: null, issues: null };
   }
 
-  if (komodoState.isPauseRequested()) {
+  if (komodoState.isStopRequested() || komodoState.isPauseRequested()) {
     logger.warn('Execution paused by rate limit after analysis step.', 'KOMODO');
     return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
   }
@@ -1854,7 +1854,7 @@ async function _continueFromReview(taskSpec, prNumber, repo, startTime, cwd, son
     logger.warn(`Tech debt tracking failed (non-blocking): ${err.message}`, 'KOMODO');
   }
 
-  if (komodoState.isPauseRequested()) {
+  if (komodoState.isStopRequested() || komodoState.isPauseRequested()) {
     logger.warn('Execution paused by rate limit after review step.', 'KOMODO');
     return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
   }

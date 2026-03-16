@@ -79,6 +79,7 @@ export async function run(projectId, options = {}) {
   }
 
   // Reset global state for fresh run
+  komodoState.clearStopSignal();
   komodoState.updatePhase(PHASES.IDLE, {
     currentTask: null,
     currentPR: null,
