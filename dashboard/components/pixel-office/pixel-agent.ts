@@ -215,6 +215,18 @@ export class PixelAgent {
       }
     }
 
+    // Read: draw book in left hand
+    if (this.state === 'READ') {
+      ctx.fillStyle = '#1e40af';                          // book cover (dark blue)
+      ctx.fillRect(x + 1, y + 8, 4, 5);                  // left hand, same height as COFFEE
+      ctx.fillStyle = '#f8fafc';                          // pages (white)
+      ctx.fillRect(x + 2, y + 9, 2, 3);
+      if (this.frame % 2 === 0) {                         // page-turn animation
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.fillRect(x + 2, y + 9, 1, 3);                // left page visible
+      }
+    }
+
     // Name tag
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.font = '7px monospace';
