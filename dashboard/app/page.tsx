@@ -368,7 +368,7 @@ function AgentCostBreakdown({ agents, totalCost }: { agents: Record<string, { na
       {/* Cost bar */}
       {totalCost > 0 && (
         <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-neutral-800 mb-3">
-          {Object.values(agents).map((agent) => {
+          {allAgents.map((agent) => {
             const pct = totalCost > 0 ? ((agent.totalCost ?? 0) / totalCost) * 100 : 0;
             if (pct < 0.5) return null;
             return (
