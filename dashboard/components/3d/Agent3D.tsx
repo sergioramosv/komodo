@@ -34,6 +34,7 @@ const FACE_ICONS: Record<string, string> = {
   REVIEWER: '✓',
   ARCHITECT: '⚙',
   SECURITY: '🛡',
+  TESTER: '🐛',
 };
 
 export function Agent3D({ id, status, hairColor, shirtColor, pathWaypoints, rotationWork, rotationWait, isWhiteboard, standWhenIdle, cliStatus = 'available' }: Agent3DProps) {
@@ -330,6 +331,52 @@ export function Agent3D({ id, status, hairColor, shirtColor, pathWaypoints, rota
             <RoundedBox args={[0.16, 0.025, 0.01]} radius={0.01} position={[0, -0.14, 0.28]}>
               <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={ei * 0.4} />
             </RoundedBox>
+          </group>
+        )}
+
+        {id === 'TESTER' && (
+          /* TESTER: Big round bug-inspector eyes + coil antennas + curved smile */
+          <group>
+            {/* Left eye — large round sphere */}
+            <Sphere args={[0.07, 12, 12]} position={[-0.11, 0.04, 0.28]}>
+              <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={ei} />
+            </Sphere>
+            {/* Left pupil */}
+            <Sphere args={[0.035, 10, 10]} position={[-0.11, 0.04, 0.295]}>
+              <meshStandardMaterial color="#ff6600" emissive="#ff6600" emissiveIntensity={ei * 0.8} />
+            </Sphere>
+            {/* Right eye — large round sphere */}
+            <Sphere args={[0.07, 12, 12]} position={[0.11, 0.04, 0.28]}>
+              <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={ei} />
+            </Sphere>
+            {/* Right pupil */}
+            <Sphere args={[0.035, 10, 10]} position={[0.11, 0.04, 0.295]}>
+              <meshStandardMaterial color="#ff6600" emissive="#ff6600" emissiveIntensity={ei * 0.8} />
+            </Sphere>
+            {/* Curved smile — angled RoundedBoxes forming arc */}
+            <RoundedBox args={[0.08, 0.025, 0.01]} radius={0.008} position={[-0.07, -0.1, 0.28]} rotation={[0, 0, 0.5]}>
+              <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={ei * 0.6} />
+            </RoundedBox>
+            <RoundedBox args={[0.06, 0.025, 0.01]} radius={0.008} position={[0, -0.12, 0.28]} rotation={[0, 0, 0]}>
+              <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={ei * 0.6} />
+            </RoundedBox>
+            <RoundedBox args={[0.08, 0.025, 0.01]} radius={0.008} position={[0.07, -0.1, 0.28]} rotation={[0, 0, -0.5]}>
+              <meshStandardMaterial color="#fff" emissive="#fff" emissiveIntensity={ei * 0.6} />
+            </RoundedBox>
+            {/* Coil antenna left — rizado decoration on head top */}
+            <Cylinder args={[0.018, 0.018, 0.06, 8]} position={[-0.1, 0.29, 0]} rotation={[0, 0, 0.3]}>
+              <meshStandardMaterial color="#ff6600" roughness={0.4} metalness={0.2} />
+            </Cylinder>
+            <Sphere args={[0.028, 10, 10]} position={[-0.12, 0.34, 0]}>
+              <meshStandardMaterial color="#ff6600" emissive="#ff6600" emissiveIntensity={0.4} />
+            </Sphere>
+            {/* Coil antenna right */}
+            <Cylinder args={[0.018, 0.018, 0.06, 8]} position={[0.1, 0.29, 0]} rotation={[0, 0, -0.3]}>
+              <meshStandardMaterial color="#ff6600" roughness={0.4} metalness={0.2} />
+            </Cylinder>
+            <Sphere args={[0.028, 10, 10]} position={[0.12, 0.34, 0]}>
+              <meshStandardMaterial color="#ff6600" emissive="#ff6600" emissiveIntensity={0.4} />
+            </Sphere>
           </group>
         )}
 
