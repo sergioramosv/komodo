@@ -1,4 +1,4 @@
-import { execSync, execFile } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -12,11 +12,11 @@ const AGENT = 'SECURITY';
  * Verifica si un comando está disponible en el PATH.
  *
  * @param {string} cmd - Nombre del comando
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-function isCommandAvailable(cmd) {
+async function isCommandAvailable(cmd) {
   try {
-    execSync(`${cmd} --version`, { stdio: 'ignore', timeout: 5000 });
+    await execFileAsync(cmd, ['--version'], { stdio: 'ignore', timeout: 5000 });
     return true;
   } catch {
     return false;
@@ -48,7 +48,7 @@ function mapNpmSeverity(severity) {
  * @returns {Promise<{ tool: string, available: boolean, findings: Array, error?: string }>}
  */
 export async function runNpmAudit({ cwd } = {}) {
-  if (!isCommandAvailable('npm')) {
+  if (!await isCommandAvailable('npm')) {
     logger.warn('npm no está instalado — omitiendo npm audit', AGENT);
     return { tool: 'npm-audit', available: false, findings: [] };
   }
@@ -152,7 +152,7 @@ function mapGitleaksSeverity(severity) {
  * @returns {Promise<{ tool: string, available: boolean, findings: Array, error?: string }>}
  */
 export async function runGitleaks({ cwd } = {}) {
-  if (!isCommandAvailable('gitleaks')) {
+  if (!await isCommandAvailable('gitleaks')) {
     logger.warn('gitleaks no está instalado — omitiendo escaneo de secrets', AGENT);
     return { tool: 'gitleaks', available: false, findings: [] };
   }
@@ -219,7 +219,7 @@ function mapSemgrepSeverity(severity) {
  * @returns {Promise<{ tool: string, available: boolean, findings: Array, error?: string }>}
  */
 export async function runSemgrep({ cwd } = {}) {
-  if (!isCommandAvailable('semgrep')) {
+  if (!await isCommandAvailable('semgrep')) {
     logger.warn('semgrep no está instalado — omitiendo análisis estático OWASP', AGENT);
     return { tool: 'semgrep', available: false, findings: [] };
   }
