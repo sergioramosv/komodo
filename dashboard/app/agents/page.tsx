@@ -102,7 +102,7 @@ export default function AgentsPage() {
           {/* Agent Cards Grid */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {AGENT_NAMES.map((name) => {
-              const agent = snapshot.agents[name];
+              const agent = snapshot.agents[name] ?? { name, status: 'idle' as const, currentTask: null, startedAt: null, avatar: '' };
               const accent = AGENT_ACCENT[name];
               const statusCfg = STATUS_COLORS[agent.status];
               const isSelected = selectedAgent === name;
