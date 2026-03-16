@@ -902,6 +902,7 @@ export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) 
   const reviewerState = agents?.REVIEWER?.status || 'idle';
   const architectState = agents?.ARCHITECT?.status || 'idle';
   const securityState = agents?.SECURITY?.status || 'idle';
+  const testerState = agents?.TESTER?.status || 'idle';
   const isAnalyzing = phase === 'analyzing';
 
   const getAgentCliStatus = (agentName: string): 'available' | 'rate-limited' | 'down' => {
@@ -1075,6 +1076,12 @@ export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) 
       <Bookshelf position={[2.15, 0, 4]} rotation={[0, Math.PI / 2, 0]} />
       <WallArt position={[7.9, 1.8, 4.5]} rotation={[0, -Math.PI / 2, 0]} color="#6a4a5a" />
 
+      {/* ═══ ROOM 4 (shared): TESTER workstation near entry ═══ */}
+      <RoomSign position={[3, 1.8, 1]} rotation={[0, Math.PI, 0]} label="TESTER" color="#cc5500" />
+      {/* Tester desk near room entry, facing south */}
+      <Workstation position={[3.5, 0, 3]} rotation={[0, Math.PI, 0]} screenColor="#7a3a00" />
+      <StatusLED position={[3.5, 1.3, 3.5]} status={testerState} />
+
       {/* ═══ AGENTS ═══ */}
 
       {/* PLANNER — sofa back-wall left seat → whiteboard [-4.5, -6.8] */}
@@ -1172,6 +1179,25 @@ export function Environment3D({ agents, phase, cliHealth }: Environment3DProps) 
           [5.5, 0, 6],
         ]}
         rotationWait={[0, Math.PI / 3, 0]}
+        rotationWork={[0, Math.PI, 0]}
+      />
+
+      {/* TESTER — breakroom center → hallway → Room 4 entry → desk [3.5, 3] */}
+      <Agent3D
+        id="TESTER"
+        status={testerState}
+        shirtColor="#cc5500"
+        hairColor="#ff6600"
+        hairStyle="short"
+        cliStatus={getAgentCliStatus('TESTER')}
+        pathWaypoints={[
+          [0, 0, 5],
+          [0, 0, 2.5],
+          [2.5, 0, 0],
+          [3, 0, 2],
+          [3.5, 0, 3.5],
+        ]}
+        rotationWait={[0, -Math.PI / 4, 0]}
         rotationWork={[0, Math.PI, 0]}
       />
     </group>
