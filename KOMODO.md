@@ -518,21 +518,27 @@ Panel web en tiempo real conectado por WebSocket al orquestador.
 
 | Pagina | Que muestra |
 |--------|-------------|
-| **/** (Home) | Visualizacion 3D de agentes trabajando, estado en tiempo real, controles play/pause/stop |
-| **/analytics** | Graficas de velocidad, costo por sprint, pass rate de reviews, duracion por complejidad, uso de modelos |
+| **/** (Home) | Oficina 3D, pipeline de 8 fases (Planning→Architecting→Coding→Testing→Security→SonarQube→Reviewing→Merging), agent cost breakdown, controles, event timeline |
+| **/analytics** | Graficas de velocidad, costo por sprint, pass rate de reviews, duracion por complejidad, uso de modelos, budget history |
 | **/leaderboard** | Ranking de modelos por costo, precision, velocidad. Filtrable por periodo y complejidad |
-| **/agents** | Estado detallado de cada agente, logs, turnos, costo |
-| **/memory** | Patrones de errores almacenados, estadisticas de reviews |
-| **/notifications** | Historial de notificaciones de tareas |
-| **/settings** | Configuracion de CLI por agente, modelo, max turns, proyecto activo, coding guidelines, orchestrator settings |
+| **/agents** | Los 6 agentes (Planner, Architect, Coder, Tester, Security, Reviewer) + Komodo orchestrator. Logs en vivo, event history, cost, turns |
+| **/history** | Timeline de acciones: tasks, PRs, reviews, merges, SonarQube |
+| **/memory** | Patrones de errores, semantic search |
+| **/notifications** | Historial de notificaciones con filtros |
+| **/settings** | Configuracion de CLI por agente, modelo, max turns, proyecto activo, coding guidelines |
+
+### Pipeline de Fases + Agent Cost Breakdown
+
+- Indicador visual de 8 fases con check verde para completadas
+- Panel de costo por agente: barra proporcional de colores + desglose USD y turns
 
 ### Visualizacion 3D
 
-El dashboard usa **Three.js + React Three Fiber** para renderizar una oficina 3D donde:
-- Cada agente tiene un avatar que se mueve y trabaja
-- El Komodo Boss (orquestador) supervisa
-- Un whiteboard animado muestra la tarea actual
-- Los agentes cambian de estado visualmente (idle, walking, working, done)
+Oficina 3D con Three.js + React Three Fiber:
+- 6 agentes robot + Komodo Boss con animaciones
+- Escritorios, waypoints, SonarScanner 3D
+- CLI health indicators (verde/amarillo/rojo)
+- Whiteboard animado con tarea actual
 
 ### Stack del Dashboard
 

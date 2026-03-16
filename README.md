@@ -518,21 +518,52 @@ Panel web en tiempo real conectado por WebSocket al orquestador.
 
 | Pagina | Que muestra |
 |--------|-------------|
-| **/** (Home) | Visualizacion 3D de agentes trabajando, estado en tiempo real, controles play/pause/stop |
-| **/analytics** | Graficas de velocidad, costo por sprint, pass rate de reviews, duracion por complejidad, uso de modelos |
+| **/** (Home) | Oficina 3D, pipeline de fases, agent cost breakdown, controles play/pause/stop, event timeline |
+| **/analytics** | Graficas de velocidad, costo por sprint, pass rate de reviews, duracion por complejidad, uso de modelos, budget history |
 | **/leaderboard** | Ranking de modelos por costo, precision, velocidad. Filtrable por periodo y complejidad |
-| **/agents** | Estado detallado de cada agente, logs, turnos, costo |
-| **/memory** | Patrones de errores almacenados, estadisticas de reviews |
-| **/notifications** | Historial de notificaciones de tareas |
-| **/settings** | Configuracion de CLI por agente, modelo, max turns, proyecto activo, coding guidelines, orchestrator settings |
+| **/agents** | Los 6 agentes (Planner, Architect, Coder, Tester, Security, Reviewer) + Komodo orchestrator. Logs en vivo, event history, cost, turns |
+| **/history** | Timeline de acciones: tasks, PRs, reviews, merges, SonarQube |
+| **/memory** | Patrones de errores almacenados, estadisticas de reviews, semantic search |
+| **/notifications** | Historial de notificaciones con filtros por tipo |
+| **/settings** | Configuracion de CLI por agente, modelo, max turns, proyecto activo, coding guidelines |
+
+### Pipeline de Fases (indicador visual)
+
+La pagina principal muestra un indicador de progreso con 8 fases:
+
+```
+Planning → Architecting → Coding → Testing → Security → SonarQube → Reviewing → Merging
+```
+
+Cada fase se ilumina cuando esta activa y muestra check verde cuando se completa.
+
+### Agent Cost & Turns Breakdown
+
+Panel en la pagina principal que muestra:
+- Costo total en USD y total de turns
+- Barra de colores proporcional (cada agente con su color)
+- Desglose por agente: nombre, costo, porcentaje del total, turns usados
 
 ### Visualizacion 3D
 
 El dashboard usa **Three.js + React Three Fiber** para renderizar una oficina 3D donde:
-- Cada agente tiene un avatar que se mueve y trabaja
-- El Komodo Boss (orquestador) supervisa
-- Un whiteboard animado muestra la tarea actual
-- Los agentes cambian de estado visualmente (idle, walking, working, done)
+- Los 6 agentes + Komodo Boss tienen avatars robot con animaciones
+- Cada agente tiene su escritorio, zona de trabajo y waypoints
+- Los agentes caminan, se sientan, teclean segun su estado real
+- SonarScanner 3D animado cuando analiza codigo
+- Whiteboard animado muestra la tarea actual
+- CLI health indicators (verde/amarillo/rojo) por agente
+
+### API REST de Observabilidad
+
+| Endpoint | Que devuelve |
+|----------|-------------|
+| `GET /api/status` | Snapshot completo del estado |
+| `GET /api/observability/timeline?taskId=X&projectId=Y` | Timeline completa de una tarea |
+| `GET /api/observability/explain?taskId=X&projectId=Y&eventId=Z` | Explicacion de una decision |
+| `GET /api/observability/replay?taskId=X&projectId=Y` | Replay completo de ejecucion |
+| `GET /api/observability/replayable-tasks?projectId=Y` | Tareas disponibles para replay |
+| `GET /api/observability/alerts` | Alertas recientes de anomalias |
 
 ### Stack del Dashboard
 
