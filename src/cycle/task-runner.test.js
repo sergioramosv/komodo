@@ -182,6 +182,7 @@ vi.mock('../knowledge/knowledge-graph.js', () => ({
   buildTesterContext: vi.fn().mockReturnValue(null),
   loadModuleLessons: vi.fn().mockReturnValue(null),
   extractAndSaveLessons: vi.fn(),
+  purgeTaskKnowledge: vi.fn(),
 }));
 
 vi.mock('../smart-ordering/context-affinity.js', () => ({
