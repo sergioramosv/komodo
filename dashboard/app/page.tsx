@@ -79,6 +79,9 @@ const EVENT_COLORS: Record<string, string> = {
   'agent:tester:working': 'text-teal-400',
   'agent:tester:done': 'text-teal-400',
   'agent:tester:idle': 'text-teal-400',
+  'security:scan:start': 'text-green-400',
+  'security:scan:complete': 'text-green-400',
+  'security:scan:blocked': 'text-red-400',
 };
 
 /* ── Page ── */

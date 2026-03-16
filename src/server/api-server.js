@@ -3,7 +3,7 @@ import { timingSafeEqual } from 'crypto';
 import { config } from '../config.js';
 import { logger } from '../utils/logger.js';
 import { komodoState, EXECUTION_STATES } from '../state/komodo-state.js';
-import { getTaskTimeline, explainDecision, listRecentTaskIds, getRecentAlerts } from '../observability/index.js';
+import { getTaskTimeline, explainDecision, listRecentTaskIds, getRecentAlerts, replayTask, listReplayableTasks } from '../observability/index.js';
 import { eventBus, EVENT_TYPES } from '../events/event-bus.js';
 
 /**
@@ -144,6 +144,16 @@ export class KomodoApiServer {
 
     if (method === 'GET' && path === '/api/observability/alerts') {
       this._handleListAlerts(req, res);
+      return;
+    }
+
+    if (method === 'GET' && path === '/api/observability/replay') {
+      this._handleReplay(req, res);
+      return;
+    }
+
+    if (method === 'GET' && path === '/api/observability/replayable-tasks') {
+      this._handleReplayableTasks(req, res);
       return;
     }
 
@@ -543,6 +553,66 @@ export class KomodoApiServer {
     const alerts = getRecentAlerts({ projectId, limit: limitParam });
     res.writeHead(200);
     res.end(JSON.stringify({ projectId: projectId || null, limit: limitParam, alerts }));
+  }
+
+  /**
+   * GET /api/observability/replay?taskId=X&projectId=Y
+   * Returns a full replay of a task execution.
+   *
+   * @param {import('http').IncomingMessage} req
+   * @param {import('http').ServerResponse} res
+   */
+  async _handleReplay(req, res) {
+    const url = new URL(req.url, `http://localhost`);
+    const taskId = url.searchParams.get('taskId');
+    const projectId = url.searchParams.get('projectId');
+
+    if (!taskId || !projectId) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'taskId and projectId are required' }));
+      return;
+    }
+
+    try {
+      const replay = await replayTask(projectId, taskId);
+      res.writeHead(200);
+      res.end(JSON.stringify(replay));
+    } catch (err) {
+      logger.error(`API replay error: ${err.message}`, 'API');
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'Failed to generate replay' }));
+    }
+  }
+
+  /**
+   * GET /api/observability/replayable-tasks?projectId=Y&hoursBack=48
+   * Lists tasks available for replay.
+   *
+   * @param {import('http').IncomingMessage} req
+   * @param {import('http').ServerResponse} res
+   */
+  async _handleReplayableTasks(req, res) {
+    const url = new URL(req.url, `http://localhost`);
+    const projectId = url.searchParams.get('projectId');
+    const hoursBack = url.searchParams.has('hoursBack')
+      ? Number(url.searchParams.get('hoursBack'))
+      : 48;
+
+    if (!projectId) {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: 'projectId is required' }));
+      return;
+    }
+
+    try {
+      const taskIds = await listReplayableTasks(projectId, hoursBack);
+      res.writeHead(200);
+      res.end(JSON.stringify({ projectId, hoursBack, taskIds }));
+    } catch (err) {
+      logger.error(`API replayable-tasks error: ${err.message}`, 'API');
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: 'Failed to list replayable tasks' }));
+    }
   }
 }
 
