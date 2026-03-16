@@ -40,3 +40,15 @@ Thumbs.db
 
 # SonarQube
 .scannerwork/
+
+# Checkpoints
+checkpoints/
+
+#Knowledge
+knowledge/
+
+# Agent debug output
+_debug_*
+
+# Komodo stop signal
+.komodo/stop
