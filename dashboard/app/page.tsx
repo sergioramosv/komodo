@@ -15,6 +15,7 @@ import { TaskDetailModal } from '@/components/task-detail-modal';
 import { Settings } from 'lucide-react';
 
 const OfficeScene3D = dynamic(() => import('@/components/office-scene-3d').then(mod => mod.OfficeScene3D), { ssr: false });
+const PixelOfficeCanvas = dynamic(() => import('@/components/pixel-office/pixel-office-canvas').then(mod => mod.PixelOfficeCanvas), { ssr: false });
 import type { Phase, AgentStatus, DashboardEvent, SonarAnalysisState } from '@/lib/types';
 
 /* ── Phase config ── */
@@ -93,6 +94,7 @@ export default function DashboardPage() {
   const feedback = useOfficeFeedback(events, snapshot);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [officeView, setOfficeView] = useState<'3d' | 'pixel'>('3d');
 
   return (
     <div className="space-y-6">
@@ -313,8 +315,28 @@ export default function DashboardPage() {
               )}
             </section>
 
+            {/* Office View Toggle */}
+            <div className="flex items-center gap-1 px-4 py-2 border-b border-neutral-800">
+              <button
+                onClick={() => setOfficeView('3d')}
+                className={`rounded px-3 py-1 text-xs font-medium transition-colors ${officeView === '3d' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
+              >
+                3D Office
+              </button>
+              <button
+                onClick={() => setOfficeView('pixel')}
+                className={`rounded px-3 py-1 text-xs font-medium transition-colors ${officeView === 'pixel' ? 'bg-neutral-700 text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
+              >
+                Pixel Office
+              </button>
+            </div>
+
             {/* Office Scene — real-time agent visualization */}
-            <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
+            {officeView === '3d' ? (
+              <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
+            ) : (
+              <PixelOfficeCanvas agents={agentStates.agents} />
+            )}
           </div>
         </div>
       )}
