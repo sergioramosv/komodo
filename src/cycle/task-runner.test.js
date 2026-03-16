@@ -88,6 +88,8 @@ vi.mock('../state/komodo-state.js', () => ({
     updatePhase: vi.fn(),
     updateAgent: vi.fn().mockReturnValue({}),
     isPauseRequested: vi.fn().mockReturnValue(false),
+    isStopRequested: vi.fn().mockReturnValue(false),
+    setExecutionState: vi.fn(),
     sonarAnalysis: null,
   },
   PHASES: {
