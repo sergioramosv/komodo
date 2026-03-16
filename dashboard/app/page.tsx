@@ -204,7 +204,7 @@ export default function DashboardPage() {
 
             {/* Agent Cards */}
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-1">
-              {Object.values(snapshot.agents).map((agent) => {
+              {(["PLANNER","ARCHITECT","CODER","TESTER","SECURITY","REVIEWER"] as const).map((name) => { const agent = snapshot.agents[name] ?? { name, status: "idle" as const, currentTask: null, startedAt: null };
                 const dotColor = STATUS_COLORS[agent.status] ?? 'bg-neutral-600';
                 const ring = STATUS_RING[agent.status] ?? '';
 
@@ -344,10 +344,10 @@ const AGENT_COLORS: Record<string, string> = {
 };
 
 function AgentCostBreakdown({ agents, totalCost }: { agents: Record<string, { name: string; totalCost?: number; totalTurns?: number; completedTasks?: number }>; totalCost: number }) {
-  const agentList = Object.values(agents).filter(a => (a.totalCost ?? 0) > 0 || (a.totalTurns ?? 0) > 0);
-  const totalTurns = Object.values(agents).reduce((sum, a) => sum + (a.totalTurns ?? 0), 0);
+  const allNames = ["PLANNER","ARCHITECT","CODER","TESTER","SECURITY","REVIEWER"] as const; const allAgents = allNames.map(n => agents[n] ?? { name: n, totalCost: 0, totalTurns: 0 });
+  const totalTurns = allAgents.reduce((sum, a) => sum + (a.totalTurns ?? 0), 0);
 
-  if (agentList.length === 0 && totalCost === 0) return null;
+  if (totalCost === 0 && totalTurns === 0) return null;
 
   return (
     <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
@@ -385,7 +385,7 @@ function AgentCostBreakdown({ agents, totalCost }: { agents: Record<string, { na
 
       {/* Per-agent breakdown */}
       <div className="space-y-1.5">
-        {Object.values(agents).map((agent) => {
+        {allAgents.map((agent) => {
           const cost = agent.totalCost ?? 0;
           const turns = agent.totalTurns ?? 0;
           if (cost === 0 && turns === 0) return null;
