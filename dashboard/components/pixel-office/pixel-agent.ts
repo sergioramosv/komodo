@@ -1,6 +1,7 @@
 import type { Point } from './office-map';
 import { TILE_SIZE } from './office-map';
 import { bfs } from './pathfinding';
+import type { AgentStatus } from '@/lib/types';
 
 export type PixelAgentFSMState = 'IDLE' | 'WALK' | 'SIT' | 'TYPE' | 'READ' | 'COFFEE';
 
@@ -39,6 +40,8 @@ export class PixelAgent {
   state: PixelAgentFSMState = 'IDLE';
   direction: Direction = 'down';
   frame: number = 0;
+  status: AgentStatus = 'idle';
+  activity: string | null = null;
   private frameTimer: number = 0;
   private path: Point[] = [];
   private pathIndex: number = 0;
@@ -225,5 +228,13 @@ export class PixelAgent {
     ctx.fillStyle = '#ffffff';
     ctx.fillText(label, x + s / 2, y + 2);
     ctx.textAlign = 'start';
+
+    // Status dot (4x4) in top-right corner of sprite
+    const dotColor =
+      this.status === 'working' || this.status === 'done' ? '#22c55e'
+      : this.status === 'walking' ? '#eab308'
+      : '#6b7280';
+    ctx.fillStyle = dotColor;
+    ctx.fillRect(x + s - 5, y, 4, 4);
   }
 }
