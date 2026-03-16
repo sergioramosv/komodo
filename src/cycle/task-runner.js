@@ -3,6 +3,7 @@ import { analyzeTask } from '../agents/architect.js';
 import { implementTask, fixReviewIssues } from '../agents/coder.js';
 import { runQAAgent } from '../agents/qa.js';
 import { runTesterAgent } from '../agents/tester.js';
+import { runSecurityAgent } from '../agents/security-agent.js';
 import { reviewLoop } from './review-loop.js';
 import { analyzeSonar } from '../sonar/analyzer.js';
 import { executePrePRTests } from '../testing/pre-pr-tests.js';
@@ -861,6 +862,90 @@ export async function runTask(projectId, cwd) {
     }
 
     // ═══════════════════════════════════════════
+    // SECURITY AGENT — OWASP Top 10 scan
+    // ═══════════════════════════════════════════
+    let securityReport = null;
+
+    if (config.securityAgent) {
+      logger.logStep(3, 7, 'Security Agent escaneando vulnerabilidades...', 'KOMODO');
+
+      komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.title }, {
+        phase: 'security-scan',
+        taskId: taskSpec.taskId,
+        taskTitle: taskSpec.title,
+      });
+
+      const securityModel = config.forceModel_SECURITY || selectModel(config.cliSecurity, 'SECURITY', complexityLevel, taskModelOverride);
+
+      const securityResult = await withWatchdog(
+        () => runSecurityAgent({
+          taskSpec,
+          filesChanged: coderResult.pr.filesChanged || [],
+          branchName: taskSpec.branchName,
+          repo,
+          prNumber,
+          cwd,
+          model: securityModel,
+        }),
+        { agentName: 'SECURITY', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
+      );
+
+      if (securityResult.cost) {
+        eventBus.emitEvent(EVENT_TYPES.COST_UPDATED, {
+          agentName: 'SECURITY',
+          metadata: { cost: securityResult.cost },
+        });
+      }
+
+      if (securityResult.success) {
+        securityReport = securityResult.security;
+        const { verdict, criticalCount, highCount, mediumCount, lowCount } = securityReport;
+        logger.info(`SECURITY: ${verdict} — ${criticalCount}C ${highCount}H ${mediumCount}M ${lowCount}L`, 'KOMODO');
+
+        // Save to Knowledge Graph
+        try {
+          await saveSection(taskSpec.taskId, 'security', {
+            verdict,
+            findings: securityReport.findings,
+            summary: securityReport.summary,
+          });
+        } catch {
+          // non-blocking
+        }
+
+        // BLOCK verdict → close PR and fail the task
+        if (verdict === 'BLOCK') {
+          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.DONE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK' });
+          logger.error(`SECURITY BLOCK: PR #${prNumber} tiene vulnerabilidades críticas. Cerrando PR.`, 'KOMODO');
+
+          try {
+            runGh([
+              'pr', 'comment', String(prNumber),
+              '--repo', repo,
+              '--body', `🛡️ **[Security Agent - BLOCKED]**\n\n${securityReport.summary}\n\n${securityReport.findings.filter(f => f.severity === 'CRITICAL' || f.severity === 'HIGH').map(f => `- **[${f.severity}]** ${f.description}`).join('\n')}`,
+            ]);
+          } catch {
+            // non-blocking
+          }
+
+          // Don't close PR — let Coder fix the security issues in review loop
+          // The security report will be injected into reviewer context
+        } else {
+          komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle', verdict });
+        }
+      } else {
+        logger.warn(`Security agent failed: ${securityResult.error}`, 'KOMODO');
+        komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
+      }
+
+      // Check for rate limit pause
+      if (komodoState.isPauseRequested()) {
+        logger.warn('Execution paused by rate limit after Security step.', 'KOMODO');
+        return makeResult({ success: false, taskSpec, prNumber, startTime, error: 'Paused: rate limit detected' });
+      }
+    }
+
+    // ═══════════════════════════════════════════
     // PASO 3: PRE-PR TESTS — Ejecutar tests antes de review
     // ═══════════════════════════════════════════
     logger.logStep(3, 6, 'Pre-PR tests...', 'KOMODO');
@@ -1008,7 +1093,6 @@ export async function runTask(projectId, cwd) {
     // ═══════════════════════════════════════════
     // PLUGINS: before-review
     // ═══════════════════════════════════════════
-    komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.WORKING, currentTask: taskSpec.title }, { phase: 'security-scan', taskId: taskSpec.taskId, taskTitle: taskSpec.title });
     let beforeReviewPluginResults = [];
     try {
       beforeReviewPluginResults = await pluginLoader.executePlugins('before-review', {
@@ -1023,12 +1107,8 @@ export async function runTask(projectId, cwd) {
       logger.warn(`Plugin before-review error (non-blocking): ${err.message}`, 'KOMODO');
     }
 
-    const securityBlocked = beforeReviewPluginResults.some(r => r.blocked === true);
-    if (securityBlocked) {
-      komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.DONE, currentTask: null }, { phase: 'idle', verdict: 'BLOCK' });
-    } else {
-      komodoState.updateAgent('SECURITY', { status: DASHBOARD_AGENT_STATES.IDLE, currentTask: null }, { phase: 'idle' });
-    }
+    const securityBlocked = beforeReviewPluginResults.some(r => r.blocked === true)
+      || (securityReport && securityReport.verdict === 'BLOCK');
 
     // ═══════════════════════════════════════════
     // PASO 5: REVIEW LOOP — Reviewer ↔ Coder
@@ -1081,7 +1161,7 @@ export async function runTask(projectId, cwd) {
     }
 
     const reviewResult = await withWatchdog(
-      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold: config.smartModelRoutingThreshold, coderCli, knowledgeContext: reviewerKnowledgeContext, filesChanged: coderResult.pr.filesChanged || [] }),
+      () => reviewLoop({ prNumber, repo, taskSpec, cwd, sonarReport, coverageReport, qaReport, securityReport, testerReport, reviewerModel, coderModel, codingGuidelines, pluginIssues, escalationThreshold: config.smartModelRoutingThreshold, coderCli, knowledgeContext: reviewerKnowledgeContext, filesChanged: coderResult.pr.filesChanged || [] }),
       { agentName: 'REVIEWER', taskId: taskSpec.taskId, onCheckpoint: () => komodoState.setExecutionState(EXECUTION_STATES.PAUSED) },
     );
 

@@ -485,6 +485,18 @@ function formatEvent(event: WsEventMessage['data']): DashboardEvent | null {
     case 'agent:tester:idle':
       message = `TESTER is idle`;
       break;
+    case 'security:scan:start':
+      message = `SECURITY scan started on PR #${meta.prNumber ?? '?'}`;
+      break;
+    case 'security:scan:complete': {
+      const verdict = meta.verdict as string ?? 'unknown';
+      const findings = (meta.findingsCount as number) ?? 0;
+      message = `SECURITY scan ${verdict} — ${findings} finding${findings !== 1 ? 's' : ''}`;
+      break;
+    }
+    case 'security:scan:blocked':
+      message = `SECURITY BLOCKED PR #${meta.prNumber ?? '?'} — critical vulnerabilities found`;
+      break;
     default:
       message = event.type;
   }

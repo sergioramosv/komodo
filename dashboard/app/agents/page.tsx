@@ -7,22 +7,24 @@ import type { AgentName, AgentStatus, AgentLog, Phase } from '@/lib/types';
 
 /* ── Agent config ── */
 
-const AGENT_NAMES: AgentName[] = ['PLANNER', 'CODER', 'REVIEWER', 'ARCHITECT', 'SECURITY'];
+const AGENT_NAMES: AgentName[] = ['PLANNER', 'ARCHITECT', 'CODER', 'TESTER', 'SECURITY', 'REVIEWER'];
 
 const AGENT_ACCENT: Record<AgentName, { color: string; bg: string; border: string; ring: string }> = {
   PLANNER: { color: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/30', ring: 'ring-violet-500/20' },
-  CODER: { color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30', ring: 'ring-blue-500/20' },
-  REVIEWER: { color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', ring: 'ring-amber-500/20' },
   ARCHITECT: { color: 'text-teal-400', bg: 'bg-teal-500/10', border: 'border-teal-500/30', ring: 'ring-teal-500/20' },
+  CODER: { color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30', ring: 'ring-blue-500/20' },
+  TESTER: { color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/30', ring: 'ring-orange-500/20' },
   SECURITY: { color: 'text-green-400', bg: 'bg-green-500/10', border: 'border-green-500/30', ring: 'ring-green-500/20' },
+  REVIEWER: { color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/30', ring: 'ring-amber-500/20' },
 };
 
 const AGENT_ICON: Record<AgentName, string> = {
   PLANNER: '✎',
-  CODER: '⌨',
-  REVIEWER: '⊘',
   ARCHITECT: '◈',
+  CODER: '⌨',
+  TESTER: '⚙',
   SECURITY: '⛨',
+  REVIEWER: '⊘',
 };
 
 const STATUS_COLORS: Record<AgentStatus, { dot: string; label: string; bg: string }> = {
@@ -44,9 +46,9 @@ const MODEL_BADGE: Record<string, { label: string; color: string; bg: string }> 
 const PHASE_TO_AGENT: Record<Phase, AgentName | null> = {
   idle: null,
   planning: 'PLANNER',
-  architecting: null,
+  architecting: 'ARCHITECT',
   coding: 'CODER',
-  testing: null,
+  testing: 'TESTER',
   analyzing: null,
   reviewing: 'REVIEWER',
   merging: null,
