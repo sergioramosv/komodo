@@ -34,6 +34,10 @@ export function usePixelAgents(agents: Record<AgentName, AgentVisualState>) {
       const status = agents[name]?.status ?? 'idle';
       const prevStatus = prevStatusRef.current[name];
 
+      // Always sync status and activity so speech bubbles stay fresh
+      agent.status = status;
+      agent.activity = agents[name]?.activity ?? null;
+
       if (status === prevStatus) continue;
       prevStatusRef.current[name] = status;
 

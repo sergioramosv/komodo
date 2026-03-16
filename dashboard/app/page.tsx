@@ -335,7 +335,7 @@ export default function DashboardPage() {
             {officeView === '3d' ? (
               <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
             ) : (
-              <PixelOfficeCanvas agents={agentStates.agents} />
+              <PixelOfficeCanvas agents={agentStates.agents} cliHealth={cliHealth} />
             )}
           </div>
         </div>
