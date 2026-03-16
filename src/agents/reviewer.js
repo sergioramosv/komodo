@@ -395,6 +395,12 @@ ${diffInstruction}
       };
     }
 
+    const scoreInferred = earlyReview.score == null;
+    const baseSummary = earlyReview.summary || 'Early approval.';
+    const summary = scoreInferred && !baseSummary.includes('inferred')
+      ? `${baseSummary} (score inferred as 10/10 — early termination before full analysis)`
+      : baseSummary;
+
     return {
       success: true,
       review: {
@@ -402,7 +408,7 @@ ${diffInstruction}
         score: earlyReview.score ?? 10,
         issues: earlyReview.issues || [],
         positives: earlyReview.positives || [],
-        summary: earlyReview.summary || 'Early approval.',
+        summary,
       },
       cost: result.cost,
       duration: result.duration,
@@ -477,7 +483,7 @@ ${diffInstruction}
  * - REQUEST_CHANGES si Quality Gate falla con issues BLOCKER
  * - REQUEST_CHANGES en cualquier otro caso que no cumpla el umbral
  */
-function normalizeVerdict(rawVerdict, score, issues = [], sonarReport, coverageReport) {
+export function normalizeVerdict(rawVerdict, score, issues = [], sonarReport, coverageReport) {
   const hasCritical = issues.some(i => i.severity === 'critical');
   const hasMajor = issues.some(i => i.severity === 'major');
 
