@@ -447,23 +447,23 @@ ${diffInstruction}
   // Normalizar el verdict
   const verdict = normalizeVerdict(data.verdict, data.score, data.issues, sonarReport, coverageReport);
 
-  // Log del resultado
-  if (verdict === 'APPROVED') {
-    logger.success(`PR #${prNumber} APROBADA (score: ${data.score}/10)`, 'REVIEWER');
-  } else {
-    const issueCount = (data.issues || []).length;
-    logger.warn(`PR #${prNumber} REQUEST_CHANGES (score: ${data.score}/10, ${issueCount} issues)`, 'REVIEWER');
-  }
-
-  if (data.positives?.length) {
-    data.positives.forEach(p => logger.info(`  + ${p}`, 'REVIEWER'));
-  }
-
   const normalScore = verdict === 'APPROVED' && data.score == null ? 10 : data.score;
   const baseSummaryNormal = data.summary || '';
   const normalSummary = verdict === 'APPROVED' && data.score == null && !baseSummaryNormal.includes('inferred')
     ? `${baseSummaryNormal} (score inferred as 10/10 — LLM returned null score with APPROVED verdict)`.trim()
     : baseSummaryNormal;
+
+  // Log del resultado
+  if (verdict === 'APPROVED') {
+    logger.success(`PR #${prNumber} APROBADA (score: ${normalScore}/10)`, 'REVIEWER');
+  } else {
+    const issueCount = (data.issues || []).length;
+    logger.warn(`PR #${prNumber} REQUEST_CHANGES (score: ${normalScore}/10, ${issueCount} issues)`, 'REVIEWER');
+  }
+
+  if (data.positives?.length) {
+    data.positives.forEach(p => logger.info(`  + ${p}`, 'REVIEWER'));
+  }
 
   return {
     success: true,
