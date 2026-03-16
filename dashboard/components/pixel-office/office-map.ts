@@ -133,3 +133,30 @@ export const AGENT_IDLE_ZONES: Record<AgentName, Point> = {
 
 export const COFFEE_ZONE: Point = { x: 26, y: 19 };
 export const WHITEBOARD_POS: Point = { x: 27, y: 3 };
+
+/** Sort offset per tile type for z-sorting (pixels added to y for depth ordering) */
+export const FURNITURE_SORT_OFFSETS: Record<TileType, number> = {
+  desk: TILE_SIZE,
+  coffee: TILE_SIZE,
+  whiteboard: TILE_SIZE,
+  floor: 0,
+  wall: 0,
+  carpet: 0,
+};
+
+/** List of sortable furniture entities with their positions and types */
+export const SORTABLE_FURNITURE: Array<{ x: number; y: number; type: TileType }> = [
+  // Desks row 1
+  { x: 5, y: 4, type: 'desk' }, { x: 6, y: 4, type: 'desk' },
+  { x: 12, y: 4, type: 'desk' }, { x: 13, y: 4, type: 'desk' },
+  { x: 19, y: 4, type: 'desk' }, { x: 20, y: 4, type: 'desk' },
+  // Desks row 2
+  { x: 5, y: 12, type: 'desk' }, { x: 6, y: 12, type: 'desk' },
+  { x: 12, y: 12, type: 'desk' }, { x: 13, y: 12, type: 'desk' },
+  { x: 19, y: 12, type: 'desk' }, { x: 20, y: 12, type: 'desk' },
+  // Whiteboard
+  { x: 26, y: 2, type: 'whiteboard' }, { x: 27, y: 2, type: 'whiteboard' },
+  { x: 28, y: 2, type: 'whiteboard' }, { x: 29, y: 2, type: 'whiteboard' },
+  // Coffee machine
+  { x: 27, y: 19, type: 'coffee' }, { x: 28, y: 19, type: 'coffee' },
+];

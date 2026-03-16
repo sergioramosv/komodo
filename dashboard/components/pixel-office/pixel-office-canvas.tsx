@@ -1,39 +1,53 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import type { AgentName } from '@/lib/types';
 import type { AgentVisualState } from '@/hooks/useAgentStates';
 import { usePixelAgents } from './use-pixel-agents';
-import {
-  CANVAS_WIDTH,
-  CANVAS_HEIGHT,
-  GRID_COLS,
-  GRID_ROWS,
-  TILE_SIZE,
-  TILE_MAP,
-} from './office-map';
-import type { TileType } from './office-map';
-
-const TILE_COLORS: Record<TileType, string> = {
-  floor: '#2d2d3d',
-  wall: '#1a1a2e',
-  desk: '#5c4033',
-  carpet: '#3d2d4d',
-  coffee: '#4a3728',
-  whiteboard: '#e8e8e8',
-};
-
-const FLOOR_ALT = '#32324a';
+import { CANVAS_WIDTH, CANVAS_HEIGHT } from './office-map';
+import { Camera } from './camera';
+import { Renderer } from './renderer';
+import { InputHandler } from './input';
 
 interface PixelOfficeCanvasProps {
   agents: Record<AgentName, AgentVisualState>;
+  onAgentSelect?: (name: AgentName | null) => void;
 }
 
-export function PixelOfficeCanvas({ agents }: PixelOfficeCanvasProps) {
+export function PixelOfficeCanvas({ agents, onAgentSelect }: PixelOfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const agentsMapRef = usePixelAgents(agents);
   const lastTimeRef = useRef<number>(0);
   const rafRef = useRef<number>(0);
+
+  const cameraRef = useRef<Camera | null>(null);
+  const rendererRef = useRef<Renderer | null>(null);
+  const inputRef = useRef<InputHandler | null>(null);
+  const selectedAgentRef = useRef<AgentName | null>(null);
+
+  const onAgentSelectRef = useRef(onAgentSelect);
+  onAgentSelectRef.current = onAgentSelect;
+
+  const handleAgentClick = useCallback((name: AgentName | null) => {
+    selectedAgentRef.current = name;
+    rendererRef.current?.setSelectedAgent(name);
+
+    // Follow mode: center on selected agent
+    if (name && agentsMapRef.current) {
+      const agent = agentsMapRef.current.get(name);
+      if (agent && cameraRef.current) {
+        cameraRef.current.followWorld(agent.pixelX, agent.pixelY);
+      }
+    } else {
+      cameraRef.current?.stopFollow();
+    }
+
+    onAgentSelectRef.current?.(name);
+  }, [agentsMapRef]);
+
+  const handleAgentHover = useCallback((name: AgentName | null) => {
+    rendererRef.current?.setHoveredAgent(name);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -42,87 +56,50 @@ export function PixelOfficeCanvas({ agents }: PixelOfficeCanvasProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Disable image smoothing for crisp pixels
-    ctx.imageSmoothingEnabled = false;
+    // Initialize Camera, Renderer, InputHandler
+    const camera = new Camera(CANVAS_WIDTH, CANVAS_HEIGHT);
+    const renderer = new Renderer();
+    const input = new InputHandler(
+      camera,
+      () => agentsMapRef.current ?? new Map(),
+      {
+        onAgentClick: handleAgentClick,
+        onAgentHover: handleAgentHover,
+      },
+    );
+
+    cameraRef.current = camera;
+    rendererRef.current = renderer;
+    inputRef.current = input;
+
+    input.mount(canvas);
 
     const loop = (time: number) => {
       const deltaMs = lastTimeRef.current ? time - lastTimeRef.current : 16;
       lastTimeRef.current = time;
+      const deltaSec = deltaMs / 1000;
 
-      // Update all agents
+      // Update agents
       const map = agentsMapRef.current;
       if (map) {
         for (const agent of map.values()) {
           agent.update(deltaMs);
         }
-      }
 
-      // Clear
-      ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-      // Draw tiles
-      for (let y = 0; y < GRID_ROWS; y++) {
-        for (let x = 0; x < GRID_COLS; x++) {
-          const tileType = TILE_MAP[y][x];
-          if (tileType === 'floor') {
-            // Checkerboard pattern
-            ctx.fillStyle = (x + y) % 2 === 0 ? TILE_COLORS.floor : FLOOR_ALT;
-          } else {
-            ctx.fillStyle = TILE_COLORS[tileType];
-          }
-          ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-
-          // Desk details
-          if (tileType === 'desk') {
-            // Monitor
-            ctx.fillStyle = '#1a1a2e';
-            ctx.fillRect(x * TILE_SIZE + 4, y * TILE_SIZE + 3, 12, 8);
-            // Screen glow
-            ctx.fillStyle = '#4ade80';
-            ctx.fillRect(x * TILE_SIZE + 5, y * TILE_SIZE + 4, 10, 6);
-          }
-
-          // Whiteboard details
-          if (tileType === 'whiteboard') {
-            ctx.fillStyle = '#374151';
-            ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 4, 6, 1);
-            ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 8, 10, 1);
-            ctx.fillRect(x * TILE_SIZE + 2, y * TILE_SIZE + 12, 8, 1);
-          }
-
-          // Coffee machine details
-          if (tileType === 'coffee') {
-            ctx.fillStyle = '#78350f';
-            ctx.fillRect(x * TILE_SIZE + 4, y * TILE_SIZE + 2, 12, 14);
-            ctx.fillStyle = '#fbbf24';
-            ctx.fillRect(x * TILE_SIZE + 6, y * TILE_SIZE + 5, 2, 2);
+        // Update follow mode target if following
+        if (selectedAgentRef.current && camera.isFollowing) {
+          const followAgent = map.get(selectedAgentRef.current);
+          if (followAgent) {
+            camera.followWorld(followAgent.pixelX, followAgent.pixelY);
           }
         }
       }
 
-      // Grid lines (subtle)
-      ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-      ctx.lineWidth = 0.5;
-      for (let x = 0; x <= GRID_COLS; x++) {
-        ctx.beginPath();
-        ctx.moveTo(x * TILE_SIZE, 0);
-        ctx.lineTo(x * TILE_SIZE, CANVAS_HEIGHT);
-        ctx.stroke();
-      }
-      for (let y = 0; y <= GRID_ROWS; y++) {
-        ctx.beginPath();
-        ctx.moveTo(0, y * TILE_SIZE);
-        ctx.lineTo(CANVAS_WIDTH, y * TILE_SIZE);
-        ctx.stroke();
-      }
+      // Update camera
+      camera.update(deltaSec);
 
-      // Draw agents (sorted by Y for correct overlap)
-      if (map) {
-        const sortedAgents = [...map.values()].sort((a, b) => a.pixelY - b.pixelY);
-        for (const agent of sortedAgents) {
-          agent.drawSelf(ctx);
-        }
-      }
+      // Render
+      renderer.render(ctx, camera, map ?? new Map());
 
       rafRef.current = requestAnimationFrame(loop);
     };
@@ -133,8 +110,9 @@ export function PixelOfficeCanvas({ agents }: PixelOfficeCanvasProps) {
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
       }
+      input.unmount();
     };
-  }, [agentsMapRef]);
+  }, [agentsMapRef, handleAgentClick, handleAgentHover]);
 
   return (
     <div className="flex items-center justify-center w-full h-full min-h-[500px] bg-neutral-950 p-4">
@@ -143,7 +121,7 @@ export function PixelOfficeCanvas({ agents }: PixelOfficeCanvasProps) {
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
         className="border border-neutral-800 rounded-lg"
-        style={{ imageRendering: 'pixelated' }}
+        style={{ imageRendering: 'pixelated', cursor: 'grab' }}
       />
     </div>
   );

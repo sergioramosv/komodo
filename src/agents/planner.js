@@ -8,6 +8,7 @@ import { komodoState } from '../state/komodo-state.js';
 import { rankWithContextAffinity, buildAffinityHint } from '../smart-ordering/context-affinity.js';
 import { estimateTaskTokens } from '../estimation/token-estimator.js';
 import { classifyAndEmit } from '../triage/complexity-classifier.js';
+import { getUnresolvedPreviousParts } from './multi-part-filter.js';
 
 /**
  * Fetches sprints for a project, sorted by startDate ASC (earliest first).
@@ -48,12 +49,12 @@ export function filterBlockedTasks(todoTasks, allTasks) {
   for (const task of todoTasks) {
     const blockers = Array.isArray(task.blockedBy) ? task.blockedBy : [];
 
-    if (blockers.length === 0) {
+    const multiPartBlockers = getUnresolvedPreviousParts(task, allTasks); if (blockers.length === 0 && multiPartBlockers.length === 0) {
       eligible.push(task);
       continue;
     }
 
-    const unresolvedBlockers = [];
+    const unresolvedBlockers = [...multiPartBlockers];
     for (const blockerId of blockers) {
       const blocker = taskMap.get(blockerId);
       if (!blocker || blocker.status !== 'done') {
