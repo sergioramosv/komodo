@@ -2,7 +2,7 @@ export type AgentName = 'PLANNER' | 'CODER' | 'REVIEWER' | 'ARCHITECT' | 'SECURI
 
 export type AgentStatus = 'idle' | 'walking' | 'working' | 'done';
 
-export type Phase = 'idle' | 'planning' | 'architecting' | 'coding' | 'testing' | 'analyzing' | 'reviewing' | 'merging';
+export type Phase = 'idle' | 'planning' | 'architecting' | 'coding' | 'testing' | 'security' | 'analyzing' | 'reviewing' | 'merging';
 
 export type ExecutionState = 'stopped' | 'running' | 'paused';
 

@@ -25,12 +25,13 @@ const PHASE_CONFIG: Record<Phase, { icon: string; label: string; color: string }
   architecting: { icon: '◈', label: 'Architecting', color: 'text-cyan-400' },
   coding: { icon: '⌨', label: 'Coding', color: 'text-blue-400' },
   testing: { icon: '⚙', label: 'Testing', color: 'text-teal-400' },
+  security: { icon: '⛨', label: 'Security', color: 'text-green-400' },
   analyzing: { icon: '◉', label: 'SonarQube', color: 'text-cyan-400' },
   reviewing: { icon: '⊘', label: 'Reviewing', color: 'text-amber-400' },
   merging: { icon: '⇢', label: 'Merging', color: 'text-green-400' },
 };
 
-const PHASE_ORDER: Phase[] = ['planning', 'architecting', 'coding', 'testing', 'analyzing', 'reviewing', 'merging'];
+const PHASE_ORDER: Phase[] = ['planning', 'architecting', 'coding', 'testing', 'security', 'analyzing', 'reviewing', 'merging'];
 
 /* ── Agent status colors ── */
 
@@ -79,6 +80,21 @@ const EVENT_COLORS: Record<string, string> = {
   'agent:tester:working': 'text-teal-400',
   'agent:tester:done': 'text-teal-400',
   'agent:tester:idle': 'text-teal-400',
+  'security:scan:start': 'text-green-400',
+  'security:scan:complete': 'text-green-400',
+  'security:scan:blocked': 'text-red-400',
+};
+
+/* ── All agent names (ensures all 6 show even if snapshot only has 3) ── */
+const ALL_AGENT_NAMES = ['PLANNER', 'ARCHITECT', 'CODER', 'TESTER', 'SECURITY', 'REVIEWER'] as const;
+
+const AGENT_LABEL_COLORS: Record<string, string> = {
+  PLANNER: 'bg-violet-500',
+  ARCHITECT: 'bg-cyan-500',
+  CODER: 'bg-blue-500',
+  TESTER: 'bg-orange-500',
+  SECURITY: 'bg-green-500',
+  REVIEWER: 'bg-amber-500',
 };
 
 /* ── Page ── */
@@ -198,20 +214,23 @@ export default function DashboardPage() {
             )}
 
 
-            {/* Agent Cards */}
+            {/* Agent Cards — all 6 agents */}
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-1">
-              {Object.values(snapshot.agents).map((agent) => {
+              {ALL_AGENT_NAMES.map((name) => {
+                const agent = snapshot.agents[name] ?? { name, status: 'idle' as const, currentTask: null, startedAt: null };
                 const dotColor = STATUS_COLORS[agent.status] ?? 'bg-neutral-600';
                 const ring = STATUS_RING[agent.status] ?? '';
+                const barColor = AGENT_LABEL_COLORS[name] ?? 'bg-neutral-500';
 
                 return (
                   <div
-                    key={agent.name}
+                    key={name}
                     className="rounded-lg border border-neutral-800 bg-neutral-900 p-4"
                   >
                     <div className="flex items-center gap-3">
                       <span className={`inline-block h-3 w-3 rounded-full ${dotColor} ${ring}`} />
-                      <h3 className="text-sm font-semibold">{agent.name}</h3>
+                      <span className={`inline-block h-1.5 w-1.5 rounded-full ${barColor}`} />
+                      <h3 className="text-sm font-semibold">{name}</h3>
                       <span className={`ml-auto rounded px-2 py-0.5 text-xs font-medium capitalize ${agent.status === 'working' ? 'bg-blue-500/20 text-blue-400'
                         : agent.status === 'done' ? 'bg-green-500/20 text-green-400'
                           : 'bg-neutral-800 text-neutral-400'
@@ -231,6 +250,56 @@ export default function DashboardPage() {
                 );
               })}
             </section>
+
+            {/* Agent Cost & Turns Breakdown */}
+            {(() => {
+              const allAgents = ALL_AGENT_NAMES.map(n => snapshot.agents[n] ?? { name: n, totalCost: 0, totalTurns: 0 });
+              const totalTurns = allAgents.reduce((s, a) => s + ((a as { totalTurns?: number }).totalTurns ?? 0), 0);
+              const hasCostData = snapshot.totalCost > 0 || totalTurns > 0;
+              if (!hasCostData) return null;
+              return (
+                <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+                  <h2 className="mb-3 text-sm font-medium text-neutral-400">Agent Cost & Turns</h2>
+                  <div className="flex gap-4 mb-4">
+                    <div>
+                      <p className="text-xs text-neutral-500">Total Cost</p>
+                      <p className="text-lg font-bold tabular-nums">${snapshot.totalCost.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-neutral-500">Total Turns</p>
+                      <p className="text-lg font-bold tabular-nums">{totalTurns}</p>
+                    </div>
+                  </div>
+                  {snapshot.totalCost > 0 && (
+                    <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-neutral-800 mb-3">
+                      {allAgents.map((a) => {
+                        const cost = (a as { totalCost?: number }).totalCost ?? 0;
+                        const pct = snapshot.totalCost > 0 ? (cost / snapshot.totalCost) * 100 : 0;
+                        if (pct < 0.5) return null;
+                        return <div key={a.name} className={`${AGENT_LABEL_COLORS[a.name] ?? 'bg-neutral-500'} transition-all`} style={{ width: `${pct}%` }} title={`${a.name}: $${cost.toFixed(2)}`} />;
+                      })}
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    {allAgents.map((a) => {
+                      const cost = (a as { totalCost?: number }).totalCost ?? 0;
+                      const turns = (a as { totalTurns?: number }).totalTurns ?? 0;
+                      if (cost === 0 && turns === 0) return null;
+                      const pct = snapshot.totalCost > 0 ? ((cost / snapshot.totalCost) * 100).toFixed(0) : '0';
+                      return (
+                        <div key={a.name} className="flex items-center gap-2 text-xs">
+                          <span className={`inline-block h-2 w-2 rounded-full ${AGENT_LABEL_COLORS[a.name] ?? 'bg-neutral-500'}`} />
+                          <span className="w-20 font-medium text-neutral-300">{a.name}</span>
+                          <span className="tabular-nums text-neutral-400">${cost.toFixed(2)}</span>
+                          <span className="text-neutral-600">({pct}%)</span>
+                          <span className="ml-auto tabular-nums text-neutral-500">{turns} turns</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })()}
 
             {/* Tasks */}
             <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
