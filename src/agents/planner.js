@@ -39,6 +39,52 @@ export async function fetchProjectTasks(projectId) {
  * @param {Array} allTasks  - All project tasks (to resolve blocker statuses)
  * @returns {{ eligible: Array, blocked: Array<{task: object, unresolvedBlockers: Array<{id: string, title: string, status: string}>}> }}
  */
+/**
+ * Detects multi-part tasks by title pattern like "(2/4)" or "(Part 3 of 5)"
+ * and checks if all previous parts are done.
+ *
+ * @param {Object} task - The task to check
+ * @param {Array} allTasks - All project tasks
+ * @returns {{ blocked: boolean, unresolvedParts: Array<{id: string, title: string, status: string}> }}
+ */
+function checkMultiPartOrder(task, allTasks) {
+  const title = task.title || '';
+
+  // Match patterns: (2/4), (Part 2 of 4), [2/4], (2 of 4)
+  const match = title.match(/[\[(]\s*(?:Part\s+)?(\d+)\s*(?:\/|of)\s*(\d+)\s*[\])]/i);
+  if (!match) return { blocked: false, unresolvedParts: [] };
+
+  const partNum = parseInt(match[1], 10);
+  if (partNum <= 1) return { blocked: false, unresolvedParts: [] }; // Part 1 is never blocked by earlier parts
+
+  // Extract the base title (everything before the part pattern)
+  const baseTitle = title.slice(0, title.indexOf(match[0])).trim().toLowerCase();
+
+  // Find all tasks with the same base title that are earlier parts
+  const unresolvedParts = [];
+  for (let i = 1; i < partNum; i++) {
+    // Look for part i in allTasks by matching base title + part number
+    const prevPart = allTasks.find(t => {
+      const tTitle = (t.title || '').toLowerCase();
+      const tMatch = tTitle.match(/[\[(]\s*(?:part\s+)?(\d+)\s*(?:\/|of)\s*(\d+)\s*[\])]/i);
+      if (!tMatch) return false;
+      const tPartNum = parseInt(tMatch[1], 10);
+      const tBaseTitle = tTitle.slice(0, tTitle.indexOf(tMatch[0])).trim();
+      return tBaseTitle === baseTitle && tPartNum === i;
+    });
+
+    if (!prevPart || prevPart.status !== 'done') {
+      unresolvedParts.push({
+        id: prevPart?.id || `(part ${i} not found)`,
+        title: prevPart?.title || `${baseTitle} (${i}/?)`,
+        status: prevPart?.status || '(not found)',
+      });
+    }
+  }
+
+  return { blocked: unresolvedParts.length > 0, unresolvedParts };
+}
+
 export function filterBlockedTasks(todoTasks, allTasks) {
   const taskMap = new Map(allTasks.map(t => [t.id, t]));
 
@@ -48,11 +94,7 @@ export function filterBlockedTasks(todoTasks, allTasks) {
   for (const task of todoTasks) {
     const blockers = Array.isArray(task.blockedBy) ? task.blockedBy : [];
 
-    if (blockers.length === 0) {
-      eligible.push(task);
-      continue;
-    }
-
+    // Check explicit blockedBy dependencies
     const unresolvedBlockers = [];
     for (const blockerId of blockers) {
       const blocker = taskMap.get(blockerId);
@@ -62,6 +104,14 @@ export function filterBlockedTasks(todoTasks, allTasks) {
           title: blocker?.title || '(unknown)',
           status: blocker?.status || '(not found)',
         });
+      }
+    }
+
+    // Check implicit multi-part ordering (e.g. "Task (2/4)" requires "Task (1/4)" to be done)
+    const multiPart = checkMultiPartOrder(task, allTasks);
+    if (multiPart.blocked) {
+      for (const part of multiPart.unresolvedParts) {
+        unresolvedBlockers.push(part);
       }
     }
 
