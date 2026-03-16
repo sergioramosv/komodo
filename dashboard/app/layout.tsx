@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Sidebar } from '@/components/sidebar';
+import { TopNav } from '@/components/top-nav';
 import { NotificationProvider } from '@/components/notification-provider';
 import './globals.css';
 
@@ -11,10 +11,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body className="flex h-screen bg-neutral-950 text-neutral-100 antialiased" suppressHydrationWarning>
+      <body className="flex flex-col h-screen bg-neutral-950 text-neutral-100 antialiased" suppressHydrationWarning>
         <NotificationProvider>
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+          <TopNav />
+          <main className="flex-1 overflow-y-auto p-4">{children}</main>
         </NotificationProvider>
       </body>
     </html>

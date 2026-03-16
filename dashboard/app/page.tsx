@@ -7,49 +7,57 @@ import { useOfficeFeedback } from '@/hooks/useOfficeFeedback';
 import { ConnectionStatus } from '@/components/connection-status';
 import dynamic from 'next/dynamic';
 import { ExecutionControls } from '@/components/execution-controls';
-import { CliHealthStatus } from '@/components/cli-health-status';
 import { BudgetWidget } from '@/components/budget-widget';
 import { ProjectSelector } from '@/components/project-selector';
 import { MultiProjectOverview } from '@/components/multi-project-overview';
 import { TaskDetailModal } from '@/components/task-detail-modal';
 import { Settings } from 'lucide-react';
-
-const OfficeScene3D = dynamic(() => import('@/components/office-scene-3d').then(mod => mod.OfficeScene3D), { ssr: false });
 import type { Phase, AgentStatus, DashboardEvent, SonarAnalysisState } from '@/lib/types';
 
-/* ── Phase config ── */
+const OfficeScene3D = dynamic(() => import('@/components/office-scene-3d').then(mod => mod.OfficeScene3D), { ssr: false });
+
+/* ── Constants ── */
+
+const ALL_AGENTS = ['PLANNER', 'ARCHITECT', 'CODER', 'TESTER', 'SECURITY', 'REVIEWER'] as const;
 
 const PHASE_CONFIG: Record<Phase, { icon: string; label: string; color: string }> = {
   idle: { icon: '○', label: 'Idle', color: 'text-neutral-500' },
-  planning: { icon: '✎', label: 'Planning', color: 'text-violet-400' },
-  architecting: { icon: '◈', label: 'Architecting', color: 'text-cyan-400' },
-  coding: { icon: '⌨', label: 'Coding', color: 'text-blue-400' },
-  testing: { icon: '⚙', label: 'Testing', color: 'text-teal-400' },
-  security: { icon: '⛨', label: 'Security', color: 'text-green-400' },
-  analyzing: { icon: '◉', label: 'SonarQube', color: 'text-cyan-400' },
-  reviewing: { icon: '⊘', label: 'Reviewing', color: 'text-amber-400' },
-  merging: { icon: '⇢', label: 'Merging', color: 'text-green-400' },
+  planning: { icon: '✎', label: 'Plan', color: 'text-violet-400' },
+  architecting: { icon: '◈', label: 'Arch', color: 'text-cyan-400' },
+  coding: { icon: '⌨', label: 'Code', color: 'text-blue-400' },
+  testing: { icon: '⚙', label: 'Test', color: 'text-teal-400' },
+  security: { icon: '⛨', label: 'Sec', color: 'text-green-400' },
+  analyzing: { icon: '◉', label: 'Sonar', color: 'text-cyan-400' },
+  reviewing: { icon: '⊘', label: 'Review', color: 'text-amber-400' },
+  merging: { icon: '⇢', label: 'Merge', color: 'text-green-400' },
 };
 
 const PHASE_ORDER: Phase[] = ['planning', 'architecting', 'coding', 'testing', 'security', 'analyzing', 'reviewing', 'merging'];
 
-/* ── Agent status colors ── */
-
-const STATUS_COLORS: Record<AgentStatus, string> = {
+const STATUS_DOT: Record<AgentStatus, string> = {
   idle: 'bg-neutral-600',
   walking: 'bg-yellow-500',
-  working: 'bg-blue-500',
+  working: 'bg-blue-500 animate-pulse',
   done: 'bg-green-500',
 };
 
-const STATUS_RING: Record<AgentStatus, string> = {
-  idle: '',
-  walking: 'ring-2 ring-yellow-500/30',
-  working: 'ring-2 ring-blue-500/30 animate-pulse',
-  done: 'ring-2 ring-green-500/30',
+const AGENT_COLORS: Record<string, string> = {
+  PLANNER: 'bg-violet-500',
+  ARCHITECT: 'bg-cyan-500',
+  CODER: 'bg-blue-500',
+  TESTER: 'bg-orange-500',
+  SECURITY: 'bg-green-500',
+  REVIEWER: 'bg-amber-500',
 };
 
-/* ── Event type colors ── */
+const AGENT_TEXT: Record<string, string> = {
+  PLANNER: 'text-violet-400',
+  ARCHITECT: 'text-cyan-400',
+  CODER: 'text-blue-400',
+  TESTER: 'text-orange-400',
+  SECURITY: 'text-green-400',
+  REVIEWER: 'text-amber-400',
+};
 
 const EVENT_COLORS: Record<string, string> = {
   'agent:state-change': 'text-blue-400',
@@ -85,6 +93,8 @@ const EVENT_COLORS: Record<string, string> = {
   'security:scan:blocked': 'text-red-400',
 };
 
+type HomeTab = 'overview' | '3d' | 'events' | 'cost';
+
 /* ── Page ── */
 
 export default function DashboardPage() {
@@ -93,100 +103,166 @@ export default function DashboardPage() {
   const feedback = useOfficeFeedback(events, snapshot);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<HomeTab>('overview');
+
+  if (!snapshot) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <ConnectionStatus connected={connected} />
+          <p className="mt-3 text-neutral-500">Waiting for orchestrator connection...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+    <div className="space-y-3">
+      {/* ═══ TOP BAR: Phase + Task + Controls ═══ */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Phase pipeline — compact */}
+        <div className="flex items-center gap-0.5">
+          {PHASE_ORDER.map((phase, i) => {
+            const cfg = PHASE_CONFIG[phase];
+            const isActive = snapshot.phase === phase;
+            const isPast = PHASE_ORDER.indexOf(snapshot.phase as Phase) > i;
+            return (
+              <div key={phase} className="flex items-center">
+                {i > 0 && <div className={`mx-0.5 h-px w-2 ${isPast ? 'bg-green-500' : 'bg-neutral-700'}`} />}
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                  isActive ? `${cfg.color} bg-neutral-800 ring-1 ring-neutral-700`
+                  : isPast ? 'text-green-500 bg-green-500/10'
+                  : 'text-neutral-600'
+                }`}>
+                  {isPast ? '✓' : cfg.icon} {cfg.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Task + stats compact */}
+        <div className="flex items-center gap-3 text-sm">
+          <span className="tabular-nums text-neutral-400">
+            {snapshot.tasksCompleted}/{snapshot.totalTasks || '?'} tasks
+          </span>
+          <span className="tabular-nums font-medium">${snapshot.totalCost.toFixed(2)}</span>
+          {snapshot.currentPR && (
+            <span className="text-xs text-neutral-500">
+              PR {typeof snapshot.currentPR === 'object' ? `#${snapshot.currentPR.number}` : snapshot.currentPR}
+            </span>
+          )}
+        </div>
+
+        {/* Controls */}
+        <ExecutionControls
+          executionState={snapshot.executionState ?? 'stopped'}
+          phase={snapshot.phase}
+          connected={connected}
+          onPause={() => sendCommand('pause')}
+          onStop={() => sendCommand('stop')}
+        />
         <ConnectionStatus connected={connected} />
       </div>
 
-      {!snapshot ? (
-        <p className="text-neutral-500">Waiting for orchestrator connection...</p>
-      ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="space-y-6 xl:col-span-1">
-            {/* Current Task Card */}
-            <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <h2 className="mb-3 text-sm font-medium text-neutral-400">Current Task</h2>
-              {snapshot.currentTask ? (
-                <div className="space-y-3">
-                  <p className="text-lg font-semibold">
-                    {snapshot.taskDetails?.title ?? snapshot.currentTask}
-                  </p>
-                  {snapshot.taskDetails?.userStory && (
-                    <p className="text-sm text-neutral-400">{snapshot.taskDetails.userStory}</p>
-                  )}
+      {/* ═══ CURRENT TASK (if any) ═══ */}
+      {snapshot.currentTask && (
+        <div className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-2.5">
+          <span className="text-sm font-semibold flex-1 truncate">
+            {snapshot.taskDetails?.title ?? snapshot.currentTask}
+          </span>
+          {snapshot.taskDetails?.businessPoints != null && (
+            <span className="rounded bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
+              {snapshot.taskDetails.businessPoints} BP
+            </span>
+          )}
+          {snapshot.taskDetails?.devPoints != null && (
+            <span className="rounded bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400">
+              {snapshot.taskDetails.devPoints} DP
+            </span>
+          )}
+          {snapshot.taskDetails && (
+            <button
+              onClick={() => setTaskModalOpen(true)}
+              className="rounded border border-neutral-700 px-2 py-0.5 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-white"
+            >
+              Details
+            </button>
+          )}
+        </div>
+      )}
 
-                  {/* Points */}
-                  {(snapshot.taskDetails?.devPoints != null || snapshot.taskDetails?.businessPoints != null) && (
-                    <div className="flex gap-3">
-                      {snapshot.taskDetails?.businessPoints != null && (
-                        <div className="flex items-center gap-1.5 rounded bg-amber-500/10 px-2.5 py-1">
-                          <span className="text-amber-400">💼</span>
-                          <span className="text-sm font-medium text-amber-400">
-                            {snapshot.taskDetails.businessPoints} BP
-                          </span>
-                        </div>
-                      )}
-                      {snapshot.taskDetails?.devPoints != null && (
-                        <div className="flex items-center gap-1.5 rounded bg-blue-500/10 px-2.5 py-1">
-                          <span className="text-blue-400"><Settings size={16} /></span>
-                          <span className="text-sm font-medium text-blue-400">
-                            {snapshot.taskDetails.devPoints} DP
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
+      {/* ═══ TABS ═══ */}
+      <div className="flex items-center gap-1 border-b border-neutral-800">
+        {([
+          { id: 'overview' as const, label: 'Overview' },
+          { id: '3d' as const, label: '3D Office' },
+          { id: 'events' as const, label: `Events (${events.length})` },
+          { id: 'cost' as const, label: 'Cost' },
+        ]).map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`relative px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === tab.id
+                ? 'text-white'
+                : 'text-neutral-500 hover:text-neutral-300'
+            }`}
+          >
+            {tab.label}
+            {activeTab === tab.id && (
+              <span className="absolute bottom-0 left-1 right-1 h-0.5 rounded-full bg-white" />
+            )}
+          </button>
+        ))}
+      </div>
 
-                  {/* Developer & Sprint */}
-                  <div className="flex flex-wrap gap-2 text-xs text-neutral-500">
-                    {snapshot.taskDetails?.assignedDeveloper && (
-                      <span className="flex items-center gap-1 rounded bg-neutral-800 px-2 py-0.5">
-                        <span>&#128100;</span> {snapshot.taskDetails.assignedDeveloper}
-                      </span>
-                    )}
-                    {snapshot.taskDetails?.sprint && (
-                      <span className="rounded bg-neutral-800 px-2 py-0.5">
-                        &#127939; {snapshot.taskDetails.sprint}
-                      </span>
-                    )}
-                    {snapshot.currentPR && (
-                      <span className="rounded bg-neutral-800 px-2 py-0.5">
-                        PR: {typeof snapshot.currentPR === 'object' ? `#${snapshot.currentPR.number}` : snapshot.currentPR}
-                      </span>
-                    )}
+      {/* ═══ TAB CONTENT ═══ */}
+
+      {activeTab === 'overview' && (
+        <div className="space-y-4">
+          {/* Agent Cards — 6 in a row */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {ALL_AGENTS.map((name) => {
+              const agent = snapshot.agents[name] ?? { name, status: 'idle' as const, currentTask: null, startedAt: null, totalCost: 0, totalTurns: 0 };
+              return (
+                <div key={name} className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block h-2.5 w-2.5 rounded-full ${STATUS_DOT[agent.status] ?? 'bg-neutral-600'}`} />
+                    <span className={`text-sm font-bold ${AGENT_TEXT[name] ?? 'text-neutral-300'}`}>{name}</span>
                   </div>
-
-                  {/* View Task button */}
-                  {snapshot.taskDetails && (
-                    <button
-                      onClick={() => setTaskModalOpen(true)}
-                      className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-800/50 px-3 py-2 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-white"
-                    >
-                      View Task Details
-                    </button>
+                  <div className="mt-1.5 flex items-center justify-between text-xs text-neutral-500">
+                    <span className="capitalize">{agent.status}</span>
+                    {(agent.totalCost ?? 0) > 0 && <span className="tabular-nums">${(agent.totalCost ?? 0).toFixed(2)}</span>}
+                  </div>
+                  {agent.currentTask && (
+                    <p className="mt-1 truncate text-xs text-neutral-400">{agent.currentTask}</p>
                   )}
                 </div>
-              ) : (
-                <p className="text-neutral-500">No task running</p>
-              )}
-            </section>
+              );
+            })}
+          </div>
 
-            {/* Execution Controls */}
-            <ExecutionControls
-              executionState={snapshot.executionState ?? 'stopped'}
-              phase={snapshot.phase}
-              connected={connected}
-              onPause={() => sendCommand('pause')}
-              onStop={() => sendCommand('stop')}
-            />
+          {/* Bottom row: Budget + SonarQube + Multi-project */}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {/* Budget */}
+            {snapshot.budget && (
+              <BudgetWidget budget={snapshot.budget} totalCost={snapshot.totalCost} />
+            )}
 
-            {/* Multi-Project Selector & Overview */}
+            {/* SonarQube */}
+            {snapshot.sonarAnalysis && snapshot.sonarAnalysis.status !== 'idle' && (
+              <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+                <SonarStatus sonar={snapshot.sonarAnalysis} />
+              </div>
+            )}
+
+            {/* Multi-project */}
             {snapshot.multiProject?.enabled && (
-              <>
+              <div className="space-y-3">
                 <ProjectSelector
                   multiProject={snapshot.multiProject}
                   selectedProject={selectedProject}
@@ -198,123 +274,113 @@ export default function DashboardPage() {
                   budget={snapshot.budget}
                   totalCost={snapshot.totalCost}
                 />
-              </>
+              </div>
+            )}
+          </div>
+
+          {/* Recent events — last 5 compact */}
+          {events.length > 0 && (
+            <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-medium text-neutral-400">Recent Events</h3>
+                <button
+                  onClick={() => setActiveTab('events')}
+                  className="text-xs text-neutral-500 hover:text-neutral-300"
+                >
+                  View all
+                </button>
+              </div>
+              <div className="space-y-0.5">
+                {events.slice(0, 5).map((evt) => (
+                  <EventRow key={evt.id} event={evt} />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === '3d' && (
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900 overflow-hidden" style={{ height: 'calc(100vh - 12rem)' }}>
+          <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
+        </div>
+      )}
+
+      {activeTab === 'events' && (
+        <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
+          <h2 className="mb-3 text-sm font-medium text-neutral-400">Event Timeline</h2>
+          {events.length === 0 ? (
+            <p className="text-sm text-neutral-600">No events yet</p>
+          ) : (
+            <div className="space-y-0.5 max-h-[calc(100vh-14rem)] overflow-y-auto">
+              {events.map((evt) => (
+                <EventRow key={evt.id} event={evt} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'cost' && (
+        <div className="space-y-4">
+          {/* Budget widget */}
+          {snapshot.budget && (
+            <BudgetWidget budget={snapshot.budget} totalCost={snapshot.totalCost} />
+          )}
+
+          {/* Agent cost breakdown */}
+          <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
+            <h2 className="mb-3 text-sm font-medium text-neutral-400">Agent Cost & Turns</h2>
+            <div className="flex gap-6 mb-4">
+              <div>
+                <p className="text-xs text-neutral-500">Total Cost</p>
+                <p className="text-2xl font-bold tabular-nums">${snapshot.totalCost.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-500">Total Turns</p>
+                <p className="text-2xl font-bold tabular-nums">
+                  {ALL_AGENTS.reduce((s, n) => s + ((snapshot.agents[n]?.totalTurns ?? 0)), 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-500">Tasks Done</p>
+                <p className="text-2xl font-bold tabular-nums">{snapshot.tasksCompleted}</p>
+              </div>
+            </div>
+
+            {/* Color bar */}
+            {snapshot.totalCost > 0 && (
+              <div className="flex h-3 w-full rounded-full overflow-hidden bg-neutral-800 mb-4">
+                {ALL_AGENTS.map((name) => {
+                  const cost = snapshot.agents[name]?.totalCost ?? 0;
+                  const pct = (cost / snapshot.totalCost) * 100;
+                  if (pct < 0.5) return null;
+                  return <div key={name} className={`${AGENT_COLORS[name]} transition-all`} style={{ width: `${pct}%` }} title={`${name}: $${cost.toFixed(2)}`} />;
+                })}
+              </div>
             )}
 
-
-            {/* Agent Cards */}
-            <section className="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-1">
-              {Object.values(snapshot.agents).map((agent) => {
-                const dotColor = STATUS_COLORS[agent.status] ?? 'bg-neutral-600';
-                const ring = STATUS_RING[agent.status] ?? '';
+            {/* Per-agent table */}
+            <div className="space-y-2">
+              {ALL_AGENTS.map((name) => {
+                const agent = snapshot.agents[name];
+                const cost = agent?.totalCost ?? 0;
+                const turns = agent?.totalTurns ?? 0;
+                const tasks = agent?.completedTasks ?? 0;
+                const pct = snapshot.totalCost > 0 ? ((cost / snapshot.totalCost) * 100).toFixed(0) : '0';
 
                 return (
-                  <div
-                    key={agent.name}
-                    className="rounded-lg border border-neutral-800 bg-neutral-900 p-4"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`inline-block h-3 w-3 rounded-full ${dotColor} ${ring}`} />
-                      <h3 className="text-sm font-semibold">{agent.name}</h3>
-                      <span className={`ml-auto rounded px-2 py-0.5 text-xs font-medium capitalize ${agent.status === 'working' ? 'bg-blue-500/20 text-blue-400'
-                        : agent.status === 'done' ? 'bg-green-500/20 text-green-400'
-                          : 'bg-neutral-800 text-neutral-400'
-                        }`}>
-                        {agent.status}
-                      </span>
-                    </div>
-                    {agent.currentTask && (
-                      <p className="mt-2 truncate text-sm text-neutral-400">{agent.currentTask}</p>
-                    )}
-                    {agent.startedAt && (
-                      <p className="mt-1 text-xs text-neutral-500">
-                        Since {new Date(agent.startedAt).toLocaleTimeString()}
-                      </p>
-                    )}
+                  <div key={name} className="flex items-center gap-3 text-sm">
+                    <span className={`inline-block h-2.5 w-2.5 rounded-full ${AGENT_COLORS[name]}`} />
+                    <span className={`w-24 font-medium ${AGENT_TEXT[name]}`}>{name}</span>
+                    <span className="tabular-nums text-neutral-300">${cost.toFixed(2)}</span>
+                    <span className="text-neutral-600 text-xs">({pct}%)</span>
+                    <span className="ml-auto tabular-nums text-neutral-500 text-xs">{turns} turns</span>
+                    {tasks > 0 && <span className="tabular-nums text-neutral-600 text-xs">{tasks} tasks</span>}
                   </div>
                 );
               })}
-            </section>
-
-            {/* Agent Cost & Turns Breakdown */}
-            <AgentCostBreakdown agents={snapshot.agents} totalCost={snapshot.totalCost} />
-
-            {/* Tasks */}
-            <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <h3 className="mb-1 text-sm font-medium text-neutral-400">Tasks</h3>
-              <div className="mt-2 text-2xl font-bold tabular-nums">
-                {snapshot.tasksCompleted}
-                <span className="text-sm font-normal text-neutral-500 ml-1">
-                  / {snapshot.totalTasks || '?'}
-                </span>
-              </div>
-            </section>
-
-            {/* Event Timeline */}
-            <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <h2 className="mb-4 text-sm font-medium text-neutral-400">Recent Events</h2>
-              {events.length === 0 ? (
-                <p className="text-sm text-neutral-600">No events yet</p>
-              ) : (
-                <div className="space-y-1">
-                  {events.map((evt) => (
-                    <EventRow key={evt.id} event={evt} />
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
-
-          <div className="xl:col-span-2 flex flex-col min-h-[600px] h-[calc(100vh-8rem)] rounded-lg border border-neutral-800 bg-neutral-900 overflow-hidden relative">
-            {/* Phase Indicator */}
-            <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-              <h2 className="mb-4 text-sm font-medium text-neutral-400">Phase</h2>
-              {snapshot.phase === 'idle' ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-lg text-neutral-500">○</span>
-                  <span className="text-neutral-500">Idle — waiting for next task</span>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    {PHASE_ORDER.map((phase, i) => {
-                      const cfg = PHASE_CONFIG[phase];
-                      const isActive = snapshot.phase === phase;
-                      const isPast = PHASE_ORDER.indexOf(snapshot.phase as Phase) > i;
-
-                      return (
-                        <div key={phase} className="flex items-center">
-                          {i > 0 && (
-                            <div
-                              className={`mx-1 h-px w-2 sm:w-4 ${isPast ? 'bg-green-500' : 'bg-neutral-700'
-                                }`}
-                            />
-                          )}
-                          <div
-                            className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-xs sm:px-3 sm:py-1.5 sm:text-sm font-medium transition-all ${isActive
-                              ? `${cfg.color} bg-neutral-800 ring-1 ring-neutral-700`
-                              : isPast
-                                ? 'text-green-500 bg-green-500/10'
-                                : 'text-neutral-600'
-                              }`}
-                          >
-                            <span className="text-base">{isActive ? cfg.icon : isPast ? '✓' : cfg.icon}</span>
-                            {cfg.label}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {/* SonarQube Analysis inline status */}
-                  {snapshot.sonarAnalysis && snapshot.sonarAnalysis.status !== 'idle' && (
-                    <SonarStatus sonar={snapshot.sonarAnalysis} />
-                  )}
-                </div>
-              )}
-            </section>
-
-            {/* Office Scene — real-time agent visualization */}
-            <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
+            </div>
           </div>
         </div>
       )}
@@ -329,80 +395,6 @@ export default function DashboardPage() {
         />
       )}
     </div>
-  );
-}
-
-/* ── Agent Cost Breakdown Component ── */
-
-const AGENT_COLORS: Record<string, string> = {
-  PLANNER: 'bg-violet-500',
-  ARCHITECT: 'bg-cyan-500',
-  CODER: 'bg-blue-500',
-  TESTER: 'bg-orange-500',
-  SECURITY: 'bg-green-500',
-  REVIEWER: 'bg-amber-500',
-};
-
-function AgentCostBreakdown({ agents, totalCost }: { agents: Record<string, { name: string; totalCost?: number; totalTurns?: number; completedTasks?: number }>; totalCost: number }) {
-  const agentList = Object.values(agents).filter(a => (a.totalCost ?? 0) > 0 || (a.totalTurns ?? 0) > 0);
-  const totalTurns = Object.values(agents).reduce((sum, a) => sum + (a.totalTurns ?? 0), 0);
-
-  if (agentList.length === 0 && totalCost === 0) return null;
-
-  return (
-    <section className="rounded-lg border border-neutral-800 bg-neutral-900 p-5">
-      <h2 className="mb-3 text-sm font-medium text-neutral-400">Agent Cost & Turns</h2>
-
-      {/* Totals row */}
-      <div className="flex gap-4 mb-4">
-        <div>
-          <p className="text-xs text-neutral-500">Total Cost</p>
-          <p className="text-lg font-bold tabular-nums">${totalCost.toFixed(2)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-neutral-500">Total Turns</p>
-          <p className="text-lg font-bold tabular-nums">{totalTurns}</p>
-        </div>
-      </div>
-
-      {/* Cost bar */}
-      {totalCost > 0 && (
-        <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-neutral-800 mb-3">
-          {allAgents.map((agent) => {
-            const pct = totalCost > 0 ? ((agent.totalCost ?? 0) / totalCost) * 100 : 0;
-            if (pct < 0.5) return null;
-            return (
-              <div
-                key={agent.name}
-                className={`${AGENT_COLORS[agent.name] ?? 'bg-neutral-500'} transition-all`}
-                style={{ width: `${pct}%` }}
-                title={`${agent.name}: $${(agent.totalCost ?? 0).toFixed(2)} (${pct.toFixed(0)}%)`}
-              />
-            );
-          })}
-        </div>
-      )}
-
-      {/* Per-agent breakdown */}
-      <div className="space-y-1.5">
-        {Object.values(agents).map((agent) => {
-          const cost = agent.totalCost ?? 0;
-          const turns = agent.totalTurns ?? 0;
-          if (cost === 0 && turns === 0) return null;
-          const pct = totalCost > 0 ? ((cost / totalCost) * 100).toFixed(0) : '0';
-
-          return (
-            <div key={agent.name} className="flex items-center gap-2 text-xs">
-              <span className={`inline-block h-2 w-2 rounded-full ${AGENT_COLORS[agent.name] ?? 'bg-neutral-500'}`} />
-              <span className="w-20 font-medium text-neutral-300">{agent.name}</span>
-              <span className="tabular-nums text-neutral-400">${cost.toFixed(2)}</span>
-              <span className="text-neutral-600">({pct}%)</span>
-              <span className="ml-auto tabular-nums text-neutral-500">{turns} turns</span>
-            </div>
-          );
-        })}
-      </div>
-    </section>
   );
 }
 
@@ -443,48 +435,14 @@ function EventRow({ event }: { event: DashboardEvent }) {
     : '--:--:--';
 
   const color = EVENT_COLORS[event.type] ?? 'text-neutral-400';
-  const isBrowserCheck = event.type === 'browser:check';
-  const screenshot = isBrowserCheck ? (event.metadata?.screenshot as string | undefined) : undefined;
-  const errors = isBrowserCheck ? (event.metadata?.errors as string[] | undefined) : undefined;
 
   return (
-    <div className="rounded px-2 py-1.5 text-sm hover:bg-neutral-800/50">
-      <div className="flex items-start gap-3">
-        <span className="shrink-0 tabular-nums text-neutral-600">{time}</span>
-        {isBrowserCheck && <span className="shrink-0">🌐</span>}
-        {event.agentName && (
-          <span className={`shrink-0 font-medium ${color}`}>{event.agentName}</span>
-        )}
-        <span className="text-neutral-300">{event.message}</span>
-      </div>
-      {/* Console errors */}
-      {errors && errors.length > 0 && (
-        <div className="mt-1.5 ml-8 space-y-0.5">
-          {errors.slice(0, 5).map((err, i) => (
-            <p key={i} className="truncate rounded bg-red-500/10 px-2 py-0.5 font-mono text-xs text-red-400">
-              {err}
-            </p>
-          ))}
-          {errors.length > 5 && (
-            <p className="text-xs text-neutral-500">+{errors.length - 5} more</p>
-          )}
-        </div>
+    <div className="flex items-start gap-2 rounded px-2 py-1 text-xs hover:bg-neutral-800/50">
+      <span className="shrink-0 tabular-nums text-neutral-600">{time}</span>
+      {event.agentName && (
+        <span className={`shrink-0 font-medium ${color}`}>{event.agentName}</span>
       )}
-      {/* Screenshot thumbnail */}
-      {screenshot && (
-        <a
-          href={screenshot}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-1.5 ml-8 inline-block"
-        >
-          <img
-            src={screenshot}
-            alt="Browser screenshot"
-            className="h-16 w-28 rounded border border-neutral-700 object-cover transition-opacity hover:opacity-80"
-          />
-        </a>
-      )}
+      <span className="text-neutral-300 truncate">{event.message}</span>
     </div>
   );
 }
