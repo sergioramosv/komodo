@@ -101,7 +101,7 @@ export default function DashboardPage() {
   const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (view === displayView) return;
+    if (view === displayView) { setOpacity(1); return; }
     if (fadeTimer.current) clearTimeout(fadeTimer.current);
     setOpacity(0);
     fadeTimer.current = setTimeout(() => {

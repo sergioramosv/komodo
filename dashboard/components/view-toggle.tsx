@@ -1,6 +1,6 @@
 'use client';
 
-type ViewType = '3d' | 'pixel';
+import type { ViewType } from '@/context/view-preference-context';
 
 interface ViewToggleProps {
   view: ViewType;

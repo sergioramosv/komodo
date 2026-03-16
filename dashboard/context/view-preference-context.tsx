@@ -1,8 +1,8 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 
-type ViewType = '3d' | 'pixel';
+export type ViewType = '3d' | 'pixel';
 
 interface ViewPreferenceContextValue {
   view: ViewType;
@@ -14,14 +14,11 @@ const ViewPreferenceContext = createContext<ViewPreferenceContextValue | null>(n
 const STORAGE_KEY = 'komodo-office-view';
 
 export function ViewPreferenceProvider({ children }: { children: ReactNode }) {
-  const [view, setViewState] = useState<ViewType>('3d');
-
-  useEffect(() => {
+  const [view, setViewState] = useState<ViewType>(() => {
+    if (typeof window === 'undefined') return '3d';
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === '3d' || stored === 'pixel') {
-      setViewState(stored);
-    }
-  }, []);
+    return stored === '3d' || stored === 'pixel' ? stored : '3d';
+  });
 
   function setView(v: ViewType) {
     setViewState(v);
