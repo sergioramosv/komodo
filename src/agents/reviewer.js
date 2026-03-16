@@ -459,14 +459,20 @@ ${diffInstruction}
     data.positives.forEach(p => logger.info(`  + ${p}`, 'REVIEWER'));
   }
 
+  const normalScore = verdict === 'APPROVED' && data.score == null ? 10 : data.score;
+  const baseSummaryNormal = data.summary || '';
+  const normalSummary = verdict === 'APPROVED' && data.score == null && !baseSummaryNormal.includes('inferred')
+    ? `${baseSummaryNormal} (score inferred as 10/10 — LLM returned null score with APPROVED verdict)`.trim()
+    : baseSummaryNormal;
+
   return {
     success: true,
     review: {
       verdict,
-      score: data.score,
+      score: normalScore,
       issues: data.issues || [],
       positives: data.positives || [],
-      summary: data.summary || '',
+      summary: normalSummary,
     },
     cost: result.cost,
     duration: result.duration,
@@ -498,7 +504,8 @@ export function normalizeVerdict(rawVerdict, score, issues = [], sonarReport, co
   }
 
   // Forzar REQUEST_CHANGES si no cumple el umbral
-  if (score < 8 || hasCritical || hasMajor) {
+  // score == null covers both null and undefined — null < 8 is true (coerces to 0), but undefined < 8 is false (NaN)
+  if (score == null || score < 8 || hasCritical || hasMajor) {
     return 'REQUEST_CHANGES';
   }
 

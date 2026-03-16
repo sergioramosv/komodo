@@ -26,11 +26,14 @@ describe('normalizeVerdict', () => {
     expect(normalizeVerdict('REQUEST_CHANGES', 9, [])).toBe('REQUEST_CHANGES');
   });
 
-  it('handles null score by returning REQUEST_CHANGES (score < 8 branch)', () => {
-    // null < 8 is false in JS, but null is falsy — normalizeVerdict receives score from earlyReview
-    // In practice, the early-termination path now always passes score ?? 10, so score is never null here
-    // Still verify it doesn't throw
-    expect(() => normalizeVerdict('APPROVED', null, [])).not.toThrow();
+  it('handles null score by returning REQUEST_CHANGES', () => {
+    // null < 8 is TRUE in JS (null coerces to 0), but explicit null guard ensures consistent behavior
+    expect(normalizeVerdict('APPROVED', null, [])).toBe('REQUEST_CHANGES');
+  });
+
+  it('handles undefined score by returning REQUEST_CHANGES', () => {
+    // undefined < 8 is FALSE in JS (NaN comparison) — explicit == null guard catches this case
+    expect(normalizeVerdict('APPROVED', undefined, [])).toBe('REQUEST_CHANGES');
   });
 
   it('normalizes lowercase "approved" to APPROVED', () => {
