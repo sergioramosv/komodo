@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useViewPreference } from '@/context/view-preference-context';
 import { useKomodoSocket } from '@/hooks/useKomodoSocket';
 import { useAgentStates } from '@/hooks/useAgentStates';
 import { useOfficeFeedback } from '@/hooks/useOfficeFeedback';
@@ -15,6 +16,7 @@ import { TaskDetailModal } from '@/components/task-detail-modal';
 import { Settings } from 'lucide-react';
 
 const OfficeScene3D = dynamic(() => import('@/components/office-scene-3d').then(mod => mod.OfficeScene3D), { ssr: false });
+const PixelOfficeCanvas = dynamic(() => import('@/components/pixel-office/pixel-office-canvas').then(mod => mod.PixelOfficeCanvas), { ssr: false });
 import type { Phase, AgentStatus, DashboardEvent, SonarAnalysisState } from '@/lib/types';
 
 /* ── Phase config ── */
@@ -93,6 +95,23 @@ export default function DashboardPage() {
   const feedback = useOfficeFeedback(events, snapshot);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const { view } = useViewPreference();
+  const [displayView, setDisplayView] = useState<'3d' | 'pixel'>(view);
+  const [opacity, setOpacity] = useState(1);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (view === displayView) { setOpacity(1); return; }
+    if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    setOpacity(0);
+    fadeTimer.current = setTimeout(() => {
+      setDisplayView(view);
+      setOpacity(1);
+    }, 200);
+    return () => {
+      if (fadeTimer.current) clearTimeout(fadeTimer.current);
+    };
+  }, [view]);
 
   return (
     <div className="space-y-6">
@@ -314,7 +333,13 @@ export default function DashboardPage() {
             </section>
 
             {/* Office Scene — real-time agent visualization */}
-            <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
+            <div style={{ opacity, transition: 'opacity 200ms ease', flex: 1, display: 'flex', flexDirection: 'column' }}>
+              {displayView === '3d' ? (
+                <OfficeScene3D agents={agentStates.agents} phase={snapshot.phase} cliHealth={cliHealth} />
+              ) : (
+                <PixelOfficeCanvas agents={agentStates.agents} />
+              )}
+            </div>
           </div>
         </div>
       )}
